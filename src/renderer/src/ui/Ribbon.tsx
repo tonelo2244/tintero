@@ -1,10 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type MouseEvent as ReactMouseEvent
-} from 'react'
+import { useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 /** Grupo de controles con etiqueta inferior ("Fuente", "Párrafo", ...). */

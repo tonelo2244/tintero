@@ -31,7 +31,12 @@ describe('presentationReducer', () => {
     const state = deck(1)
     const slide = state.slides[0]
     const title = slide.elements[0]
-    const next = presentationReducer(state, { type: 'element/setText', slideId: slide.id, elementId: title.id, text: 'Hola' })
+    const next = presentationReducer(state, {
+      type: 'element/setText',
+      slideId: slide.id,
+      elementId: title.id,
+      text: 'Hola'
+    })
     expect(next.slides[0].elements[0]).toMatchObject({ text: 'Hola' })
     expect(state.slides[0].elements[0]).toMatchObject({ text: '' })
   })

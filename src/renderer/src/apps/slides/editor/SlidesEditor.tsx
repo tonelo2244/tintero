@@ -103,7 +103,9 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         setEditingElementId(selectedElement.id)
       } else if (event.key.startsWith('Arrow')) {
         const step = event.shiftKey ? 10 : 1
-        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[event.key]
+        const delta = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[
+          event.key
+        ]
         if (!delta) return
         event.preventDefault()
         if (selectedElement) {
@@ -199,7 +201,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         </div>
 
         {/* Solo visible al imprimir: una diapositiva por página, en horizontal. */}
-        <style>{"@page { size: A4 landscape; margin: 1cm; }"}</style>
+        <style>{'@page { size: A4 landscape; margin: 1cm; }'}</style>
         <div className="print-only slides-print" aria-hidden>
           {presentation.slides.map((slide) => (
             <div key={slide.id} className="slides-print__page">

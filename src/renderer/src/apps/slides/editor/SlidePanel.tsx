@@ -16,7 +16,15 @@ interface SlidePanelProps {
 const THUMB_WIDTH = 176
 
 /** Columna de miniaturas. Se pueden reordenar arrastrando. */
-export function SlidePanel({ slides, themeId, selectedSlideId, onSelect, onMove, onDuplicate, onDelete }: SlidePanelProps) {
+export function SlidePanel({
+  slides,
+  themeId,
+  selectedSlideId,
+  onSelect,
+  onMove,
+  onDuplicate,
+  onDelete
+}: SlidePanelProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
 

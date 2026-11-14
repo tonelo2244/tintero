@@ -64,7 +64,12 @@ export function createShapeElement(shape: ShapeKind, box?: Box): ShapeElement {
 }
 
 /** Ajusta la imagen para que quepa en el 60 % de la diapositiva, centrada y sin deformar. */
-export function createImageElement(src: string, alt: string, naturalWidth: number, naturalHeight: number): ImageElement {
+export function createImageElement(
+  src: string,
+  alt: string,
+  naturalWidth: number,
+  naturalHeight: number
+): ImageElement {
   const maxWidth = SLIDE_WIDTH * 0.6
   const maxHeight = SLIDE_HEIGHT * 0.6
   const scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight)
@@ -98,7 +103,11 @@ function layoutElements(layout: SlideLayoutId): SlideElement[] {
     case 'title':
       return [
         createTextElement('title', { x: 160, y: 140, width: 960, height: 250 }, { placeholder: TITLE_PLACEHOLDER }),
-        createTextElement('subtitle', { x: 160, y: 400, width: 960, height: 180 }, { placeholder: SUBTITLE_PLACEHOLDER })
+        createTextElement(
+          'subtitle',
+          { x: 160, y: 400, width: 960, height: 180 },
+          { placeholder: SUBTITLE_PLACEHOLDER }
+        )
       ]
     case 'titleContent':
       return [

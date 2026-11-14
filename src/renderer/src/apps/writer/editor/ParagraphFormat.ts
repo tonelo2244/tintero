@@ -39,7 +39,8 @@ export const ParagraphFormat = Extension.create({
           lineHeight: {
             default: null,
             parseHTML: (element) => element.style.lineHeight || null,
-            renderHTML: (attributes) => (attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {})
+            renderHTML: (attributes) =>
+              attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {}
           }
         }
       },

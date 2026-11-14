@@ -31,7 +31,10 @@ export function registerIpcHandlers(recents: RecentsStore): void {
         const options = { defaultPath: suggestedName, filters }
         const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
         if (result.canceled || !result.filePath) return null
-        targetPath = ensureExtension(result.filePath, filters.flatMap((filter) => filter.extensions))
+        targetPath = ensureExtension(
+          result.filePath,
+          filters.flatMap((filter) => filter.extensions)
+        )
       }
       await writeFileAtomic(targetPath, contents)
       return targetPath

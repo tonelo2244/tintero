@@ -2,7 +2,7 @@
 
 Suite ofimática **100 % local** (sin nube, sin cuentas) con dos aplicaciones:
 
-- **Tintero Texto**: procesador de textos con cinta *Inicio* (fuente, tamaño, negrita, cursiva, subrayado, tachado, subíndice/superíndice, color de fuente y resaltado, viñetas, numeración, sangría, alineación, interlineado, galería de estilos Normal / Título 1-3 / Título / Subtítulo / Cita), pestaña *Insertar* (imagen, línea, fecha, cita, código), barra de estado con páginas, palabras y zoom.
+- **Tintero Texto**: procesador de textos con cinta _Inicio_ (fuente, tamaño, negrita, cursiva, subrayado, tachado, subíndice/superíndice, color de fuente y resaltado, viñetas, numeración, sangría, alineación, interlineado, galería de estilos Normal / Título 1-3 / Título / Subtítulo / Cita), pestaña _Insertar_ (imagen, línea, fecha, cita, código), barra de estado con páginas, palabras y zoom.
 - **Tintero Diapositivas**: editor de presentaciones con miniaturas reordenables, diseños de diapositiva (título, título y contenido, sección…), cuadros de texto, imágenes, formas, notas del orador, 5 temas, deshacer/rehacer y modo presentación a pantalla completa (F5).
 
 Ambas comparten una pantalla de inicio con plantillas/temas, **Recientes** y **Anclado**, y guardan en tu disco (`.tdoc` y `.tpres`).
@@ -19,19 +19,19 @@ npm run typecheck  # comprobación de tipos
 npm run build      # compila a ./out
 ```
 
-Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+Shift+S` guardar como, `Cmd/Ctrl+P` imprimir (o *Guardar como PDF* desde el diálogo de impresión), `F5` presentar.
+Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+Shift+S` guardar como, `Cmd/Ctrl+P` imprimir (o _Guardar como PDF_ desde el diálogo de impresión), `F5` presentar.
 
 ## Stack y por qué
 
-| Pieza | Elección | Motivo |
-| --- | --- | --- |
-| Escritorio | **Electron** | Acceso a disco y diálogos nativos con JavaScript/TypeScript puro. Tauri da binarios más pequeños pero exige Rust para la parte nativa: más fricción ahora mismo para aprender. |
-| Build | **electron-vite** (Vite) | Una sola configuración para proceso principal, preload e interfaz; recarga instantánea. |
-| UI | **React + TypeScript** | Estándar de la industria; tipos estrictos en todo el proyecto. |
-| Editor de texto | **Tiptap** (sobre ProseMirror) | Escribir un editor de texto enriquecido desde cero es un pozo sin fondo. ProseMirror es lo que usan productos serios (NYT, Atlassian…). |
-| Presentaciones | Modelo propio + reducer puro | No hay una librería que encaje; el modelo es simple (cajas posicionadas) y así queda 100 % testeable. |
-| Iconos | lucide-react | Iconos libres, sin marcas registradas. |
-| Tests | Vitest | Misma configuración que Vite. |
+| Pieza           | Elección                       | Motivo                                                                                                                                                                         |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Escritorio      | **Electron**                   | Acceso a disco y diálogos nativos con JavaScript/TypeScript puro. Tauri da binarios más pequeños pero exige Rust para la parte nativa: más fricción ahora mismo para aprender. |
+| Build           | **electron-vite** (Vite)       | Una sola configuración para proceso principal, preload e interfaz; recarga instantánea.                                                                                        |
+| UI              | **React + TypeScript**         | Estándar de la industria; tipos estrictos en todo el proyecto.                                                                                                                 |
+| Editor de texto | **Tiptap** (sobre ProseMirror) | Escribir un editor de texto enriquecido desde cero es un pozo sin fondo. ProseMirror es lo que usan productos serios (NYT, Atlassian…).                                        |
+| Presentaciones  | Modelo propio + reducer puro   | No hay una librería que encaje; el modelo es simple (cajas posicionadas) y así queda 100 % testeable.                                                                          |
+| Iconos          | lucide-react                   | Iconos libres, sin marcas registradas.                                                                                                                                         |
+| Tests           | Vitest                         | Misma configuración que Vite.                                                                                                                                                  |
 
 ## Arquitectura
 
