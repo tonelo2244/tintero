@@ -9,7 +9,7 @@ Ambas comparten una pantalla de inicio con plantillas/temas, **Recientes** y **A
 
 ## Requisitos y arranque
 
-- Node.js 20 o superior
+- Node.js 22 (la versión está en `.nvmrc`: `nvm use`)
 
 ```bash
 npm install
@@ -17,7 +17,29 @@ npm run dev        # abre la app en modo desarrollo (recarga en caliente)
 npm test           # tests unitarios (Vitest)
 npm run typecheck  # comprobación de tipos
 npm run build      # compila a ./out
+npm run lint       # ESLint
+npm run format     # Prettier (formatea todo)
 ```
+
+Al hacer `git commit`, un hook de pre-commit (husky + lint-staged) pasa ESLint y Prettier sobre los archivos que vas a commitear. Cada PR ejecuta en GitHub Actions lint, formato, typecheck, tests y build.
+
+## Instaladores
+
+```bash
+npm run dist:linux   # dist/Tintero-<versión>-x86_64.AppImage
+npm run dist:win     # dist/Tintero-Setup-<versión>.exe   (hay que ejecutarlo en Windows)
+npm run dist:mac     # dist/Tintero-<versión>-<arch>.dmg  (hay que ejecutarlo en macOS)
+```
+
+Cada instalador se construye en su sistema operativo, así que lo normal es dejárselo a GitHub Actions: al subir una etiqueta (`git tag v0.2.0 && git push origin v0.2.0`) el workflow _Instaladores_ construye los tres y los publica en una Release. También se puede lanzar a mano desde la pestaña _Actions_.
+
+Los instaladores asocian `.tdoc` y `.tpres` con Tintero (doble clic para abrir) y la app usa una sola instancia: si ya está abierta, el archivo se abre en ella.
+
+**Sin firma de código.** Firmar cuesta dinero (Apple Developer, certificado de Windows), así que de momento:
+
+- **macOS**: la primera vez, clic derecho sobre Tintero → _Abrir_ (o _Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente_).
+- **Windows**: SmartScreen avisará; _Más información → Ejecutar de todas formas_.
+- **Linux**: `chmod +x Tintero-*.AppImage`. El AppImage no registra la asociación de archivos por sí solo; para eso hace falta integrarlo en el escritorio (p. ej. con AppImageLauncher).
 
 Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+Shift+S` guardar como, `Cmd/Ctrl+P` imprimir (o _Guardar como PDF_ desde el diálogo de impresión), `F5` presentar.
 
@@ -77,4 +99,4 @@ Nada más: aparecerá en la barra lateral del inicio con sus plantillas y recien
 - El formato de texto en Diapositivas se aplica al **cuadro completo**, no a palabras sueltas (se podría reutilizar Tiptap dentro de cada cuadro).
 - No importa/exporta `.docx`/`.pptx` todavía; sí imprime y exporta a PDF desde el diálogo de impresión.
 - El autoguardado es una copia de seguridad (cada 30 s en `userData/recovery`), no guarda sobre tu archivo: para eso sigue haciendo falta Guardar.
-- Sin empaquetado en `.app`/`.exe` (se añadiría con `electron-builder`).
+- Instaladores sin firmar y con el icono por defecto de Electron (falta un `build/icon.png` de 1024×1024).

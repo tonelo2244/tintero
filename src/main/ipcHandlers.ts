@@ -8,6 +8,7 @@ import {
   type UnsavedDocument
 } from '@shared/ipc'
 import { ensureExtension, readTextFile, writeFileAtomic } from './fileService'
+import type { OpenRequestQueue } from './openRequests'
 import type { RecentsStore } from './recentsStore'
 import type { RecoveryStore } from './recoveryStore'
 import { closeGuardFor } from './windowCloseHandling'
@@ -17,7 +18,13 @@ import { closeGuardFor } from './windowCloseHandling'
  * el proceso principal no sabe qué es un "documento de texto" o una "presentación",
  * solo lee y escribe archivos. Así, añadir una app nueva no obliga a tocar este archivo.
  */
-export function registerIpcHandlers(recents: RecentsStore, recovery: RecoveryStore): void {
+export interface MainServices {
+  recents: RecentsStore
+  recovery: RecoveryStore
+  openRequests: OpenRequestQueue
+}
+
+export function registerIpcHandlers({ recents, recovery, openRequests }: MainServices): void {
   ipcMain.handle(IpcChannel.FilesOpenDialog, async (event, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const options = { properties: ['openFile' as const], filters }
@@ -49,6 +56,14 @@ export function registerIpcHandlers(recents: RecentsStore, recovery: RecoverySto
       return targetPath
     }
   )
+
+  // La interfaz llama a esto al arrancar: a partir de ahí, las peticiones le llegan directamente.
+  ipcMain.handle(IpcChannel.FilesTakePendingOpen, (event) => {
+    const sender = event.sender
+    const deliver = (path: string) => sender.send(IpcChannel.FilesOpenRequested, path)
+    sender.once('destroyed', () => openRequests.disconnect(deliver))
+    return openRequests.connect(deliver)
+  })
 
   ipcMain.handle(IpcChannel.RecentsList, () => recents.list())
   ipcMain.handle(IpcChannel.RecentsTouch, (_event, entry: Pick<RecentFile, 'path' | 'name' | 'appId'>) =>

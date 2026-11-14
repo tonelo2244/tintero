@@ -103,6 +103,20 @@ export function useDocumentSession(registry: AppRegistry) {
     }
   }, [confirmDiscard, openFromContents, registry])
 
+  /** Abre un archivo por su ruta (p. ej. doble clic en el explorador de archivos). */
+  const openPath = useCallback(
+    async (path: string) => {
+      if (!confirmDiscard()) return
+      try {
+        const opened = await platform.files.read(path)
+        await openFromContents(opened.path, opened.contents)
+      } catch (error) {
+        setNotice(`No se pudo abrir el archivo. ${errorMessage(error)}`)
+      }
+    },
+    [confirmDiscard, openFromContents]
+  )
+
   /** Devuelve false si el archivo ya no existe, para que el inicio ofrezca quitarlo de la lista. */
   const openRecent = useCallback(
     async (recent: RecentFile): Promise<boolean> => {
@@ -206,6 +220,7 @@ export function useDocumentSession(registry: AppRegistry) {
     createFromTemplate,
     openWithDialog,
     openRecent,
+    openPath,
     save: () => save(false),
     saveAs: () => save(true),
     close,

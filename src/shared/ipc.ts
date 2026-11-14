@@ -53,6 +53,10 @@ export interface TinteroApi {
     read(path: string): Promise<OpenedFile>
     /** Guarda en `path`; si es null pide ruta al usuario. Devuelve la ruta final o null si se canceló. */
     save(path: string | null, contents: string, suggestedName: string, filters: FileFilter[]): Promise<string | null>
+    /** Archivos que el sistema pidió abrir antes de que la interfaz estuviera lista (doble clic). */
+    takePendingOpenRequests(): Promise<string[]>
+    /** Archivos que el sistema pide abrir con la app ya en marcha. */
+    onOpenRequested(handler: (path: string) => void): () => void
   }
   recents: {
     list(): Promise<RecentFile[]>
@@ -83,6 +87,8 @@ export const IpcChannel = {
   FilesOpenDialog: 'files:open-dialog',
   FilesRead: 'files:read',
   FilesSave: 'files:save',
+  FilesTakePendingOpen: 'files:take-pending-open',
+  FilesOpenRequested: 'files:open-requested',
   RecentsList: 'recents:list',
   RecentsTouch: 'recents:touch',
   RecentsSetPinned: 'recents:set-pinned',

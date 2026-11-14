@@ -1,0 +1,51 @@
+# Configuración de los instaladores. Documentación: https://www.electron.build
+appId: io.github.tonelo2244.tintero
+productName: Tintero
+copyright: Copyright © 2026 tonelo
+
+directories:
+  output: dist
+  buildResources: build
+
+# Solo el código ya compilado por electron-vite. Las librerías de la interfaz (React, Tiptap...)
+# van dentro del bundle de out/renderer, por eso están en devDependencies y no se copian otra vez.
+files:
+  - out/**
+  - package.json
+
+# Doble clic en un .tdoc o .tpres => se abre con Tintero.
+fileAssociations:
+  - ext: tdoc
+    name: Documento de Tintero
+    description: Documento de Tintero Texto
+    mimeType: application/x-tintero-document
+    role: Editor
+  - ext: tpres
+    name: Presentación de Tintero
+    description: Presentación de Tintero Diapositivas
+    mimeType: application/x-tintero-presentation
+    role: Editor
+
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+mac:
+  target: dmg
+  category: public.app-category.productivity
+  # Sin certificado de Apple Developer: la app no va firmada (ver README).
+  identity: null
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  target: AppImage
+  category: Office
+  syncDesktopName: true
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish: null
