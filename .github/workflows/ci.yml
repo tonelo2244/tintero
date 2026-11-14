@@ -1,0 +1,44 @@
+name: CI
+
+# Se ejecuta en cada PR y en cada push a main: nada entra en main sin pasar por aquí.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Si subes otro commit al mismo PR, cancela la ejecución anterior (ahorra minutos).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # `npm ci` instala exactamente lo que dice package-lock.json (builds reproducibles).
+      # ELECTRON_SKIP_BINARY_DOWNLOAD: para typecheck/tests no hace falta el binario de Electron.
+      - name: Instalar dependencias
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
