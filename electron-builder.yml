@@ -37,8 +37,13 @@ nsis:
 mac:
   target: dmg
   category: public.app-category.productivity
-  # Sin certificado de Apple Developer: la app no va firmada (ver README).
-  identity: null
+  # Sin certificado de Apple Developer usamos firma "ad-hoc" ("-"). En Mac con chip Apple
+  # es obligatoria: un binario arm64 sin firma válida no arranca y macOS dice que "está dañado".
+  # No sustituye a la firma de Apple: Gatekeeper seguirá pidiendo "Abrir" la primera vez.
+  identity: '-'
+  # El runtime endurecido rechaza los frameworks de Electron firmados por otro equipo
+  # cuando la app solo tiene firma ad-hoc; hasta tener certificado, lo desactivamos.
+  hardenedRuntime: false
 dmg:
   artifactName: ${productName}-${version}-${arch}.${ext}
 

@@ -54,8 +54,14 @@ jobs:
       - name: Empaquetar
         run: npx electron-builder ${{ matrix.target }} --publish never
         env:
-          # Sin certificado de Apple: que no intente buscar uno en el llavero.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # electron-builder no firma en PRs por defecto (para no exponer certificados).
+          # Aquí solo hay firma ad-hoc, sin secretos, así que es seguro activarlo.
+          CSC_FOR_PULL_REQUEST: 'true'
+
+      # Comprueba que la firma de la app es válida: sin esto, macOS diría que "está dañada".
+      - name: Verificar firma (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict --verbose=2 dist/mac*/Tintero.app
 
       - uses: actions/upload-artifact@v4
         with:

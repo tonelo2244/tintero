@@ -37,7 +37,7 @@ Los instaladores asocian `.tdoc` y `.tpres` con Tintero (doble clic para abrir) 
 
 **Sin firma de código.** Firmar cuesta dinero (Apple Developer, certificado de Windows), así que de momento:
 
-- **macOS**: la primera vez, clic derecho sobre Tintero → _Abrir_ (o _Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente_).
+- **macOS**: la app lleva firma _ad-hoc_ (sin certificado de Apple). La primera vez, intenta abrirla y después ve a _Ajustes del Sistema → Privacidad y seguridad → Abrir igualmente_. Si aun así dice que "está dañada", ejecuta `xattr -cr /Applications/Tintero.app`.
 - **Windows**: SmartScreen avisará; _Más información → Ejecutar de todas formas_.
 - **Linux**: `chmod +x Tintero-*.AppImage`. El AppImage no registra la asociación de archivos por sí solo; para eso hace falta integrarlo en el escritorio (p. ej. con AppImageLauncher).
 
