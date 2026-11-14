@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   verify:
-    name: Typecheck, tests y build
+    name: Lint, typecheck, tests y build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -33,6 +33,12 @@ jobs:
         run: npm ci
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formato
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
