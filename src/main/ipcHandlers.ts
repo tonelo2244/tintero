@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, type WebContents } from 'electron'
 import {
   IpcChannel,
   type FileFilter,
@@ -25,6 +25,18 @@ export interface MainServices {
   openRequests: OpenRequestQueue
 }
 
+/** Diálogo "Guardar" nativo; devuelve la ruta con la extensión correcta o null si se canceló. */
+async function askSavePath(sender: WebContents, suggestedName: string, filters: FileFilter[]): Promise<string | null> {
+  const window = BrowserWindow.fromWebContents(sender)
+  const options = { defaultPath: suggestedName, filters }
+  const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+  if (result.canceled || !result.filePath) return null
+  return ensureExtension(
+    result.filePath,
+    filters.flatMap((filter) => filter.extensions)
+  )
+}
+
 export function registerIpcHandlers({ recents, recovery, openRequests }: MainServices): void {
   ipcMain.handle(IpcChannel.FilesOpenDialog, async (event, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
@@ -42,17 +54,19 @@ export function registerIpcHandlers({ recents, recovery, openRequests }: MainSer
   ipcMain.handle(
     IpcChannel.FilesSave,
     async (event, path: string | null, contents: string, suggestedName: string, filters: FileFilter[]) => {
-      let targetPath = path
-      if (!targetPath) {
-        const window = BrowserWindow.fromWebContents(event.sender)
-        const options = { defaultPath: suggestedName, filters }
-        const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
-        if (result.canceled || !result.filePath) return null
-        targetPath = ensureExtension(
-          result.filePath,
-          filters.flatMap((filter) => filter.extensions)
-        )
-      }
+      const targetPath = path ?? (await askSavePath(event.sender, suggestedName, filters))
+      if (!targetPath) return null
+      await writeFileAtomic(targetPath, contents)
+      return targetPath
+    }
+  )
+
+  // Exportaciones: main no sabe qué hay dentro de un .docx, solo escribe los bytes que le dan.
+  ipcMain.handle(
+    IpcChannel.FilesSaveBinary,
+    async (event, contents: Uint8Array, suggestedName: string, filters: FileFilter[]) => {
+      const targetPath = await askSavePath(event.sender, suggestedName, filters)
+      if (!targetPath) return null
       await writeFileAtomic(targetPath, contents)
       return targetPath
     }
@@ -102,11 +116,8 @@ export function registerIpcHandlers({ recents, recovery, openRequests }: MainSer
   // Mismo resultado que "Imprimir > Guardar como PDF", pero sin pasar por el diálogo del sistema.
   // Chromium pinta la página con los estilos @media print que ya usa la impresión.
   ipcMain.handle(IpcChannel.WindowExportPdf, async (event, suggestedName: string): Promise<string | null> => {
-    const window = BrowserWindow.fromWebContents(event.sender)
-    const options = { defaultPath: suggestedName, filters: [{ name: 'PDF', extensions: ['pdf'] }] }
-    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
-    if (result.canceled || !result.filePath) return null
-    const targetPath = ensureExtension(result.filePath, ['pdf'])
+    const targetPath = await askSavePath(event.sender, suggestedName, [{ name: 'PDF', extensions: ['pdf'] }])
+    if (!targetPath) return null
     const pdf = await event.sender.printToPDF(PDF_OPTIONS)
     await writeFileAtomic(targetPath, pdf)
     return targetPath

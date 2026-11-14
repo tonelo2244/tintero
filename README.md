@@ -41,7 +41,18 @@ Los instaladores asocian `.tdoc` y `.tpres` con Tintero (doble clic para abrir) 
 - **Windows**: SmartScreen avisará; _Más información → Ejecutar de todas formas_.
 - **Linux**: `chmod +x Tintero-*.AppImage`. El AppImage no registra la asociación de archivos por sí solo; para eso hace falta integrarlo en el escritorio (p. ej. con AppImageLauncher).
 
-Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+Shift+S` guardar como, `Cmd/Ctrl+P` imprimir (o _Guardar como PDF_ desde el diálogo de impresión), `F5` presentar.
+Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+Shift+S` guardar como, `Cmd/Ctrl+P` imprimir, `Cmd/Ctrl+Shift+E` exportar a PDF, `F5` presentar.
+
+## Compatibilidad con Office
+
+El botón **Exportar** de la barra superior (icono de descarga) ofrece los formatos de cada app. Exportar crea una **copia**: sigues editando tu `.tdoc`/`.tpres`, y el siguiente `Cmd/Ctrl+S` no sobrescribe el archivo exportado.
+
+| App          | Exportar   | Importar  |
+| ------------ | ---------- | --------- |
+| Texto        | PDF, .docx | pendiente |
+| Diapositivas | PDF        | pendiente |
+
+**Qué se pierde al exportar a .docx:** el resaltado se guarda como sombreado (Word solo tiene 16 colores de resaltado, el sombreado admite cualquiera); las imágenes que no son PNG, JPEG, GIF o BMP (p. ej. SVG o WebP) se omiten; la paginación la decide Word, así que los saltos de página pueden caer en otro sitio.
 
 ## Stack y por qué
 
@@ -97,6 +108,6 @@ Nada más: aparecerá en la barra lateral del inicio con sus plantillas y recien
 
 - **Paginación visual aproximada** en Texto: el documento es una hoja continua con marcas de salto cada A4. La paginación real es un proyecto en sí misma.
 - El formato de texto en Diapositivas se aplica al **cuadro completo**, no a palabras sueltas (se podría reutilizar Tiptap dentro de cada cuadro).
-- No importa/exporta `.docx`/`.pptx` todavía; sí imprime y exporta a PDF desde el diálogo de impresión.
+- Compatibilidad con Office parcial: ver la tabla de [Compatibilidad con Office](#compatibilidad-con-office).
 - El autoguardado es una copia de seguridad (cada 30 s en `userData/recovery`), no guarda sobre tu archivo: para eso sigue haciendo falta Guardar.
 - Instaladores sin firmar y con el icono por defecto de Electron (falta un `build/icon.png` de 1024×1024).

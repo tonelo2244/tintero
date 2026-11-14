@@ -11,6 +11,8 @@ const api: TinteroApi = {
     read: (path) => ipcRenderer.invoke(IpcChannel.FilesRead, path),
     save: (path, contents, suggestedName, filters) =>
       ipcRenderer.invoke(IpcChannel.FilesSave, path, contents, suggestedName, filters),
+    saveBinary: (contents, suggestedName, filters) =>
+      ipcRenderer.invoke(IpcChannel.FilesSaveBinary, contents, suggestedName, filters),
     takePendingOpenRequests: () => ipcRenderer.invoke(IpcChannel.FilesTakePendingOpen),
     onOpenRequested: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, path: string) => handler(path)

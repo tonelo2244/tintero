@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { displayNameFromPath, parseDocument, serializeDocument } from '@shared/document'
 import type { FileFilter, RecentFile, RecoverySnapshot } from '@shared/ipc'
-import type { AnyAppModule, AppRegistry, AppTemplate } from '@/core/appModule'
+import type { AnyAppModule, AppRegistry, AppTemplate, ExportOption, Exporter } from '@/core/appModule'
 import { createId } from '@/core/ids'
 import { platform } from '@/core/platform'
 import type { PendingSnapshot } from './useAutosave'
@@ -171,6 +171,40 @@ export function useDocumentSession(registry: AppRegistry) {
     }
   }, [document])
 
+  /**
+   * Exporta a un formato de otra suite. Igual que el PDF, es una copia: el documento sigue
+   * siendo el .tdoc/.tpres, porque la conversión pierde cosas y no queremos que el siguiente
+   * Cmd+S sobrescriba un archivo con pérdidas sin que el usuario lo sepa.
+   */
+  const exportWith = useCallback(
+    async (exporter: Exporter<unknown>) => {
+      if (!document) return
+      const { extension, label } = exporter.format
+      try {
+        const bytes = await exporter.export(latestContent.current)
+        const path = await platform.files.saveBinary(bytes, `${document.name}.${extension}`, [
+          { name: label, extensions: [extension] }
+        ])
+        if (path) setNotice(`Exportado a ${path}. Sigues editando el documento de Tintero.`)
+      } catch (error) {
+        setNotice(`No se pudo exportar a .${extension}. ${errorMessage(error)}`)
+      }
+    },
+    [document]
+  )
+
+  const exportOptions = useMemo((): ExportOption[] => {
+    if (!document) return []
+    return [
+      { id: 'pdf', label: 'PDF (.pdf)', run: () => void exportPdf() },
+      ...(document.app.exporters ?? []).map((exporter) => ({
+        id: exporter.format.extension,
+        label: `${exporter.format.label} (.${exporter.format.extension})`,
+        run: () => void exportWith(exporter)
+      }))
+    ]
+  }, [document, exportPdf, exportWith])
+
   const close = useCallback((): boolean => {
     if (!confirmDiscard()) return false
     if (currentRecoveryId.current) forgetRecovery(currentRecoveryId.current)
@@ -235,6 +269,7 @@ export function useDocumentSession(registry: AppRegistry) {
     save: () => save(false),
     saveAs: () => save(true),
     exportPdf,
+    exportOptions,
     close,
     handleContentChange,
     openRecovered,

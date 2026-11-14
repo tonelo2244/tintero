@@ -137,7 +137,7 @@ export function App() {
             isDirty,
             save: () => void session.save(),
             saveAs: () => void session.saveAs(),
-            exportPdf: () => void session.exportPdf(),
+            exportOptions: session.exportOptions,
             goHome: () => {
               if (session.close()) selectLauncherApp(document.app.id)
             }

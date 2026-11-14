@@ -16,5 +16,12 @@ export const writerApp = defineApp<WriterContent>({
   galleryTitle: 'Plantillas',
   templates: writerTemplates,
   parseContent: parseWriterContent,
-  Editor: WriterEditor
+  Editor: WriterEditor,
+  exporters: [
+    {
+      format: { extension: 'docx', label: 'Documento de Word' },
+      // Import dinámico: la librería docx solo se carga la primera vez que alguien exporta.
+      export: async (content) => (await import('./model/docx/exportDocx')).exportDocx(content)
+    }
+  ]
 })

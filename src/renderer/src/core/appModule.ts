@@ -27,6 +27,23 @@ export interface AppModule<TContent = unknown> {
   /** Valida/normaliza contenido leído de disco. Lanza un Error si no es válido. */
   parseContent(raw: unknown): TContent
   Editor: ComponentType<EditorProps<TContent>>
+  /**
+   * Formatos externos a los que la app sabe exportar (.docx, .pptx...). Opcional: el shell
+   * ofrece "Exportar" sin saber nada de cada formato; la conversión es cosa de la app.
+   */
+  exporters?: Exporter<TContent>[]
+}
+
+/** Un formato de archivo de otra suite, p. ej. { extension: 'docx', label: 'Documento de Word' }. */
+export interface ExternalFormat {
+  extension: string
+  label: string
+}
+
+export interface Exporter<TContent> {
+  format: ExternalFormat
+  /** Conversión pura: contenido -> bytes del archivo. Sin disco ni interfaz, para poder testearla. */
+  export(content: TContent): Promise<Uint8Array>
 }
 
 export interface AppTemplate<TContent> {
@@ -36,14 +53,20 @@ export interface AppTemplate<TContent> {
   createContent(): TContent
 }
 
+export interface ExportOption {
+  id: string
+  label: string
+  run(): void
+}
+
 /** Lo que el shell ofrece a cada editor. */
 export interface EditorSession {
   documentName: string
   isDirty: boolean
   save(): void
   saveAs(): void
-  /** Exporta a PDF lo que se vería al imprimir (sin diálogo de impresión). */
-  exportPdf(): void
+  /** Formatos a los que se puede exportar este documento (PDF y los de la app). */
+  exportOptions: ExportOption[]
   goHome(): void
 }
 
