@@ -45,20 +45,21 @@ Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+
 
 ## Compatibilidad con Office
 
-El botón **Exportar** de la barra superior (icono de descarga) ofrece los formatos de cada app. Exportar crea una **copia**: sigues editando tu `.tdoc`/`.tpres`, y el siguiente `Cmd/Ctrl+S` no sobrescribe el archivo exportado.
+| App          | Exportar   | Importar |
+| ------------ | ---------- | -------- |
+| Texto        | PDF, .docx | .docx    |
+| Diapositivas | PDF, .pptx | .pptx    |
 
-| App          | Exportar   | Importar  |
-| ------------ | ---------- | --------- |
-| Texto        | PDF, .docx | .docx     |
-| Diapositivas | PDF, .pptx | pendiente |
+**Exportar** (icono de descarga de la barra superior, o `Cmd/Ctrl+Shift+E` para PDF) crea una **copia**: sigues editando tu `.tdoc`/`.tpres` y el siguiente `Cmd/Ctrl+S` no sobrescribe el archivo exportado.
 
-**Qué se pierde al exportar a .pptx:** las posiciones, tamaños, textos, formas, imágenes y notas pasan tal cual, pero el fondo del tema se reconstruye con franjas de color sólido (los tramos con degradado suave quedan de su color medio) y los cuadros vacíos se omiten. PowerPoint mide el texto de otra forma, así que un texto muy justo puede saltar de línea en un sitio distinto.
+**Importar** (Abrir… y elegir un `.docx` o `.pptx`) abre una **copia sin guardar**: al guardar se crea un `.tdoc`/`.tpres` nuevo y el original no se toca. Un aviso dice exactamente qué no se ha podido conservar de ese archivo.
 
-**Importar** (Abrir… y elegir un `.docx`) abre una **copia sin guardar**: al guardar se crea un `.tdoc` nuevo y el original no se toca. Al terminar, un aviso dice exactamente qué no se ha podido conservar en ese archivo.
+### Qué se pierde en cada conversión
 
-**Qué se pierde al importar un .docx:** se conserva la estructura (títulos, Título/Subtítulo/Cita, listas, negrita, cursiva, subrayado, tachado, sub/superíndice, enlaces, imágenes y notas al pie), pero no el formato aplicado a mano: fuente, tamaño, color, resaltado y alineación. Las tablas se convierten en párrafos (Tintero Texto aún no tiene tablas). Tampoco se importan encabezados, pies de página, comentarios ni cuadros de texto. Es una decisión de la librería que usamos (mammoth), que prioriza la estructura sobre el aspecto.
-
-**Qué se pierde al exportar a .docx:** el resaltado se guarda como sombreado (Word solo tiene 16 colores de resaltado, el sombreado admite cualquiera); las imágenes que no son PNG, JPEG, GIF o BMP (p. ej. SVG o WebP) se omiten; la paginación la decide Word, así que los saltos de página pueden caer en otro sitio.
+- **Exportar a .docx:** el resaltado se guarda como sombreado (Word solo tiene 16 colores de resaltado); las imágenes SVG o WebP se omiten; los saltos de página los decide Word.
+- **Importar .docx:** se conserva la estructura (títulos, Título/Subtítulo/Cita, listas, negrita, cursiva, subrayado, tachado, sub/superíndice, enlaces, imágenes y notas al pie), pero no el formato aplicado a mano: fuente, tamaño, color, resaltado y alineación. Las tablas pasan a párrafos y no se importan encabezados, pies, comentarios ni cuadros de texto. Es la filosofía de la librería que usamos (mammoth): estructura antes que aspecto.
+- **Exportar a .pptx:** posiciones, textos, formas, imágenes y notas pasan tal cual. El fondo del tema se reconstruye con franjas de color sólido (un degradado suave queda de su color medio) y los cuadros vacíos se omiten. PowerPoint mide el texto a su manera, así que un texto muy justo puede saltar de línea en otro sitio.
+- **Importar .pptx:** se conservan posiciones, tamaños, textos (tamaño, fuente, color, alineación y viñetas), 7 formas, imágenes PNG/JPEG/GIF/BMP, grupos y notas, siguiendo la herencia diapositiva → diseño → patrón. Se pierden el fondo y los colores del tema (se aplica el tema Blanco), el formato por palabra (cada cuadro toma el de su primer texto), tablas, gráficos y SmartArt, giros, animaciones y transiciones. Las demás formas pasan a rectángulo y las presentaciones 4:3 se centran en 16:9.
 
 ## Stack y por qué
 

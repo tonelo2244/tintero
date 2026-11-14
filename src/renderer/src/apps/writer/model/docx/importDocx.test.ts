@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
 import { createWriterExtensions } from '../../editor/extensions'
