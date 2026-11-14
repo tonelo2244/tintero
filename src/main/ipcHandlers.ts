@@ -1,7 +1,15 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { IpcChannel, type FileFilter, type OpenedFile, type RecentFile } from '@shared/ipc'
+import {
+  IpcChannel,
+  type FileFilter,
+  type OpenedFile,
+  type RecentFile,
+  type RecoverySnapshot,
+  type UnsavedDocument
+} from '@shared/ipc'
 import { ensureExtension, readTextFile, writeFileAtomic } from './fileService'
 import type { RecentsStore } from './recentsStore'
+import type { RecoveryStore } from './recoveryStore'
 import { closeGuardFor } from './windowCloseHandling'
 
 /**
@@ -9,7 +17,7 @@ import { closeGuardFor } from './windowCloseHandling'
  * el proceso principal no sabe qué es un "documento de texto" o una "presentación",
  * solo lee y escribe archivos. Así, añadir una app nueva no obliga a tocar este archivo.
  */
-export function registerIpcHandlers(recents: RecentsStore): void {
+export function registerIpcHandlers(recents: RecentsStore, recovery: RecoveryStore): void {
   ipcMain.handle(IpcChannel.FilesOpenDialog, async (event, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const options = { properties: ['openFile' as const], filters }
@@ -55,10 +63,14 @@ export function registerIpcHandlers(recents: RecentsStore): void {
     BrowserWindow.fromWebContents(event.sender)?.setTitle(title)
   })
 
-  ipcMain.on(IpcChannel.WindowSetUnsavedChanges, (event, documentName: string | null) => {
-    closeGuardFor(event.sender)?.setDirtyDocument(documentName)
+  ipcMain.handle(IpcChannel.RecoverySave, (_event, snapshot: RecoverySnapshot) => recovery.save(snapshot))
+  ipcMain.handle(IpcChannel.RecoveryDiscard, (_event, id: string) => recovery.discard(id))
+  ipcMain.handle(IpcChannel.RecoveryList, () => recovery.listRecoverable())
+
+  ipcMain.on(IpcChannel.WindowSetUnsavedChanges, (event, document: UnsavedDocument | null) => {
+    closeGuardFor(event.sender)?.setDirtyDocument(document)
     // En macOS pinta el punto en el botón de cerrar, como cualquier app nativa.
-    BrowserWindow.fromWebContents(event.sender)?.setDocumentEdited(documentName !== null)
+    BrowserWindow.fromWebContents(event.sender)?.setDocumentEdited(document !== null)
   })
 
   ipcMain.on(IpcChannel.WindowConfirmClose, (event) => {

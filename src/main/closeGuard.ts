@@ -1,3 +1,5 @@
+import type { UnsavedDocument } from '@shared/ipc'
+
 export type CloseChoice = 'save' | 'discard' | 'cancel'
 
 export interface CloseGuardDeps {
@@ -9,6 +11,8 @@ export interface CloseGuardDeps {
   close(): void
   /** El usuario se arrepintió: sirve para anular un "Salir" en curso. */
   onCancel(): void
+  /** El usuario eligió "No guardar": hay que olvidar también la copia de recuperación. */
+  onDiscard(document: UnsavedDocument): void
 }
 
 /**
@@ -20,25 +24,21 @@ export interface CloseGuardDeps {
  * exige saber en el momento si hay que llamar a `preventDefault()`.
  */
 export class WindowCloseGuard {
-  private dirtyDocumentName: string | null = null
+  private dirtyDocument: UnsavedDocument | null = null
   private closeAllowed = false
   private isAsking = false
 
   constructor(private readonly deps: CloseGuardDeps) {}
 
   /** `null` = no hay cambios pendientes. */
-  setDirtyDocument(name: string | null): void {
-    this.dirtyDocumentName = name
-  }
-
-  get hasUnsavedChanges(): boolean {
-    return this.dirtyDocumentName !== null
+  setDirtyDocument(document: UnsavedDocument | null): void {
+    this.dirtyDocument = document
   }
 
   /** Devuelve true si la ventana puede cerrarse ya; false si hay que cancelar el cierre. */
   handleCloseAttempt(): boolean {
-    if (this.closeAllowed || this.dirtyDocumentName === null) return true
-    if (!this.isAsking) void this.ask(this.dirtyDocumentName)
+    if (this.closeAllowed || this.dirtyDocument === null) return true
+    if (!this.isAsking) void this.ask(this.dirtyDocument)
     return false
   }
 
@@ -46,12 +46,14 @@ export class WindowCloseGuard {
     this.forceClose()
   }
 
-  private async ask(documentName: string): Promise<void> {
+  private async ask(document: UnsavedDocument): Promise<void> {
     this.isAsking = true
     try {
-      const choice = await this.deps.askUser(documentName)
-      if (choice === 'discard') this.forceClose()
-      else if (choice === 'save') this.deps.requestSave()
+      const choice = await this.deps.askUser(document.name)
+      if (choice === 'discard') {
+        this.deps.onDiscard(document)
+        this.forceClose()
+      } else if (choice === 'save') this.deps.requestSave()
       else this.deps.onCancel()
     } finally {
       this.isAsking = false

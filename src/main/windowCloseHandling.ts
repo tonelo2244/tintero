@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, type WebContents } from 'electron'
-import { IpcChannel } from '@shared/ipc'
+import { IpcChannel, type UnsavedDocument } from '@shared/ipc'
 import { WindowCloseGuard, type CloseChoice } from './closeGuard'
 
 const guardsByWebContents = new Map<number, WindowCloseGuard>()
@@ -11,7 +11,12 @@ const BUTTONS: { label: string; choice: CloseChoice }[] = [
 ]
 
 /** Conecta el `WindowCloseGuard` (lógica pura) con una ventana real de Electron. */
-export function attachCloseGuard(window: BrowserWindow, onCancel: () => void): void {
+export interface CloseCallbacks {
+  onCancel(): void
+  onDiscard(document: UnsavedDocument): void
+}
+
+export function attachCloseGuard(window: BrowserWindow, callbacks: CloseCallbacks): void {
   const webContentsId = window.webContents.id
 
   const guard = new WindowCloseGuard({
@@ -29,7 +34,7 @@ export function attachCloseGuard(window: BrowserWindow, onCancel: () => void): v
     },
     requestSave: () => window.webContents.send(IpcChannel.WindowSaveBeforeClose),
     close: () => window.close(),
-    onCancel
+    ...callbacks
   })
 
   guardsByWebContents.set(webContentsId, guard)

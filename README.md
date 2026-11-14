@@ -76,5 +76,5 @@ Nada más: aparecerá en la barra lateral del inicio con sus plantillas y recien
 - **Paginación visual aproximada** en Texto: el documento es una hoja continua con marcas de salto cada A4. La paginación real es un proyecto en sí misma.
 - El formato de texto en Diapositivas se aplica al **cuadro completo**, no a palabras sueltas (se podría reutilizar Tiptap dentro de cada cuadro).
 - No importa/exporta `.docx`/`.pptx` todavía; sí imprime y exporta a PDF desde el diálogo de impresión.
-- Sin autoguardado (al cerrar la ventana con cambios sí pregunta si quieres guardar).
+- El autoguardado es una copia de seguridad (cada 30 s en `userData/recovery`), no guarda sobre tu archivo: para eso sigue haciendo falta Guardar.
 - Sin empaquetado en `.app`/`.exe` (se añadiría con `electron-builder`).

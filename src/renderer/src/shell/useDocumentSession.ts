@@ -1,8 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
 import { displayNameFromPath, parseDocument, serializeDocument } from '@shared/document'
-import type { FileFilter, RecentFile } from '@shared/ipc'
+import type { FileFilter, RecentFile, RecoverySnapshot } from '@shared/ipc'
 import type { AnyAppModule, AppRegistry, AppTemplate } from '@/core/appModule'
+import { createId } from '@/core/ids'
 import { platform } from '@/core/platform'
+import type { PendingSnapshot } from './useAutosave'
 
 export interface OpenDocument {
   /** Cambia cada vez que se abre/crea un documento: fuerza a React a montar un editor limpio. */
@@ -11,6 +13,19 @@ export interface OpenDocument {
   path: string | null
   name: string
   initialContent: unknown
+  /** Id de su copia de recuperación en disco (autoguardado). */
+  recoveryId: string
+}
+
+interface ShowOptions {
+  /** Al recuperar una copia se reutiliza su id, para que el autoguardado la siga actualizando. */
+  recoveryId?: string
+  isDirty?: boolean
+}
+
+/** Borrar una copia es "limpieza": si falla no debe interrumpir al usuario. */
+function forgetRecovery(id: string): void {
+  void platform.recovery.discard(id).catch(() => {})
 }
 
 const fileFilterFor = (app: AnyAppModule): FileFilter => ({ name: app.file.label, extensions: [app.file.extension] })
@@ -29,6 +44,9 @@ export function useDocumentSession(registry: AppRegistry) {
   const [notice, setNotice] = useState<string | null>(null)
 
   const latestContent = useRef<unknown>(null)
+  /** Sube con cada cambio: el autoguardado lo usa para no reescribir una copia idéntica. */
+  const revision = useRef(0)
+  const currentRecoveryId = useRef<string | null>(null)
   const nextKey = useRef(1)
   const untitledCounters = useRef(new Map<string, number>())
 
@@ -37,10 +55,15 @@ export function useDocumentSession(registry: AppRegistry) {
     return window.confirm(`"${document.name}" tiene cambios sin guardar. ¿Quieres descartarlos?`)
   }, [document, isDirty])
 
-  const show = useCallback((next: Omit<OpenDocument, 'key'>) => {
+  const show = useCallback((next: Omit<OpenDocument, 'key' | 'recoveryId'>, options: ShowOptions = {}) => {
+    // Si llegamos aquí, el documento anterior se guardó o el usuario aceptó descartarlo.
+    if (currentRecoveryId.current) forgetRecovery(currentRecoveryId.current)
+    const recoveryId = options.recoveryId ?? createId('doc')
+    currentRecoveryId.current = recoveryId
     latestContent.current = next.initialContent
-    setDocument({ ...next, key: nextKey.current++ })
-    setIsDirty(false)
+    revision.current = 0
+    setDocument({ ...next, recoveryId, key: nextKey.current++ })
+    setIsDirty(options.isDirty ?? false)
     setNotice(null)
   }, [])
 
@@ -112,6 +135,7 @@ export function useDocumentSession(registry: AppRegistry) {
         const name = displayNameFromPath(path)
         setDocument((current) => (current ? { ...current, path, name } : current))
         setIsDirty(false)
+        forgetRecovery(document.recoveryId)
         await platform.recents.touch({ path, name, appId: document.app.id })
         return true
       } catch (error) {
@@ -124,6 +148,8 @@ export function useDocumentSession(registry: AppRegistry) {
 
   const close = useCallback((): boolean => {
     if (!confirmDiscard()) return false
+    if (currentRecoveryId.current) forgetRecovery(currentRecoveryId.current)
+    currentRecoveryId.current = null
     setDocument(null)
     setIsDirty(false)
     return true
@@ -131,8 +157,46 @@ export function useDocumentSession(registry: AppRegistry) {
 
   const handleContentChange = useCallback((content: unknown) => {
     latestContent.current = content
+    revision.current += 1
     setIsDirty(true)
   }, [])
+
+  /** Abre la copia de un documento que no llegó a guardarse (cierre inesperado). */
+  const openRecovered = useCallback(
+    (snapshot: RecoverySnapshot): boolean => {
+      if (!confirmDiscard()) return false
+      try {
+        const envelope = parseDocument(snapshot.contents)
+        const app = registry.get(envelope.appId)
+        if (!app) throw new Error(`No hay ninguna app instalada para "${envelope.appId}".`)
+        show(
+          { app, path: snapshot.path, name: snapshot.name, initialContent: app.parseContent(envelope.content) },
+          { recoveryId: snapshot.id, isDirty: true }
+        )
+        return true
+      } catch (error) {
+        setNotice(`No se pudo recuperar "${snapshot.name}". ${errorMessage(error)}`)
+        return false
+      }
+    },
+    [confirmDiscard, registry, show]
+  )
+
+  /** Lo que el autoguardado debe escribir ahora mismo, o null si no hay nada pendiente. */
+  const takeRecoverySnapshot = useCallback((): PendingSnapshot | null => {
+    if (!document || !isDirty) return null
+    return {
+      revision: revision.current,
+      snapshot: {
+        id: document.recoveryId,
+        appId: document.app.id,
+        name: document.name,
+        path: document.path,
+        savedAt: new Date().toISOString(),
+        contents: serializeDocument(document.app.id, latestContent.current)
+      }
+    }
+  }, [document, isDirty])
 
   return {
     document,
@@ -145,6 +209,8 @@ export function useDocumentSession(registry: AppRegistry) {
     save: () => save(false),
     saveAs: () => save(true),
     close,
-    handleContentChange
+    handleContentChange,
+    openRecovered,
+    takeRecoverySnapshot
   }
 }
