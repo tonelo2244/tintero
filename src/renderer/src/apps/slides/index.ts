@@ -17,5 +17,12 @@ export const slidesApp = defineApp<Presentation>({
   galleryTitle: 'Temas',
   templates: slidesTemplates,
   parseContent: parsePresentation,
-  Editor: SlidesEditor
+  Editor: SlidesEditor,
+  exporters: [
+    {
+      format: { extension: 'pptx', label: 'Presentación de PowerPoint' },
+      // Import dinámico: pptxgenjs solo se carga la primera vez que alguien exporta.
+      export: async (content) => (await import('./model/pptx/exportPptx')).exportPptx(content)
+    }
+  ]
 })

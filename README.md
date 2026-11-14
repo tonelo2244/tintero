@@ -50,7 +50,9 @@ El botón **Exportar** de la barra superior (icono de descarga) ofrece los forma
 | App          | Exportar   | Importar  |
 | ------------ | ---------- | --------- |
 | Texto        | PDF, .docx | .docx     |
-| Diapositivas | PDF        | pendiente |
+| Diapositivas | PDF, .pptx | pendiente |
+
+**Qué se pierde al exportar a .pptx:** las posiciones, tamaños, textos, formas, imágenes y notas pasan tal cual, pero el fondo del tema se reconstruye con franjas de color sólido (los tramos con degradado suave quedan de su color medio) y los cuadros vacíos se omiten. PowerPoint mide el texto de otra forma, así que un texto muy justo puede saltar de línea en un sitio distinto.
 
 **Importar** (Abrir… y elegir un `.docx`) abre una **copia sin guardar**: al guardar se crea un `.tdoc` nuevo y el original no se toca. Al terminar, un aviso dice exactamente qué no se ha podido conservar en ese archivo.
 
