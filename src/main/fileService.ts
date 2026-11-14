@@ -5,10 +5,11 @@ import { dirname, join, basename } from 'node:path'
  * Escritura atómica: primero a un archivo temporal y luego `rename`.
  * Si la app se cierra a mitad de guardado, el documento original no se corrompe.
  */
-export async function writeFileAtomic(filePath: string, contents: string): Promise<void> {
+export async function writeFileAtomic(filePath: string, contents: string | Uint8Array): Promise<void> {
   await fs.mkdir(dirname(filePath), { recursive: true })
   const tempPath = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.tmp`)
-  await fs.writeFile(tempPath, contents, 'utf8')
+  // Texto (nuestros .tdoc/.tpres) o binario (PDF, .docx, .pptx): el mismo camino seguro para todos.
+  await fs.writeFile(tempPath, contents, typeof contents === 'string' ? 'utf8' : undefined)
   await fs.rename(tempPath, filePath)
 }
 

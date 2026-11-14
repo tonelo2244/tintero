@@ -32,6 +32,7 @@ const api: TinteroApi = {
   window: {
     setTitle: (title) => ipcRenderer.send(IpcChannel.WindowSetTitle, title),
     print: () => ipcRenderer.invoke(IpcChannel.WindowPrint),
+    exportPdf: (suggestedName) => ipcRenderer.invoke(IpcChannel.WindowExportPdf, suggestedName),
     setUnsavedChanges: (document) => ipcRenderer.send(IpcChannel.WindowSetUnsavedChanges, document),
     confirmClose: () => ipcRenderer.send(IpcChannel.WindowConfirmClose)
   },

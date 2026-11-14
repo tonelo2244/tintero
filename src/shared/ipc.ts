@@ -45,7 +45,7 @@ export interface UnsavedDocument {
 }
 
 /** Acciones lanzadas desde el menú nativo hacia la interfaz. */
-export type MenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'home' | 'print'
+export type MenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'home' | 'print' | 'export-pdf'
 
 export interface TinteroApi {
   files: {
@@ -73,6 +73,11 @@ export interface TinteroApi {
   window: {
     setTitle(title: string): void
     print(): Promise<void>
+    /**
+     * Genera un PDF de lo que se vería al imprimir y pide dónde guardarlo.
+     * Devuelve la ruta final o null si el usuario canceló.
+     */
+    exportPdf(suggestedName: string): Promise<string | null>
     /** Documento con cambios sin guardar, o null si está todo guardado. */
     setUnsavedChanges(document: UnsavedDocument | null): void
     /** Tras guardar a petición de `onSaveBeforeClose`: ya se puede cerrar la ventana. */
@@ -98,6 +103,7 @@ export const IpcChannel = {
   RecoveryList: 'recovery:list',
   WindowSetTitle: 'window:set-title',
   WindowPrint: 'window:print',
+  WindowExportPdf: 'window:export-pdf',
   WindowSetUnsavedChanges: 'window:set-unsaved-changes',
   WindowSaveBeforeClose: 'window:save-before-close',
   WindowConfirmClose: 'window:confirm-close',
