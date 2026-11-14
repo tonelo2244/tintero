@@ -36,7 +36,15 @@ export function App() {
   useEffect(() => {
     const title = document ? `${document.name}${isDirty ? ' (sin guardar)' : ''} — ${document.app.name}` : 'Tintero'
     platform.window.setTitle(title)
+    // El proceso principal necesita saberlo ANTES de que el usuario cierre la ventana.
+    platform.window.setUnsavedChanges(document && isDirty ? document.name : null)
   }, [document, isDirty])
+
+  useEffect(() => {
+    return platform.onSaveBeforeClose(async () => {
+      if (await session.save()) platform.window.confirmClose()
+    })
+  }, [session])
 
   // Atajos del menú nativo (Cmd/Ctrl+S, etc.). Se re-suscribe cuando cambia la sesión
   // para que los callbacks siempre vean el documento actual.

@@ -3,9 +3,17 @@ import { app, BrowserWindow, Menu, shell } from 'electron'
 import { registerIpcHandlers } from './ipcHandlers'
 import { buildAppMenu } from './menu'
 import { RecentsStore } from './recentsStore'
+import { attachCloseGuard } from './windowCloseHandling'
 
 // Antes de 'ready': define el nombre de la app y, con él, la carpeta de datos (userData).
 app.setName('Tintero')
+
+// Si una ventana bloquea el cierre por cambios sin guardar, Electron anula el "Salir".
+// Lo recordamos para retomarlo cuando el usuario haya guardado o descartado.
+let isQuitting = false
+app.on('before-quit', () => {
+  isQuitting = true
+})
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -27,6 +35,13 @@ function createMainWindow(): BrowserWindow {
   })
 
   window.once('ready-to-show', () => window.show())
+
+  attachCloseGuard(window, () => {
+    isQuitting = false
+  })
+  window.on('closed', () => {
+    if (isQuitting) app.quit()
+  })
 
   // Los enlaces externos se abren en el navegador del sistema, nunca dentro de la app.
   window.webContents.setWindowOpenHandler(({ url }) => {

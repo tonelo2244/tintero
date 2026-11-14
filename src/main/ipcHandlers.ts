@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IpcChannel, type FileFilter, type OpenedFile, type RecentFile } from '@shared/ipc'
 import { ensureExtension, readTextFile, writeFileAtomic } from './fileService'
 import type { RecentsStore } from './recentsStore'
+import { closeGuardFor } from './windowCloseHandling'
 
 /**
  * Traduce mensajes IPC a llamadas a los servicios. Aquí no hay lógica de negocio:
@@ -52,6 +53,16 @@ export function registerIpcHandlers(recents: RecentsStore): void {
 
   ipcMain.on(IpcChannel.WindowSetTitle, (event, title: string) => {
     BrowserWindow.fromWebContents(event.sender)?.setTitle(title)
+  })
+
+  ipcMain.on(IpcChannel.WindowSetUnsavedChanges, (event, documentName: string | null) => {
+    closeGuardFor(event.sender)?.setDirtyDocument(documentName)
+    // En macOS pinta el punto en el botón de cerrar, como cualquier app nativa.
+    BrowserWindow.fromWebContents(event.sender)?.setDocumentEdited(documentName !== null)
+  })
+
+  ipcMain.on(IpcChannel.WindowConfirmClose, (event) => {
+    closeGuardFor(event.sender)?.confirmSaved()
   })
 
   ipcMain.handle(IpcChannel.WindowPrint, (event) => {

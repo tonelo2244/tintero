@@ -44,8 +44,14 @@ export interface TinteroApi {
   window: {
     setTitle(title: string): void
     print(): Promise<void>
+    /** Nombre del documento con cambios sin guardar, o null si está todo guardado. */
+    setUnsavedChanges(documentName: string | null): void
+    /** Tras guardar a petición de `onSaveBeforeClose`: ya se puede cerrar la ventana. */
+    confirmClose(): void
   }
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
+  /** El usuario eligió "Guardar" al cerrar la ventana. */
+  onSaveBeforeClose(handler: () => void): () => void
 }
 
 export const IpcChannel = {
@@ -58,5 +64,8 @@ export const IpcChannel = {
   RecentsRemove: 'recents:remove',
   WindowSetTitle: 'window:set-title',
   WindowPrint: 'window:print',
+  WindowSetUnsavedChanges: 'window:set-unsaved-changes',
+  WindowSaveBeforeClose: 'window:save-before-close',
+  WindowConfirmClose: 'window:confirm-close',
   MenuCommand: 'menu:command'
 } as const
