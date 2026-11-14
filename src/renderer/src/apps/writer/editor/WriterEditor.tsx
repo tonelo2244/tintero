@@ -1,0 +1,103 @@
+import { useMemo, useRef, useState } from 'react'
+import { EditorContent, useEditor } from '@tiptap/react'
+import type { EditorProps } from '@/core/appModule'
+import { platform } from '@/core/platform'
+import { EditorLayout } from '@/ui/EditorLayout'
+import { WRITER_ACCENT } from '../constants'
+import type { WriterContent } from '../model/content'
+import { createWriterExtensions } from './extensions'
+import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
+import { useWriterToolbarState } from './useWriterToolbarState'
+import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
+import { WriterStatusBar } from './WriterStatusBar'
+
+const TABS = [
+  { id: 'home', label: 'Inicio' },
+  { id: 'insert', label: 'Insertar' }
+]
+
+export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
+  const [activeTab, setActiveTab] = useState('home')
+  const [zoom, setZoom] = useState(1)
+  const [showMarks, setShowMarks] = useState(false)
+  const pageRef = useRef<HTMLDivElement>(null)
+
+  const extensions = useMemo(createWriterExtensions, [])
+  const editor = useEditor({
+    extensions,
+    content: initialContent.doc,
+    autofocus: 'end',
+    editorProps: {
+      attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' }
+    },
+    onUpdate: ({ editor: current }) => onChange({ doc: current.getJSON() })
+  })
+
+  const toolbar = useWriterToolbarState(editor)
+  const pages = usePageMetrics(editor, pageRef, zoom)
+
+  return (
+    <EditorLayout
+      accentColor={WRITER_ACCENT}
+      documentName={session.documentName}
+      isDirty={session.isDirty}
+      onHome={session.goHome}
+      onSave={session.save}
+      onUndo={() => editor?.chain().focus().undo().run()}
+      onRedo={() => editor?.chain().focus().redo().run()}
+      canUndo={toolbar?.canUndo ?? false}
+      canRedo={toolbar?.canRedo ?? false}
+      onPrint={() => void platform.window.print()}
+      tabs={TABS}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      ribbon={
+        editor && toolbar ? (
+          activeTab === 'home' ? (
+            <WriterHomeTab
+              editor={editor}
+              state={toolbar}
+              showMarks={showMarks}
+              onToggleMarks={() => setShowMarks((value) => !value)}
+            />
+          ) : (
+            <WriterInsertTab editor={editor} />
+          )
+        ) : null
+      }
+      statusBar={
+        <WriterStatusBar
+          currentPage={pages.current}
+          totalPages={pages.total}
+          words={toolbar?.words ?? 0}
+          zoom={zoom}
+          onZoomChange={setZoom}
+        />
+      }
+    >
+      <div className="writer-canvas" onMouseDown={(event) => {
+        // Clic en el fondo gris: llevar el foco al final del documento, como en un procesador de texto.
+        if (event.target === event.currentTarget) {
+          event.preventDefault()
+          editor?.commands.focus('end')
+        }
+      }}>
+        <div className="writer-zoom" style={{ zoom }}>
+          <div ref={pageRef} className={`writer-page ${showMarks ? 'show-marks' : ''}`}>
+            {Array.from({ length: pages.total - 1 }, (_, index) => (
+              <div
+                key={index}
+                className="writer-page__break"
+                style={{ top: (index + 1) * PAGE_HEIGHT_PX }}
+                aria-hidden
+              >
+                <span>Página {index + 2}</span>
+              </div>
+            ))}
+            <EditorContent editor={editor} />
+          </div>
+        </div>
+      </div>
+    </EditorLayout>
+  )
+}
