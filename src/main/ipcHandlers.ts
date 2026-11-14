@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { BrowserWindow, dialog, ipcMain, type WebContents } from 'electron'
 import {
   IpcChannel,
@@ -38,17 +39,20 @@ async function askSavePath(sender: WebContents, suggestedName: string, filters: 
 }
 
 export function registerIpcHandlers({ recents, recovery, openRequests }: MainServices): void {
-  ipcMain.handle(IpcChannel.FilesOpenDialog, async (event, filters: FileFilter[]): Promise<OpenedFile | null> => {
+  ipcMain.handle(IpcChannel.FilesChooseFile, async (event, filters: FileFilter[]): Promise<string | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const options = { properties: ['openFile' as const], filters }
     const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
     if (result.canceled || result.filePaths.length === 0) return null
-    const path = result.filePaths[0]
-    return { path, contents: await readTextFile(path) }
+    return result.filePaths[0]
   })
 
   ipcMain.handle(IpcChannel.FilesRead, async (_event, path: string): Promise<OpenedFile> => {
     return { path, contents: await readTextFile(path) }
+  })
+
+  ipcMain.handle(IpcChannel.FilesReadBinary, async (_event, path: string): Promise<Uint8Array> => {
+    return new Uint8Array(await readFile(path))
   })
 
   ipcMain.handle(

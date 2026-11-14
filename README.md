@@ -49,8 +49,12 @@ El botón **Exportar** de la barra superior (icono de descarga) ofrece los forma
 
 | App          | Exportar   | Importar  |
 | ------------ | ---------- | --------- |
-| Texto        | PDF, .docx | pendiente |
+| Texto        | PDF, .docx | .docx     |
 | Diapositivas | PDF        | pendiente |
+
+**Importar** (Abrir… y elegir un `.docx`) abre una **copia sin guardar**: al guardar se crea un `.tdoc` nuevo y el original no se toca. Al terminar, un aviso dice exactamente qué no se ha podido conservar en ese archivo.
+
+**Qué se pierde al importar un .docx:** se conserva la estructura (títulos, Título/Subtítulo/Cita, listas, negrita, cursiva, subrayado, tachado, sub/superíndice, enlaces, imágenes y notas al pie), pero no el formato aplicado a mano: fuente, tamaño, color, resaltado y alineación. Las tablas se convierten en párrafos (Tintero Texto aún no tiene tablas). Tampoco se importan encabezados, pies de página, comentarios ni cuadros de texto. Es una decisión de la librería que usamos (mammoth), que prioriza la estructura sobre el aspecto.
 
 **Qué se pierde al exportar a .docx:** el resaltado se guarda como sombreado (Word solo tiene 16 colores de resaltado, el sombreado admite cualquiera); las imágenes que no son PNG, JPEG, GIF o BMP (p. ej. SVG o WebP) se omiten; la paginación la decide Word, así que los saltos de página pueden caer en otro sitio.
 

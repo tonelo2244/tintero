@@ -1,9 +1,17 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { displayNameFromPath, parseDocument, serializeDocument } from '@shared/document'
 import type { FileFilter, RecentFile, RecoverySnapshot } from '@shared/ipc'
-import type { AnyAppModule, AppRegistry, AppTemplate, ExportOption, Exporter } from '@/core/appModule'
+import {
+  extensionOf,
+  type AnyAppModule,
+  type AppRegistry,
+  type AppTemplate,
+  type ExportOption,
+  type Exporter
+} from '@/core/appModule'
 import { createId } from '@/core/ids'
 import { platform } from '@/core/platform'
+import { importNotice, openDialogFilters } from './fileFormats'
 import type { PendingSnapshot } from './useAutosave'
 
 export interface OpenDocument {
@@ -29,6 +37,7 @@ function forgetRecovery(id: string): void {
 }
 
 const fileFilterFor = (app: AnyAppModule): FileFilter => ({ name: app.file.label, extensions: [app.file.extension] })
+const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? path
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -89,32 +98,51 @@ export function useDocumentSession(registry: AppRegistry) {
     [registry, show]
   )
 
+  /**
+   * Abre cualquier archivo que entienda la suite. Los propios (.tdoc, .tpres) se abren tal cual;
+   * los de otras suites (.docx...) se convierten en un documento NUEVO sin guardar: el original
+   * nunca se sobrescribe, porque volver a guardarlo en su formato perdería información.
+   */
+  const openFile = useCallback(
+    async (path: string) => {
+      const imported = registry.findImporter(extensionOf(path))
+      if (!imported) {
+        const opened = await platform.files.read(path)
+        await openFromContents(opened.path, opened.contents)
+        return
+      }
+      const bytes = await platform.files.readBinary(path)
+      const { content, warnings } = await imported.importer.import(bytes)
+      const name = displayNameFromPath(path)
+      show({ app: imported.app, path: null, name, initialContent: content }, { isDirty: true })
+      // Después de show(), que limpia los avisos.
+      setNotice(importNotice(fileNameOf(path), imported.app.file.extension, warnings))
+      await platform.recents.touch({ path, name, appId: imported.app.id })
+    },
+    [openFromContents, registry, show]
+  )
+
   const openWithDialog = useCallback(async () => {
     if (!confirmDiscard()) return
     try {
-      const filters: FileFilter[] = [
-        { name: 'Documentos de Tintero', extensions: registry.all.map((app) => app.file.extension) },
-        ...registry.all.map(fileFilterFor)
-      ]
-      const opened = await platform.files.showOpenDialog(filters)
-      if (opened) await openFromContents(opened.path, opened.contents)
+      const path = await platform.files.chooseFile(openDialogFilters(registry))
+      if (path) await openFile(path)
     } catch (error) {
       setNotice(`No se pudo abrir el archivo. ${errorMessage(error)}`)
     }
-  }, [confirmDiscard, openFromContents, registry])
+  }, [confirmDiscard, openFile, registry])
 
   /** Abre un archivo por su ruta (p. ej. doble clic en el explorador de archivos). */
   const openPath = useCallback(
     async (path: string) => {
       if (!confirmDiscard()) return
       try {
-        const opened = await platform.files.read(path)
-        await openFromContents(opened.path, opened.contents)
+        await openFile(path)
       } catch (error) {
         setNotice(`No se pudo abrir el archivo. ${errorMessage(error)}`)
       }
     },
-    [confirmDiscard, openFromContents]
+    [confirmDiscard, openFile]
   )
 
   /** Devuelve false si el archivo ya no existe, para que el inicio ofrezca quitarlo de la lista. */
@@ -122,15 +150,14 @@ export function useDocumentSession(registry: AppRegistry) {
     async (recent: RecentFile): Promise<boolean> => {
       if (!confirmDiscard()) return true
       try {
-        const opened = await platform.files.read(recent.path)
-        await openFromContents(opened.path, opened.contents)
+        await openFile(recent.path)
         return true
       } catch (error) {
         setNotice(`No se pudo abrir "${recent.name}". ${errorMessage(error)}`)
         return false
       }
     },
-    [confirmDiscard, openFromContents]
+    [confirmDiscard, openFile]
   )
 
   const save = useCallback(

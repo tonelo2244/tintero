@@ -49,8 +49,11 @@ export type MenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'home' | 'print'
 
 export interface TinteroApi {
   files: {
-    showOpenDialog(filters: FileFilter[]): Promise<OpenedFile | null>
+    /** Diálogo "Abrir": devuelve la ruta elegida o null. La lectura va aparte (texto o binario). */
+    chooseFile(filters: FileFilter[]): Promise<string | null>
     read(path: string): Promise<OpenedFile>
+    /** Lee un archivo binario (.docx, .pptx...). */
+    readBinary(path: string): Promise<Uint8Array>
     /** Guarda en `path`; si es null pide ruta al usuario. Devuelve la ruta final o null si se canceló. */
     save(path: string | null, contents: string, suggestedName: string, filters: FileFilter[]): Promise<string | null>
     /**
@@ -94,8 +97,9 @@ export interface TinteroApi {
 }
 
 export const IpcChannel = {
-  FilesOpenDialog: 'files:open-dialog',
+  FilesChooseFile: 'files:choose-file',
   FilesRead: 'files:read',
+  FilesReadBinary: 'files:read-binary',
   FilesSave: 'files:save',
   FilesSaveBinary: 'files:save-binary',
   FilesTakePendingOpen: 'files:take-pending-open',

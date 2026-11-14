@@ -32,6 +32,8 @@ export interface AppModule<TContent = unknown> {
    * ofrece "Exportar" sin saber nada de cada formato; la conversión es cosa de la app.
    */
   exporters?: Exporter<TContent>[]
+  /** Formatos externos que la app sabe abrir. El resultado se abre como documento nuevo sin guardar. */
+  importers?: Importer<TContent>[]
 }
 
 /** Un formato de archivo de otra suite, p. ej. { extension: 'docx', label: 'Documento de Word' }. */
@@ -57,6 +59,17 @@ export interface ExportOption {
   id: string
   label: string
   run(): void
+}
+
+export interface Importer<TContent> {
+  format: ExternalFormat
+  import(bytes: Uint8Array): Promise<ImportResult<TContent>>
+}
+
+export interface ImportResult<TContent> {
+  content: TContent
+  /** Lo que se perdió en la conversión, en frases cortas para enseñar al usuario. */
+  warnings: string[]
 }
 
 /** Lo que el shell ofrece a cada editor. */
@@ -87,12 +100,35 @@ export type AnyAppModule = AppModule<any> // eslint-disable-line @typescript-esl
 export interface AppRegistry {
   all: readonly AnyAppModule[]
   get(id: string): AnyAppModule | undefined
+  /** App e importador capaces de abrir un archivo externo por su extensión (p. ej. "docx"). */
+  findImporter(extension: string): { app: AnyAppModule; importer: Importer<unknown> } | undefined
 }
 
 export function createAppRegistry(modules: AnyAppModule[]): AppRegistry {
   const byId = new Map(modules.map((module) => [module.id, module]))
   if (byId.size !== modules.length) throw new Error('Hay dos apps registradas con el mismo id.')
-  return { all: modules, get: (id) => byId.get(id) }
+
+  const importers = new Map<string, { app: AnyAppModule; importer: Importer<unknown> }>()
+  for (const app of modules) {
+    for (const importer of app.importers ?? []) {
+      const extension = importer.format.extension.toLowerCase()
+      if (importers.has(extension)) throw new Error(`Hay dos apps que importan archivos .${extension}.`)
+      importers.set(extension, { app, importer })
+    }
+  }
+
+  return {
+    all: modules,
+    get: (id) => byId.get(id),
+    findImporter: (extension) => importers.get(extension.toLowerCase())
+  }
+}
+
+/** "/docs/Informe.DOCX" -> "docx". Cadena vacía si no tiene extensión. */
+export function extensionOf(path: string): string {
+  const base = path.split(/[\\/]/).pop() ?? path
+  const dot = base.lastIndexOf('.')
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : ''
 }
 
 export type { ReactNode }

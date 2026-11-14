@@ -1,9 +1,12 @@
 import { FileText } from 'lucide-react'
 import { defineApp } from '@/core/appModule'
 import { WRITER_ACCENT } from './constants'
+import { createWriterExtensions } from './editor/extensions'
 import { WriterEditor } from './editor/WriterEditor'
 import { parseWriterContent, type WriterContent } from './model/content'
 import { writerTemplates } from './templates'
+
+const DOCX_FORMAT = { extension: 'docx', label: 'Documento de Word' }
 
 export const writerApp = defineApp<WriterContent>({
   id: 'writer',
@@ -17,11 +20,17 @@ export const writerApp = defineApp<WriterContent>({
   templates: writerTemplates,
   parseContent: parseWriterContent,
   Editor: WriterEditor,
+  // Imports dinámicos: docx y mammoth solo se cargan la primera vez que alguien los usa.
   exporters: [
     {
-      format: { extension: 'docx', label: 'Documento de Word' },
-      // Import dinámico: la librería docx solo se carga la primera vez que alguien exporta.
+      format: DOCX_FORMAT,
       export: async (content) => (await import('./model/docx/exportDocx')).exportDocx(content)
+    }
+  ],
+  importers: [
+    {
+      format: DOCX_FORMAT,
+      import: async (bytes) => (await import('./model/docx/importDocx')).importDocx(bytes, createWriterExtensions())
     }
   ]
 })
