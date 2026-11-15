@@ -164,6 +164,8 @@ Nada más: aparecerá en la barra lateral del inicio con sus plantillas y recien
 
 ## Limitaciones conocidas (y siguiente paso natural)
 
+Qué viene después, por fases y con prioridades: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 - **Paginación visual aproximada** en Texto: el documento es una hoja continua con marcas de salto cada A4. La paginación real es un proyecto en sí misma.
 - En Diapositivas la alineación y las viñetas son del cuadro completo (el formato de carácter sí es por palabra).
 - En Hojas de cálculo: no se pueden insertar ni borrar filas o columnas, no hay celdas combinadas, gráficos, formato condicional, ordenar/filtrar ni buscar; las filas tienen alto fijo; el formato de una columna o de la hoja entera se aplica solo a la zona con datos; cortar y pegar mueve las celdas pero no actualiza las fórmulas que apuntaban a ellas; al imprimir no se ajusta la hoja al ancho de la página.
