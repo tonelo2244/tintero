@@ -21,6 +21,10 @@ app.setName('Tintero')
 // (si lo compartiera, la versión de desarrollo le cedería el paso y se cerraría sin abrir nada).
 if (!app.isPackaged) app.setPath('userData', join(app.getPath('appData'), 'Tintero (desarrollo)'))
 
+// Los tests e2e arrancan cada prueba con una carpeta de datos vacía y desechable:
+// sin recientes ni copias de recuperación de otra ejecución, y sin tocar tu Tintero.
+if (process.env.TINTERO_USER_DATA_DIR) app.setPath('userData', process.env.TINTERO_USER_DATA_DIR)
+
 // Una sola instancia: si la app ya está abierta y haces doble clic en un .tdoc,
 // el sistema lanza un segundo proceso; este le pasa el archivo al primero y se cierra.
 if (!app.requestSingleInstanceLock()) app.quit()

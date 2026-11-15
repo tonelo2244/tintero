@@ -10,11 +10,11 @@ import globals from 'globals'
  * Por eso `eslint-config-prettier` va al final: apaga las reglas de estilo que chocarían con él.
  */
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'node_modules/**'] },
+  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', '*.config.{mts,mjs}'],
+    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', '*.config.{ts,mts,mjs}', 'e2e/**/*.ts'],
     languageOptions: { globals: globals.node }
   },
   {

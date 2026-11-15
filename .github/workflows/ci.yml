@@ -48,3 +48,39 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    name: Tests e2e (Electron + Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Aquí sí hace falta el binario de Electron: las pruebas arrancan la app de verdad.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar
+        run: npm run build
+
+      # Linux sin pantalla: xvfb-run le da a Electron una pantalla virtual.
+      # La IA se prueba contra un Ollama simulado que arranca la propia prueba (e2e/support/fakeOllama.ts).
+      - name: Tests e2e
+        run: |
+          command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+          xvfb-run -a npx playwright test
+
+      # Si algo falla, el informe HTML (con capturas del momento del fallo) queda descargable en el resumen del run.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: informe-e2e
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
