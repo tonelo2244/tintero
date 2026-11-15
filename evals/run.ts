@@ -13,8 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { DEFAULT_OLLAMA_ENDPOINT } from '../src/main/ai/localEndpoint'
-import { OllamaClient, type LocalModelRuntime } from '../src/main/ai/ollamaClient'
+import { createRuntime } from '../src/main/ai/createRuntime'
 import { renderMarkdown, type EvalReport } from './lib/report'
 import { runEvals } from './lib/runner'
 import { SUITES } from './suites'
@@ -33,11 +32,6 @@ const { values } = parseArgs({
     list: { type: 'boolean', default: false }
   }
 })
-
-function createRuntime(kind: string, url: string | undefined): LocalModelRuntime {
-  if (kind === 'ollama') return new OllamaClient(url ?? process.env.TINTERO_OLLAMA_URL ?? DEFAULT_OLLAMA_ENDPOINT)
-  throw new Error(`Runtime desconocido: ${kind}. Usa "ollama".`)
-}
 
 function gitCommit(): string | null {
   try {
@@ -67,10 +61,12 @@ async function main() {
   if (unknown.length) throw new Error(`Suites desconocidas: ${unknown.join(', ')}. Mira las que hay con --list.`)
   const suites = suiteIds.length ? SUITES.filter((suite) => suiteIds.includes(suite.id)) : SUITES
 
-  const model = values.model!
-  const judgeModel = values['judge-model'] ?? model
-  const runtime = createRuntime(values.runtime!, values.url)
+  const runtime = createRuntime(values.runtime!, values.url ?? process.env.TINTERO_AI_URL)
   const installed = await runtime.listModels(AbortSignal.timeout(5000))
+  // llama-server sirve un solo modelo (el que cargó al arrancar): ese es el que se evalúa y se anota.
+  const servesOne = values.runtime === 'llamacpp'
+  const model = servesOne ? (installed[0] ?? values.model!) : values.model!
+  const judgeModel = servesOne ? model : (values['judge-model'] ?? model)
   for (const needed of new Set([model, judgeModel])) {
     if (!installed.some((name) => name === needed || name === `${needed}:latest`)) {
       throw new Error(

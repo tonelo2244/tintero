@@ -2,8 +2,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import { AiService } from './ai/aiService'
 import { AiSettingsStore } from './ai/aiSettingsStore'
-import { DEFAULT_OLLAMA_ENDPOINT } from './ai/localEndpoint'
-import { OllamaClient } from './ai/ollamaClient'
+import { createRuntime } from './ai/createRuntime'
 import { registerAiHandlers } from './ai/registerAiHandlers'
 import { RagService } from './ai/rag/ragService'
 import { RagStore } from './ai/rag/ragStore'
@@ -112,8 +111,12 @@ app.whenReady().then(() => {
   const recents = new RecentsStore(join(userData, 'recents.json'))
   const recovery = new RecoveryStore(join(userData, 'recovery'))
   registerIpcHandlers({ recents, recovery, openRequests })
-  // IA local: TINTERO_OLLAMA_URL permite otro puerto, pero assertLocalEndpoint solo acepta este equipo.
-  const runtime = new OllamaClient(process.env.TINTERO_OLLAMA_URL ?? DEFAULT_OLLAMA_ENDPOINT)
+  // IA local: Ollama por defecto; TINTERO_AI_RUNTIME=llamacpp usa llama-server. La URL se puede
+  // cambiar (TINTERO_AI_URL o TINTERO_OLLAMA_URL), pero assertLocalEndpoint solo acepta este equipo.
+  const runtime = createRuntime(
+    process.env.TINTERO_AI_RUNTIME ?? 'ollama',
+    process.env.TINTERO_AI_URL ?? process.env.TINTERO_OLLAMA_URL
+  )
   registerAiHandlers(
     new AiService(runtime, new AiSettingsStore(join(userData, 'ai-settings.json'))),
     new RagService(runtime, new RagStore(join(userData, 'rag-index.json')))

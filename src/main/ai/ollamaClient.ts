@@ -3,9 +3,9 @@ import { assertLocalEndpoint } from './localEndpoint'
 import { NdjsonDecoder } from './ndjson'
 
 /**
- * Lo que el servicio de IA necesita de un runtime de modelos locales. Hoy solo hay uno (Ollama),
- * pero tener el contrato separado permite probar el servicio con un runtime falso y, si algún día
- * se usa llama.cpp (llama-server), escribir solo otra implementación de esta interfaz.
+ * Lo que el servicio de IA necesita de un runtime de modelos locales. Hay dos implementaciones:
+ * Ollama (la de la app) y llama.cpp (llamaCppClient.ts, sobre todo para comparar en las evals).
+ * El contrato separado también permite probar el servicio con un runtime falso.
  */
 export interface LocalModelRuntime {
   readonly endpoint: string
@@ -29,8 +29,8 @@ export interface ChatResult {
 
 /** El runtime no está arrancado (o no está instalado). La interfaz lo explica con instrucciones. */
 export class RuntimeUnreachableError extends Error {
-  constructor(endpoint: string, cause?: unknown) {
-    super(`No se pudo conectar con Ollama en ${endpoint}. ¿Está instalado y abierto?`, { cause })
+  constructor(endpoint: string, cause?: unknown, runtimeName = 'Ollama') {
+    super(`No se pudo conectar con ${runtimeName} en ${endpoint}. ¿Está instalado y abierto?`, { cause })
     this.name = 'RuntimeUnreachableError'
   }
 }
