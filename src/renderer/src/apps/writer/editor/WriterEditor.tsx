@@ -8,10 +8,11 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
-import type { WriterContent } from '../model/content'
+import { writerParts, type WriterContent, type WriterParts } from '../model/content'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
+import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { PresentationPanel } from './PresentationPanel'
@@ -20,6 +21,7 @@ import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
 import { useAskDocuments } from './useAskDocuments'
 import { useWritingAssistant } from './useWritingAssistant'
+import { useWriterComments } from './useWriterComments'
 import { WriterAssistantTab } from './WriterAssistantTab'
 import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
 import { WriterTableTab } from './WriterTableTab'
@@ -39,6 +41,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [showMarks, setShowMarks] = useState(false)
   const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
   const pageRef = useRef<HTMLDivElement>(null)
+  /*
+   * Encabezado, pie y comentarios no son parte del estado de Tiptap. Se guardan aquí y se mandan
+   * junto al cuerpo en cada cambio. El ref evita que `onUpdate` (creado una sola vez) use una copia vieja.
+   */
+  const [parts, setParts] = useState<WriterParts>(() => writerParts(initialContent))
+  const partsRef = useRef(parts)
 
   const extensions = useMemo(createWriterExtensions, [])
   const editor = useEditor({
@@ -48,8 +56,19 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     editorProps: {
       attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' }
     },
-    onUpdate: ({ editor: current }) => onChange({ doc: current.getJSON() })
+    onUpdate: ({ editor: current }) => onChange({ ...partsRef.current, doc: current.getJSON() })
   })
+
+  const updateParts = useCallback(
+    (change: (current: WriterParts) => WriterParts) => {
+      const next = change(partsRef.current)
+      partsRef.current = next
+      setParts(next)
+      if (editor) onChange({ ...next, doc: editor.getJSON() })
+    },
+    [editor, onChange]
+  )
+  const comments = useWriterComments(editor, parts.comments ?? [], updateParts)
 
   const toolbar = useWriterToolbarState(editor)
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
@@ -138,7 +157,16 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     if (!editor || !toolbar) return null
     switch (visibleTab) {
       case 'insert':
-        return <WriterInsertTab editor={editor} />
+        return (
+          <WriterInsertTab
+            editor={editor}
+            hasSelection={hasSelection ?? false}
+            commentCount={comments.count}
+            commentsOpen={comments.open}
+            onAddComment={comments.add}
+            onToggleComments={() => comments.setOpen(!comments.open)}
+          />
+        )
       case 'assistant':
         return (
           <WriterAssistantTab
@@ -227,6 +255,17 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         />
       )}
       {aiPanel === 'ask' && <AskDocumentsPanel ask={askDocuments} model={readyModel} onClose={closeAiPanel} />}
+      {comments.open && (
+        <CommentsPanel
+          comments={parts.comments ?? []}
+          activeId={comments.activeId}
+          anchored={comments.anchored}
+          onSelect={comments.select}
+          onChangeText={comments.changeText}
+          onDelete={comments.remove}
+          onClose={() => comments.setOpen(false)}
+        />
+      )}
       {editor && find && (
         <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
       )}

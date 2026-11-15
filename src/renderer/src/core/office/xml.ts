@@ -27,9 +27,21 @@ export function path(parent: Element | null | undefined, ...localNames: string[]
   return current
 }
 
+/**
+ * Descendientes con ese nombre local, en orden del documento. Recorremos el árbol a mano en vez
+ * de `getElementsByTagName('*')`: esa lista es "viva" y en algunos DOM (jsdom, el de los tests)
+ * recorrerla entera es cuadrático, lo que con un `styles.xml` de miles de elementos son segundos.
+ */
 export function descendants(parent: Element | null | undefined, localName: string): Element[] {
-  if (!parent) return []
-  return Array.from(parent.getElementsByTagName('*')).filter((element) => element.localName === localName)
+  const found: Element[] = []
+  const visit = (element: Element): void => {
+    for (let current = element.firstElementChild; current; current = current.nextElementSibling) {
+      if (current.localName === localName) found.push(current)
+      visit(current)
+    }
+  }
+  if (parent) visit(parent)
+  return found
 }
 
 /** Atributo por nombre local, con o sin prefijo ("embed" encuentra "r:embed"). */
@@ -77,4 +89,23 @@ export function relsPathFor(file: string): string {
   const parts = file.split('/')
   const name = parts.pop()
   return [...parts, '_rels', `${name}.rels`].join('/')
+}
+
+export interface Relationship {
+  type: string
+  /** Ruta dentro del zip, ya resuelta respecto al archivo que la declara. */
+  target: string
+}
+
+/** Lee un archivo .rels: id -> relación. Las relaciones externas (enlaces web) se ignoran. */
+export function readRelationships(rels: Element | null, filePath: string): Map<string, Relationship> {
+  const map = new Map<string, Relationship>()
+  for (const rel of childElements(rels, 'Relationship')) {
+    const id = attr(rel, 'Id')
+    const target = attr(rel, 'Target')
+    if (id && target && attr(rel, 'TargetMode') !== 'External') {
+      map.set(id, { type: attr(rel, 'Type') ?? '', target: resolveZipPath(filePath, target) })
+    }
+  }
+  return map
 }

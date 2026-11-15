@@ -2,11 +2,17 @@ import type { JSONContent } from '@tiptap/core'
 import {
   AlignmentType,
   BorderStyle,
+  CommentRangeEnd,
+  CommentRangeStart,
+  CommentReference,
   Document,
   ExternalHyperlink,
+  Footer,
+  Header,
   HeadingLevel,
   ImageRun,
   Packer,
+  PageNumber,
   Paragraph,
   ShadingType,
   Table,
@@ -21,7 +27,13 @@ import {
 } from 'docx'
 import { cssColorToHex, cssFontToName, cssSizeToPt } from '@/core/office/cssValues'
 import { decodeImageDataUrl, fitWidth, imageSize } from '@/core/office/images'
-import type { WriterContent } from '../content'
+import {
+  PAGE_COUNT_TOKEN,
+  PAGE_NUMBER_TOKEN,
+  type HeaderFooter,
+  type WriterComment,
+  type WriterContent
+} from '../content'
 import {
   BULLET_LIST_REFERENCE,
   bulletLevels,
@@ -77,11 +89,13 @@ interface ListContext {
  * Es una función pura (no toca el disco ni la interfaz): recibe el contenido y devuelve los bytes.
  */
 export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
-  const converter = new DocxConverter()
+  const comments = content.comments ?? []
+  const converter = new DocxConverter(comments, content.doc)
   const children = converter.blocks(content.doc.content ?? [])
   const document = new Document({
     creator: 'Tintero',
     styles: docxStyles,
+    comments: { children: comments.map(commentOptions) },
     numbering: {
       config: [
         { reference: BULLET_LIST_REFERENCE, levels: bulletLevels() },
@@ -99,6 +113,12 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
             margin: { top: PAGE.margin, bottom: PAGE.margin, left: PAGE.margin, right: PAGE.margin }
           }
         },
+        headers: content.header
+          ? { default: new Header({ children: headerFooterParagraphs(content.header) }) }
+          : undefined,
+        footers: content.footer
+          ? { default: new Footer({ children: headerFooterParagraphs(content.footer) }) }
+          : undefined,
         // Word exige al menos un párrafo por sección.
         children: children.length > 0 ? children : [new Paragraph({})]
       }
@@ -112,6 +132,20 @@ class DocxConverter {
   /** Cada lista nueva reinicia su numeración con una "instancia" distinta. */
   private nextListInstance = 1
   readonly numberedListStarts = new Set<number>()
+  /** Word numera los comentarios; nosotros usamos ids de texto. */
+  private readonly commentNumbers: Map<string, number>
+  /**
+   * Trozos de texto que le quedan a cada comentario. Un comentario puede abarcar varios nodos (y
+   * párrafos): el inicio va antes del primero y el final después del último.
+   */
+  private readonly pendingCommentTexts = new Map<string, number>()
+  private readonly totalCommentTexts = new Map<string, number>()
+
+  constructor(comments: WriterComment[], doc: JSONContent) {
+    this.commentNumbers = new Map(comments.map((comment, index) => [comment.id, index]))
+    countCommentTexts(doc, this.totalCommentTexts)
+    for (const [id, count] of this.totalCommentTexts) this.pendingCommentTexts.set(id, count)
+  }
 
   blocks(nodes: JSONContent[], list?: ListContext): DocxBlock[] {
     return nodes.flatMap((node) => this.block(node, list))
@@ -272,7 +306,23 @@ class DocxConverter {
 
     const run = new TextRun({ text: node.text, ...runOptions(marks) })
     const link = marks.find((mark) => mark.type === 'link')?.attrs?.href
-    return typeof link === 'string' && link ? [new ExternalHyperlink({ link, children: [run] })] : [run]
+    const text = typeof link === 'string' && link ? new ExternalHyperlink({ link, children: [run] }) : run
+    return this.withCommentRange(text, commentIdOf(marks))
+  }
+
+  private withCommentRange(text: ParagraphChild, commentId: string | null): ParagraphChild[] {
+    const number = commentId === null ? undefined : this.commentNumbers.get(commentId)
+    if (commentId === null || number === undefined) return [text]
+    const pending = this.pendingCommentTexts.get(commentId) ?? 1
+    const total = this.totalCommentTexts.get(commentId) ?? pending
+    this.pendingCommentTexts.set(commentId, pending - 1)
+    const children: ParagraphChild[] = []
+    if (pending === total) children.push(new CommentRangeStart(number))
+    children.push(text)
+    if (pending === 1) {
+      children.push(new CommentRangeEnd(number), new TextRun({ children: [new CommentReference(number)] }))
+    }
+    return children
   }
 }
 
@@ -346,6 +396,51 @@ function imageRun(node: JSONContent): ImageRun | null {
     transformation: fitWidth(size, MAX_IMAGE_WIDTH_PX),
     altText: { name: alt || 'Imagen', description: alt, title: alt }
   })
+}
+
+function commentIdOf(marks: NonNullable<JSONContent['marks']>): string | null {
+  const id = marks.find((mark) => mark.type === 'comment')?.attrs?.commentId
+  return typeof id === 'string' && id ? id : null
+}
+
+function countCommentTexts(node: JSONContent, counts: Map<string, number>): void {
+  const id = node.type === 'text' && node.text ? commentIdOf(node.marks ?? []) : null
+  if (id) counts.set(id, (counts.get(id) ?? 0) + 1)
+  node.content?.forEach((child) => countCommentTexts(child, counts))
+}
+
+function commentOptions(comment: WriterComment, index: number) {
+  const date = comment.date ? new Date(comment.date) : undefined
+  return {
+    id: index,
+    author: comment.author || 'Tintero',
+    date: date && !Number.isNaN(date.getTime()) ? date : undefined,
+    children: comment.text.split('\n').map((line) => new Paragraph({ children: [new TextRun(line)] }))
+  }
+}
+
+const PAGE_TOKENS = new RegExp(`(${escapeRegExp(PAGE_NUMBER_TOKEN)}|${escapeRegExp(PAGE_COUNT_TOKEN)})`)
+
+/** Encabezado o pie -> párrafos de Word, con los marcadores cambiados por campos de número de página. */
+function headerFooterParagraphs(part: HeaderFooter): Paragraph[] {
+  return part.text.split('\n').map(
+    (line) =>
+      new Paragraph({
+        alignment: ALIGNMENT[part.align],
+        children: line
+          .split(PAGE_TOKENS)
+          .filter((piece) => piece !== '')
+          .map((piece) => {
+            if (piece === PAGE_NUMBER_TOKEN) return new TextRun({ children: [PageNumber.CURRENT] })
+            if (piece === PAGE_COUNT_TOKEN) return new TextRun({ children: [PageNumber.TOTAL_PAGES] })
+            return new TextRun(piece)
+          })
+      })
+  )
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function codeLines(node: JSONContent): string[] {

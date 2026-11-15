@@ -11,8 +11,9 @@ import {
   parseXml,
   path,
   relationAttr,
+  readRelationships,
   relsPathFor,
-  resolveZipPath
+  type Relationship
 } from '@/core/office/xml'
 import { createShapeElement, createTextElement } from '../factories'
 import { normalizeParagraphs } from '../richText'
@@ -73,11 +74,6 @@ interface Losses {
   tablesAndCharts: number
   unsupportedImages: number
   aspectRatio: string | null
-}
-
-interface Relationship {
-  type: string
-  target: string
 }
 
 /** Cambio de coordenadas de los grupos: punto hijo (EMU) -> punto de la diapositiva (EMU). */
@@ -377,16 +373,7 @@ class PptxReader {
   }
 
   private async relationships(filePath: string): Promise<Map<string, Relationship>> {
-    const rels = await this.xml(relsPathFor(filePath))
-    const map = new Map<string, Relationship>()
-    for (const rel of childElements(rels, 'Relationship')) {
-      const id = attr(rel, 'Id')
-      const target = attr(rel, 'Target')
-      if (id && target && attr(rel, 'TargetMode') !== 'External') {
-        map.set(id, { type: attr(rel, 'Type') ?? '', target: resolveZipPath(filePath, target) })
-      }
-    }
-    return map
+    return readRelationships(await this.xml(relsPathFor(filePath)), filePath)
   }
 }
 

@@ -8,6 +8,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
+import { CommentMark } from './CommentMark'
 import { ParagraphFormat } from './ParagraphFormat'
 import { SearchAndReplace } from './SearchAndReplace'
 
@@ -36,6 +37,7 @@ export function createWriterExtensions(): Extensions {
     CharacterCount,
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
     ParagraphFormat,
+    CommentMark,
     SearchAndReplace
   ]
 }
