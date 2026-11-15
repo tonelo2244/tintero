@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RecoverySnapshot } from '@shared/ipc'
 import { installedApps } from '@/apps'
 import { platform } from '@/core/platform'
@@ -34,6 +34,23 @@ export function App() {
       .listRecoverable()
       .then(setRecoverable)
       .catch(() => setRecoverable([]))
+  }, [])
+
+  // Archivos abiertos desde el sistema (doble clic en un .tdoc/.tpres). Nos suscribimos una
+  // sola vez y leemos la función actual desde una ref, para no reconectar en cada render.
+  const openPathRef = useRef(session.openPath)
+  useEffect(() => {
+    openPathRef.current = session.openPath
+  }, [session.openPath])
+
+  useEffect(() => {
+    const unsubscribe = platform.files.onOpenRequested((path) => void openPathRef.current(path))
+    void platform.files.takePendingOpenRequests().then((paths) => {
+      // Una sola ventana: si llegan varios a la vez, abrimos el último.
+      const last = paths.at(-1)
+      if (last) void openPathRef.current(last)
+    })
+    return unsubscribe
   }, [])
 
   const removeFromRecoverable = (snapshot: RecoverySnapshot) =>

@@ -10,7 +10,13 @@ const api: TinteroApi = {
     showOpenDialog: (filters) => ipcRenderer.invoke(IpcChannel.FilesOpenDialog, filters),
     read: (path) => ipcRenderer.invoke(IpcChannel.FilesRead, path),
     save: (path, contents, suggestedName, filters) =>
-      ipcRenderer.invoke(IpcChannel.FilesSave, path, contents, suggestedName, filters)
+      ipcRenderer.invoke(IpcChannel.FilesSave, path, contents, suggestedName, filters),
+    takePendingOpenRequests: () => ipcRenderer.invoke(IpcChannel.FilesTakePendingOpen),
+    onOpenRequested: (handler) => {
+      const listener = (_event: Electron.IpcRendererEvent, path: string) => handler(path)
+      ipcRenderer.on(IpcChannel.FilesOpenRequested, listener)
+      return () => ipcRenderer.removeListener(IpcChannel.FilesOpenRequested, listener)
+    }
   },
   recents: {
     list: () => ipcRenderer.invoke(IpcChannel.RecentsList),

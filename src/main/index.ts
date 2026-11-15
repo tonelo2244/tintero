@@ -2,12 +2,39 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, shell } from 'electron'
 import { registerIpcHandlers } from './ipcHandlers'
 import { buildAppMenu } from './menu'
+import { documentPathsFromArgv, OpenRequestQueue } from './openRequests'
 import { RecentsStore } from './recentsStore'
 import { RecoveryStore } from './recoveryStore'
 import { attachCloseGuard } from './windowCloseHandling'
 
 // Antes de 'ready': define el nombre de la app y, con él, la carpeta de datos (userData).
 app.setName('Tintero')
+
+// Una sola instancia: si la app ya está abierta y haces doble clic en un .tdoc,
+// el sistema lanza un segundo proceso; este le pasa el archivo al primero y se cierra.
+if (!app.requestSingleInstanceLock()) app.quit()
+
+const openRequests = new OpenRequestQueue()
+documentPathsFromArgv(process.argv, app.isPackaged).forEach((path) => openRequests.request(path))
+
+function focusMainWindow(): void {
+  const [window] = BrowserWindow.getAllWindows()
+  if (!window) return
+  if (window.isMinimized()) window.restore()
+  window.focus()
+}
+
+app.on('second-instance', (_event, argv) => {
+  documentPathsFromArgv(argv, app.isPackaged).forEach((path) => openRequests.request(path))
+  focusMainWindow()
+})
+
+// macOS no usa argv para esto: avisa con 'open-file' (puede llegar incluso antes de 'ready').
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  openRequests.request(path)
+  focusMainWindow()
+})
 
 // Si una ventana bloquea el cierre por cambios sin guardar, Electron anula el "Salir".
 // Lo recordamos para retomarlo cuando el usuario haya guardado o descartado.
@@ -66,7 +93,7 @@ app.whenReady().then(() => {
   const userData = app.getPath('userData')
   const recents = new RecentsStore(join(userData, 'recents.json'))
   const recovery = new RecoveryStore(join(userData, 'recovery'))
-  registerIpcHandlers(recents, recovery)
+  registerIpcHandlers({ recents, recovery, openRequests })
   Menu.setApplicationMenu(buildAppMenu())
   createMainWindow(recovery)
 
