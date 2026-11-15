@@ -1,0 +1,137 @@
+/* Estilos de las piezas de Hojas que llegaron en la fase 9 (paneles, filtros, gráficos…). */
+
+.sheet-popover {
+  position: fixed;
+  z-index: 60;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+  font-size: 13px;
+}
+.sheet-popover hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.sheet-popover .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sheet-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 8px;
+}
+.sheet-popover__input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font: inherit;
+  margin: 2px 0 6px;
+}
+.sheet-popover__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 8px;
+}
+.sheet-popover__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  border-radius: 5px;
+  padding: 4px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.sheet-popover__button:hover {
+  background: var(--hover);
+}
+.sheet-popover__button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.sheet-popover__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.sheet-filter-menu {
+  width: 250px;
+}
+.sheet-filter-menu__list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sheet-filter-menu__list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-sort-dialog {
+  top: 140px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  padding: 12px;
+}
+.sheet-sort-dialog__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.sheet-sort-dialog__row span {
+  width: 80px;
+  color: var(--text-muted);
+}
+.sheet-sort-dialog__row select {
+  flex: 1;
+  font: inherit;
+  padding: 3px 4px;
+}
+.sheet-sort-dialog__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.sheet-find-bar {
+  top: 56px;
+}
+.sheet-find-bar__options {
+  padding-left: 26px;
+  gap: 8px;
+  font-size: 12px;
+  margin: 2px 0;
+}
+.sheet-find-bar__options select {
+  font: inherit;
+  font-size: 12px;
+}
+.sheet-find-bar__options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

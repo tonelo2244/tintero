@@ -3,7 +3,7 @@ import { validateSheetName } from './factories'
 import type { StructureChange } from './formula/structure'
 import { renameSheetInFormula } from './formula/transform'
 import { applyStructureChange, moveRange } from './structureEdit'
-import type { Cell, CellBorders, CellCoord, CellRange, CellStyle, Sheet, Workbook } from './types'
+import type { Cell, CellBorders, CellCoord, CellRange, CellStyle, Sheet, SheetFilter, Workbook } from './types'
 
 /**
  * Toda la edición del libro como funciones puras (estado, acción) -> estado nuevo,
@@ -28,6 +28,8 @@ export type WorkbookAction =
   | { type: 'view/freeze'; sheetId: string; rows: number; cols: number }
   /** Combinar un rango: solo se conserva el contenido de la esquina superior izquierda, como en Excel. */
   | { type: 'cells/merge'; sheetId: string; range: CellRange }
+  /** Poner, cambiar o quitar (null) el autofiltro de la hoja. */
+  | { type: 'filter/set'; sheetId: string; filter: SheetFilter | null }
   /** Separar las combinadas que toquen el rango. */
   | { type: 'cells/unmerge'; sheetId: string; range: CellRange }
   /** Insertar o borrar filas o columnas. Las fórmulas de todo el libro se reescriben. */
@@ -111,6 +113,11 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         const { frozen: _old, ...rest } = sheet
         if (action.rows <= 0 && action.cols <= 0) return sheet.frozen ? rest : sheet
         return { ...rest, frozen: { rows: Math.max(0, action.rows), cols: Math.max(0, action.cols) } }
+      })
+    case 'filter/set':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const { filter: _old, ...rest } = sheet
+        return action.filter ? { ...rest, filter: action.filter } : rest
       })
     case 'cells/merge':
       return mergeCells(state, action.sheetId, action.range)

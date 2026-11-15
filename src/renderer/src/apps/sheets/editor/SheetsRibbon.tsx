@@ -20,6 +20,7 @@ import {
   Pencil,
   Plus,
   Rows3,
+  Search,
   Sigma,
   Square,
   SquareFunction,
@@ -35,6 +36,7 @@ import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } f
 import { localizedFunctionName } from '../model/formula/functionNames'
 import type { CellStyle, HorizontalAlign, NumberFormatKind } from '../model/types'
 import type { BorderMode } from '../model/workbookReducer'
+import { DataTab } from './SheetsDataTab'
 import { ViewTab } from './SheetsViewTab'
 
 export type SheetsTabId = 'home' | 'insert' | 'formulas' | 'data' | 'view' | 'assistant'
@@ -68,6 +70,11 @@ export interface SheetCommands {
   merge(mode: 'center' | 'merge' | 'unmerge'): void
   toggleWrap(): void
   freeze(mode: FreezeMode): void
+  sort(descending: boolean): void
+  openSortDialog(): void
+  toggleFilter(): void
+  clearFilters(): void
+  openFind(mode: 'find' | 'replace'): void
 }
 
 export type FreezeMode = 'selection' | 'firstRow' | 'firstColumn' | 'none'
@@ -153,12 +160,15 @@ interface SheetsRibbonProps {
   /** La celda activa está dentro de una combinada. */
   inMerge: boolean
   frozen: boolean
+  hasFilter: boolean
   commands: SheetCommands
 }
 
-export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, inMerge, frozen, commands }: SheetsRibbonProps) {
+export function SheetsRibbon(props: SheetsRibbonProps) {
+  const { tab, activeStyle, canDeleteSheet, inMerge, frozen, hasFilter, commands } = props
   if (tab === 'formulas') return <FormulasTab commands={commands} />
   if (tab === 'view') return <ViewTab commands={commands} frozen={frozen} />
+  if (tab === 'data') return <DataTab commands={commands} hasFilter={hasFilter} />
 
   const align = activeStyle.align
   const setAlign = (value: HorizontalAlign) => commands.setStyle({ align: align === value ? undefined : value })
@@ -346,6 +356,9 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, inMerge, frozen
           </ToolButton>
           <ToolButton label="Rellenar derecha" showLabel onClick={() => commands.fill('right')}>
             <ArrowRightToLine size={14} />
+          </ToolButton>
+          <ToolButton label="Buscar" showLabel onClick={() => commands.openFind('find')}>
+            <Search size={14} />
           </ToolButton>
         </div>
       </RibbonGroup>

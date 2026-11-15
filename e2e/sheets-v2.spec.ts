@@ -59,3 +59,38 @@ test('Hojas v2: inmovilizar la fila superior y combinar celdas', async ({ tinter
   expect(Math.round(box!.y - gridBox!.y)).toBe(22)
   if (process.env.SCREENSHOTS) await page.screenshot({ path: 'test-results/hojas-v2-paneles.png' })
 })
+
+test('Hojas v2: filtrar oculta filas, ordenar las reordena y buscar salta a la celda', async ({ tintero }) => {
+  const { page } = tintero
+  await createBlank(page, 'Hojas de cálculo')
+  const grid = page.getByRole('grid', { name: 'Hoja Hoja1' })
+  await grid.focus()
+  await typeCells(page, [['Zona'], ['Sur'], ['Norte'], ['Este'], ['Sur']])
+  await page.keyboard.press('Control+Home')
+
+  await page.getByRole('tab', { name: 'Datos' }).click()
+  await page.getByRole('button', { name: 'Filtro', exact: true }).click()
+  await page.getByRole('button', { name: 'Filtrar la columna A' }).click()
+  const menu = page.getByRole('dialog', { name: 'Filtro de Zona' })
+  await menu.getByLabel('Sur').uncheck()
+  await menu.getByRole('button', { name: 'Aceptar' }).click()
+  await expect(page.locator('.sheet-header--row', { hasText: /^2$/ })).toHaveCount(0)
+  await expect(grid).not.toContainText('Sur')
+
+  await page.getByRole('button', { name: 'Borrar filtros' }).click()
+  await page.getByRole('button', { name: 'Ordenar de A a Z' }).click()
+  // Con la cabecera quieta: Este, Norte, Sur, Sur.
+  await page.keyboard.press('Control+Home')
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('textbox', { name: 'Contenido de la celda' })).toHaveValue('Este')
+
+  await page.keyboard.press('Control+f')
+  await page.getByRole('textbox', { name: 'Buscar', exact: true }).fill('norte')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('textbox', { name: 'Contenido de la celda' })).toHaveValue('Norte')
+  await page.getByRole('button', { name: 'Mostrar reemplazar' }).click()
+  await page.getByRole('textbox', { name: 'Reemplazar con' }).fill('Oeste')
+  await page.getByRole('button', { name: 'Todo' }).click()
+  await expect(grid).toContainText('Oeste')
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: 'test-results/hojas-v2-datos.png' })
+})

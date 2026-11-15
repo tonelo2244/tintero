@@ -47,6 +47,8 @@ import { SheetPrintView } from './SheetPrintView'
 import { SHEETS_TABS, SheetsRibbon, type SheetCommands, type SheetsTabId } from './SheetsRibbon'
 import { SheetTabs } from './SheetTabs'
 import { useEvaluation } from './useEvaluation'
+import { useSheetData } from './data/useSheetData'
+import './sheets.css'
 import { SheetAssistantPanel } from './ai/SheetAssistantPanel'
 import { SheetsAssistantTab } from './ai/SheetsAssistantTab'
 import { useSheetAssistant } from './ai/useSheetAssistant'
@@ -111,10 +113,13 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   }, [workbook, onChange])
 
   // Al cambiar de hoja (pestaña, deshacer...) la selección vuelve a A1 y se abandona la edición.
+  // Salvo que se haya pedido ir a una celda concreta de esa hoja (buscar en todo el libro).
   const [shownSheetId, setShownSheetId] = useState(sheet.id)
+  const [pendingSelection, setPendingSelection] = useState<{ sheetId: string; coord: CellCoord } | null>(null)
   if (shownSheetId !== sheet.id) {
     setShownSheetId(sheet.id)
-    setSelection(singleCell({ row: 0, col: 0 }))
+    setSelection(singleCell(pendingSelection?.sheetId === sheet.id ? pendingSelection.coord : { row: 0, col: 0 }))
+    setPendingSelection(null)
     setEditing(null)
   }
 
@@ -292,6 +297,26 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
 
   const activeStyle: CellStyle = activeCell?.style ?? {}
 
+  const data = useSheetData({
+    workbook,
+    sheet,
+    evaluation,
+    range,
+    anchor: selection.anchor,
+    apply,
+    applyBatch: (actions) => dispatch({ type: 'history/applyBatch', actions }),
+    goTo: (sheetId, coord) => {
+      if (sheetId === sheet.id) {
+        setSelection(singleCell(coord))
+        return
+      }
+      setPendingSelection({ sheetId, coord })
+      dispatch({ type: 'history/applyWithoutUndo', action: { type: 'sheet/select', sheetId } })
+    },
+    setNotice,
+    focusGrid
+  })
+
   /** Insertar o borrar tantas filas (o columnas) como abarque la selección, desde su primera. */
   const changeStructure = (kind: 'insert' | 'delete', axis: Axis) => {
     const at = axis === 'rows' ? range.start.row : range.start.col
@@ -384,6 +409,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       apply({ type: 'view/freeze', sheetId: sheet.id, ...target })
       focusGrid()
     },
+    ...data.commands,
     insertRows: () => changeStructure('insert', 'rows'),
     insertColumns: () => changeStructure('insert', 'columns'),
     deleteRows: () => changeStructure('delete', 'rows'),
@@ -424,6 +450,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           if (used) setSelection({ anchor: used.start, focus: used.end })
         },
         home: () => setSelection(singleCell({ row: 0, col: 0 })),
+        f: () => data.commands.openFind('find'),
+        h: () => data.commands.openFind('replace'),
         // Ctrl+"+" y Ctrl+"-" de Excel: con columnas enteras seleccionadas, columnas; si no, filas.
         '+': () => changeStructure('insert', isWholeColumns(range) ? 'columns' : 'rows'),
         '-': () => changeStructure('delete', isWholeColumns(range) ? 'columns' : 'rows')
@@ -587,6 +615,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             canDeleteSheet={workbook.sheets.length > 1}
             inMerge={mergeAt(sheet, selection.anchor) !== null}
             frozen={sheet.frozen !== undefined}
+            hasFilter={sheet.filter !== undefined}
             commands={commands}
           />
         )
@@ -641,6 +670,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           onClose={closeAssistant}
         />
       )}
+      {data.overlays}
       <div className="sheets-workspace">
         <FormulaBar
           location={rangeAddress(range)}
@@ -661,6 +691,9 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             editing?.reference ? { anchor: editing.reference.anchor, focus: editing.reference.focus } : selection
           }
           editor={cellEditor || null}
+          hiddenRows={data.hiddenRows}
+          filterButtons={data.filterButtons}
+          onOpenFilter={data.openFilterMenu}
           viewportRef={viewportRef}
           onKeyDown={onGridKeyDown}
           onCellPointerDown={(coord, extend) => {

@@ -153,3 +153,37 @@ export function usedSize(sheet: Sheet): { rows: number; cols: number } {
   }
   return { rows, cols }
 }
+
+/**
+ * "Región actual" de Excel (Ctrl+Mayús+*): el bloque de celdas con datos que rodea a `coord`,
+ * creciendo mientras haya algo en la fila o columna de al lado. Es lo que se ordena o filtra
+ * cuando el usuario solo tiene una celda seleccionada.
+ */
+export function currentRegion(sheet: Sheet, coord: CellCoord): CellRange | null {
+  const filled = (row: number, col: number) =>
+    row >= 0 && col >= 0 && row < MAX_ROWS && col < MAX_COLUMNS && hasContent(sheet, { row, col })
+  let region: CellRange = { start: coord, end: coord }
+  for (let grew = true; grew;) {
+    grew = false
+    const { start, end } = region
+    const rowHas = (row: number) => {
+      for (let col = start.col - 1; col <= end.col + 1; col++) if (filled(row, col)) return true
+      return false
+    }
+    const colHas = (col: number) => {
+      for (let row = start.row - 1; row <= end.row + 1; row++) if (filled(row, col)) return true
+      return false
+    }
+    if (start.row > 0 && rowHas(start.row - 1)) region = { ...region, start: { ...region.start, row: start.row - 1 } }
+    else if (end.row < MAX_ROWS - 1 && rowHas(end.row + 1))
+      region = { ...region, end: { ...region.end, row: end.row + 1 } }
+    else if (start.col > 0 && colHas(start.col - 1))
+      region = { ...region, start: { ...region.start, col: start.col - 1 } }
+    else if (end.col < MAX_COLUMNS - 1 && colHas(end.col + 1))
+      region = { ...region, end: { ...region.end, col: end.col + 1 } }
+    else continue
+    grew = true
+  }
+  const single = region.start.row === region.end.row && region.start.col === region.end.col
+  return single && !hasContent(sheet, coord) ? null : region
+}
