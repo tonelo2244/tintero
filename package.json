@@ -1,8 +1,8 @@
 {
   "name": "tintero",
   "productName": "Tintero",
-  "version": "0.1.0",
-  "description": "Suite ofimática local: procesador de texto y presentaciones. Sin nube.",
+  "version": "0.2.0",
+  "description": "Suite ofimática local: texto, presentaciones y hojas de cálculo, con IA que funciona en tu equipo. Sin nube.",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
