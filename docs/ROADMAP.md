@@ -26,9 +26,9 @@ El orden de este roadmap está pensado para tus prácticas y tu objetivo de ser 
 | Fase                      | Contenido                                                                                             | Estado    |
 | ------------------------- | ----------------------------------------------------------------------------------------------------- | --------- |
 | 0–6 · Roadmap v1          | Cimientos, tres apps, CI, instaladores, Office, edición avanzada, IA local                            | Hecho     |
-| 7 · Listo para enseñar    | Icono, release 0.2.0, e2e en CI, README de portfolio, firma macOS                                     | Siguiente |
-| 8 · IA local v2           | Evaluación, fórmulas en lenguaje natural, formato al reescribir, documentos largos, RAG, herramientas | Pendiente |
-| 9 · Hojas de cálculo v2   | Insertar/borrar filas, ordenar/filtrar, funciones que faltan, gráficos                                | Pendiente |
+| 7 · Listo para enseñar    | Icono, release 0.2.0, e2e en CI, README de portfolio, firma macOS                                     | Hecho     |
+| 8 · IA local v2           | Evaluación, fórmulas en lenguaje natural, formato al reescribir, documentos largos, RAG, herramientas | Hecho     |
+| 9 · Hojas de cálculo v2   | Insertar/borrar filas, ordenar/filtrar, funciones que faltan, gráficos                                | Siguiente |
 | 10 · Fidelidad con Office | Recuperar lo que se pierde con .docx, .pptx y .xlsx, con un corpus de pruebas                         | Pendiente |
 | 11 · Edición avanzada v2  | Paginación real, encabezado y pie, Diapositivas: copiar/pegar, alinear, agrupar, transiciones         | Pendiente |
 
@@ -36,13 +36,15 @@ El orden de este roadmap está pensado para tus prácticas y tu objetivo de ser 
 
 Todo lo de esta sección está en `main` y comprobado en el código, no solo en el README.
 
-| Fase v1              | PRs      | Qué quedó                                                                                                                                                                                                                           |
-| -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2 · Profesionalizar  | #1–#5    | Repo en GitHub, CI (lint, formato, typecheck, tests, build), ESLint + Prettier + husky, aviso al cerrar con cambios, autoguardado en `userData/recovery` con recuperación, instaladores .dmg/.exe/.AppImage publicados por etiqueta |
-| 3 · Compatibilidad   | #6–#10   | Exportar a PDF directo; .docx de ida y vuelta (docx + mammoth); .pptx de ida y vuelta (pptxgenjs + lector XML propio); contrato de exportadores/importadores en `AppModule`                                                         |
-| 4 · Edición avanzada | #11, #12 | Tablas en Texto (con celdas combinadas y .docx), buscar y reemplazar, formato por palabra en Diapositivas (con migración del formato a la versión 2); abrir un archivo ajeno decide por extensión y avisa claro                     |
-| 5 · Hojas de cálculo | #13      | Tercera app: motor de fórmulas propio (tokenizer → parser → AST → evaluador, 29 funciones, grafo de dependencias con recálculo incremental), cuadrícula virtualizada de 10.000 × 702, varias hojas, formato, .xlsx y .csv           |
-| 6 · IA local         | #14      | Cliente de Ollama en main (streaming, salida estructurada, cancelación, solo loopback), asistente de redacción, crear presentación desde un documento con esquema validado + reintento, corrector ortográfico en el clic derecho    |
+| Fase v1                | PRs      | Qué quedó                                                                                                                                                                                                                           |
+| ---------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2 · Profesionalizar    | #1–#5    | Repo en GitHub, CI (lint, formato, typecheck, tests, build), ESLint + Prettier + husky, aviso al cerrar con cambios, autoguardado en `userData/recovery` con recuperación, instaladores .dmg/.exe/.AppImage publicados por etiqueta |
+| 3 · Compatibilidad     | #6–#10   | Exportar a PDF directo; .docx de ida y vuelta (docx + mammoth); .pptx de ida y vuelta (pptxgenjs + lector XML propio); contrato de exportadores/importadores en `AppModule`                                                         |
+| 4 · Edición avanzada   | #11, #12 | Tablas en Texto (con celdas combinadas y .docx), buscar y reemplazar, formato por palabra en Diapositivas (con migración del formato a la versión 2); abrir un archivo ajeno decide por extensión y avisa claro                     |
+| 5 · Hojas de cálculo   | #13      | Tercera app: motor de fórmulas propio (tokenizer → parser → AST → evaluador, 29 funciones, grafo de dependencias con recálculo incremental), cuadrícula virtualizada de 10.000 × 702, varias hojas, formato, .xlsx y .csv           |
+| 6 · IA local           | #14      | Cliente de Ollama en main (streaming, salida estructurada, cancelación, solo loopback), asistente de redacción, crear presentación desde un documento con esquema validado + reintento, corrector ortográfico en el clic derecho    |
+| 7 · Listo para enseñar | #17, #18 | Icono propio, release 0.2.0 con CHANGELOG, e2e con Playwright + Electron en CI (con Ollama simulado), README de portfolio con capturas y diagrama                                                                                   |
+| 8 · IA local v2        | este PR  | Banco de evals (`npm run eval`), fórmulas en lenguaje natural, explicar fórmula, analizar tabla, formato al reescribir, map-reduce, RAG local con citas, tool calling en Diapositivas y Hojas, runtime llama.cpp                    |
 
 ## 2. Dónde estamos
 
@@ -57,22 +59,22 @@ Lo que no está tan bien:
 
 ### Limitaciones conocidas
 
-| Limitación                                                                                                   | Impacto                                                                    | Dónde se resuelve |
-| ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- | ----------------- |
-| Instaladores sin icono ni firma; macOS pide "Abrir igualmente" o `xattr -cr`                                 | Mala primera impresión; nadie que no seas tú lo instalaría                 | Fase 7            |
-| Sin e2e en CI                                                                                                | Las regresiones de interfaz solo se ven a mano                             | Fase 7            |
-| No se ha probado la IA con un modelo real ni hay evaluación                                                  | No sabes si funciona bien ni si un cambio de prompt la mejora o la empeora | Fase 8            |
-| Fórmulas en lenguaje natural sin hacer (estaban bloqueadas por el parser de la fase 5)                       | Falta la función de IA más vistosa de Hojas                                | Fase 8            |
-| El asistente trabaja en texto plano: al reemplazar se pierde la negrita, colores, etc.                       | Molesto en documentos con formato                                          | Fase 8            |
-| Documentos de más de 12.000 caracteres se recortan para el modelo                                            | Resumir un documento largo resume solo el principio                        | Fase 8            |
-| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel                   | Fase 9            |
-| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                                 | Fase 9            |
-| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                                           | Fase 9            |
-| Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                                       | Fase 10           |
-| Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                                | Fase 10           |
-| Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                                              | Fase 9 y 10       |
-| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes                        | Fase 11           |
-| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint                              | Fase 11           |
+| Limitación                                                                                                   | Impacto                                                    | Dónde se resuelve        |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------ |
+| Instaladores sin icono ni firma; macOS pide "Abrir igualmente" o `xattr -cr`                                 | Mala primera impresión; nadie que no seas tú lo instalaría | Fase 7                   |
+| Sin e2e en CI                                                                                                | Las regresiones de interfaz solo se ven a mano             | Resuelto (fase 7)        |
+| El banco de evals existe, pero todavía no se ha ejecutado con un modelo real                                 | Aún no hay cifras de calidad ni latencia                   | `npm run eval` en el Mac |
+| Fórmulas en lenguaje natural sin hacer (estaban bloqueadas por el parser de la fase 5)                       | Falta la función de IA más vistosa de Hojas                | Resuelto (fase 8)        |
+| El asistente trabaja en texto plano: al reemplazar se pierde la negrita, colores, etc.                       | Molesto en documentos con formato                          | Resuelto (fase 8)        |
+| Documentos de más de 12.000 caracteres se recortan para el modelo                                            | Resumir un documento largo resume solo el principio        | Resuelto (fase 8)        |
+| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel   | Fase 9                   |
+| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                 | Fase 9                   |
+| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                           | Fase 9                   |
+| Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                       | Fase 10                  |
+| Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                | Fase 10                  |
+| Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                              | Fase 9 y 10              |
+| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes        | Fase 11                  |
+| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint              | Fase 11                  |
 
 ## 3. Lo que queda, por fases
 
@@ -96,7 +98,7 @@ Esfuerzo estimado: 1 semana sin la firma.
 
 > **Firma en macOS, honestamente.** Para tu portfolio no hace falta: quien revisa tu repo mira el código, el README y el CI, no instala un .dmg. Pagar los 99 USD tiene sentido cuando otras personas vayan a usar Tintero de verdad. Lo que sí merece la pena es entender el proceso (certificados, _hardened runtime_, _entitlements_, notarización), porque aparece en cualquier empresa que distribuya apps de escritorio.
 
-### Fase 8 · IA local v2
+### Fase 8 · IA local v2 · hecha
 
 Objetivo: pasar de "tiene IA" a "tiene IA medida, fiable y útil", y cubrir las técnicas que más se piden en AI Engineering.
 
