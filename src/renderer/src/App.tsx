@@ -140,7 +140,8 @@ export function App() {
             exportOptions: session.exportOptions,
             goHome: () => {
               if (session.close()) selectLauncherApp(document.app.id)
-            }
+            },
+            openNewDocument: (...args) => void session.createFromContent(...args)
           }}
         />
       ) : (
