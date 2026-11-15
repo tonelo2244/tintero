@@ -33,4 +33,14 @@ describe('withHistory', () => {
     expect(state.future).toHaveLength(0)
     expect(state.present).toBe(10)
   })
+
+  it('applyWithoutUndo cambia el presente sin crear un paso de deshacer', () => {
+    let state = initHistory(0)
+    state = counter(state, { type: 'history/apply', action: { by: 1 } })
+    state = counter(state, { type: 'history/applyWithoutUndo', action: { by: 5 } })
+    expect(state.present).toBe(6)
+    expect(state.past).toEqual([0])
+    state = counter(state, { type: 'history/undo' })
+    expect(state.present).toBe(0)
+  })
 })
