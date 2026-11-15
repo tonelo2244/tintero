@@ -9,6 +9,7 @@ import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { ParagraphFormat } from './ParagraphFormat'
+import { SearchAndReplace } from './SearchAndReplace'
 
 /**
  * Lista única de extensiones. La usan el editor y las plantillas (para convertir
@@ -34,6 +35,7 @@ export function createWriterExtensions(): Extensions {
     TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
     CharacterCount,
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
-    ParagraphFormat
+    ParagraphFormat,
+    SearchAndReplace
   ]
 }

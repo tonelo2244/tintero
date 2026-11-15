@@ -877,6 +877,99 @@ button {
   padding: 0 1px;
 }
 
+/* Buscar y reemplazar: coincidencias (decoraciones de ProseMirror, no se guardan en el archivo). */
+.writer-content .search-match {
+  background: #fde68a;
+  border-radius: 1px;
+}
+.writer-content .search-match--current {
+  background: #f59e0b;
+  color: #111;
+}
+
+.find-bar {
+  position: absolute;
+  top: 10px;
+  right: 24px;
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.find-bar__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.find-bar__row--replace {
+  padding-left: 26px;
+  gap: 4px;
+}
+.find-bar__input {
+  width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.find-bar__input:focus {
+  border-color: var(--accent);
+}
+.find-bar__status {
+  min-width: 92px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: #555;
+  white-space: nowrap;
+}
+.find-bar__status.is-empty {
+  color: #b42318;
+}
+.find-bar__icon,
+.find-bar__action {
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.find-bar__icon {
+  width: 26px;
+  height: 26px;
+  justify-content: center;
+}
+.find-bar__action {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+.find-bar__icon:hover:not(:disabled),
+.find-bar__action:hover:not(:disabled) {
+  background: var(--hover);
+}
+.find-bar__icon.is-active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.find-bar__icon:disabled,
+.find-bar__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.find-bar .is-collapsed {
+  transform: rotate(-90deg);
+}
+
 /* Tablas (extensión de tablas de Tiptap). Bordes y gris de encabezado iguales que en el .docx exportado. */
 .writer-content .tableWrapper {
   overflow-x: auto;
@@ -1369,8 +1462,14 @@ button {
   .ribbon,
   .statusbar,
   .notice-bar,
+  .find-bar,
   .slides-workspace {
     display: none !important;
+  }
+  .writer-content .search-match,
+  .writer-content .search-match--current {
+    background: none;
+    color: inherit;
   }
   .editor-layout,
   .editor-layout__body,

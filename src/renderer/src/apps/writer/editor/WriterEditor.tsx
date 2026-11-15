@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { EditorProps } from '@/core/appModule'
 import { platform } from '@/core/platform'
@@ -6,6 +6,7 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { WRITER_ACCENT } from '../constants'
 import type { WriterContent } from '../model/content'
 import { createWriterExtensions } from './extensions'
+import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
@@ -23,6 +24,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [activeTab, setActiveTab] = useState('home')
   const [zoom, setZoom] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
+  const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
   const pageRef = useRef<HTMLDivElement>(null)
 
   const extensions = useMemo(createWriterExtensions, [])
@@ -38,6 +40,17 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   const toolbar = useWriterToolbarState(editor)
   const pages = usePageMetrics(editor, pageRef, zoom)
+
+  const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
+
+  // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja).
+  useEffect(
+    () =>
+      platform.onMenuCommand((command) => {
+        if (command === 'find' || command === 'replace') openFind(command)
+      }),
+    []
+  )
 
   const inTable = toolbar?.table.active ?? false
   const tabs = inTable ? [...TABS, TABLE_TAB] : TABS
@@ -58,6 +71,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             state={toolbar}
             showMarks={showMarks}
             onToggleMarks={() => setShowMarks((value) => !value)}
+            onFind={openFind}
           />
         )
     }
@@ -90,6 +104,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         />
       }
     >
+      {editor && find && (
+        <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
+      )}
       <div
         className="writer-canvas"
         onMouseDown={(event) => {

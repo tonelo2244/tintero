@@ -23,7 +23,9 @@ import {
   Pilcrow,
   Quote,
   RemoveFormatting,
+  Replace,
   Scissors,
+  Search,
   Strikethrough,
   Subscript,
   Superscript,
@@ -37,6 +39,7 @@ import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } f
 import { readImageFile } from '@/ui/readImageFile'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE_PT } from '../constants'
 import { PARAGRAPH_STYLES } from '../model/paragraphStyles'
+import type { FindMode } from './FindReplaceBar'
 import { TableGridPicker } from './TableGridPicker'
 import type { TextAlignment, WriterToolbarState } from './useWriterToolbarState'
 
@@ -56,9 +59,10 @@ interface HomeTabProps {
   state: WriterToolbarState
   showMarks: boolean
   onToggleMarks(): void
+  onFind(mode: FindMode): void
 }
 
-export function WriterHomeTab({ editor, state, showMarks, onToggleMarks }: HomeTabProps) {
+export function WriterHomeTab({ editor, state, showMarks, onToggleMarks, onFind }: HomeTabProps) {
   const chain = () => editor.chain().focus()
   const fontSize = parsePt(state.fontSize)
 
@@ -239,6 +243,17 @@ export function WriterHomeTab({ editor, state, showMarks, onToggleMarks }: HomeT
               <span className="style-card__label">{style.label}</span>
             </button>
           ))}
+        </div>
+      </RibbonGroup>
+
+      <RibbonGroup label="Edición">
+        <div className="ribbon-stack">
+          <ToolButton label="Buscar" showLabel onClick={() => onFind('find')}>
+            <Search size={15} />
+          </ToolButton>
+          <ToolButton label="Reemplazar" showLabel onClick={() => onFind('replace')}>
+            <Replace size={15} />
+          </ToolButton>
         </div>
       </RibbonGroup>
     </>
