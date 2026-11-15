@@ -14,6 +14,11 @@ export type HistoryAction<A> =
   | { type: 'history/redo' }
   | { type: 'history/reset'; present: unknown }
   | { type: 'history/apply'; action: A; coalesceKey?: string }
+  /**
+   * Aplica la acción sin crear un paso de deshacer (p. ej. cambiar de hoja en un libro):
+   * es un cambio que se guarda en el archivo pero que nadie espera "deshacer".
+   */
+  | { type: 'history/applyWithoutUndo'; action: A }
 
 const MAX_HISTORY = 100
 
@@ -41,6 +46,10 @@ export function withHistory<T, A>(reducer: (state: T, action: A) => T) {
       }
       case 'history/reset':
         return initHistory(action.present as T)
+      case 'history/applyWithoutUndo': {
+        const next = reducer(state.present, action.action)
+        return next === state.present ? state : { ...state, present: next, lastCoalesceKey: null }
+      }
       case 'history/apply': {
         const next = reducer(state.present, action.action)
         if (next === state.present) return state
