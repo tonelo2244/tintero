@@ -5,7 +5,10 @@ import {
   ArrowDownToLine,
   ArrowRightToLine,
   Baseline,
+  BetweenHorizontalStart,
+  BetweenVerticalStart,
   Bold,
+  Columns3,
   DecimalsArrowLeft,
   DecimalsArrowRight,
   Grid2x2,
@@ -15,9 +18,11 @@ import {
   PanelBottom,
   Pencil,
   Plus,
+  Rows3,
   Sigma,
   Square,
   SquareFunction,
+  TableRowsSplit,
   Trash2,
   Underline
 } from 'lucide-react'
@@ -48,6 +53,10 @@ export interface SheetCommands {
   autoSum(): void
   insertFunction(canonicalName: string): void
   fill(direction: 'down' | 'right'): void
+  insertRows(): void
+  insertColumns(): void
+  deleteRows(): void
+  deleteColumns(): void
 }
 
 const NUMBER_FORMATS: { label: string; value: NumberFormatKind }[] = [
@@ -217,6 +226,55 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: She
             <DecimalsArrowLeft size={16} />
           </ToolButton>
         </RibbonRow>
+      </RibbonGroup>
+
+      <RibbonGroup label="Celdas">
+        <div className="ribbon-stack">
+          <Dropdown label="Insertar" showLabel trigger={<BetweenHorizontalStart size={14} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.insertRows()
+                    close()
+                  }}
+                >
+                  <BetweenHorizontalStart size={14} /> Insertar filas encima
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.insertColumns()
+                    close()
+                  }}
+                >
+                  <BetweenVerticalStart size={14} /> Insertar columnas a la izquierda
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
+          <Dropdown label="Eliminar" showLabel trigger={<TableRowsSplit size={14} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.deleteRows()
+                    close()
+                  }}
+                >
+                  <Rows3 size={14} /> Eliminar filas
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.deleteColumns()
+                    close()
+                  }}
+                >
+                  <Columns3 size={14} /> Eliminar columnas
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
+        </div>
       </RibbonGroup>
 
       <RibbonGroup label="Edición">

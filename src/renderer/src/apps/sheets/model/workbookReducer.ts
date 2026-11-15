@@ -1,7 +1,9 @@
 import { cellAddress, parseCellAddress, rangeContains, rangeCoords } from './address'
 import { validateSheetName } from './factories'
+import type { StructureChange } from './formula/structure'
 import { renameSheetInFormula } from './formula/transform'
-import type { Cell, CellBorders, CellRange, CellStyle, Sheet, Workbook } from './types'
+import { applyStructureChange, moveRange } from './structureEdit'
+import type { Cell, CellBorders, CellCoord, CellRange, CellStyle, Sheet, Workbook } from './types'
 
 /**
  * Toda la edición del libro como funciones puras (estado, acción) -> estado nuevo,
@@ -20,6 +22,10 @@ export type WorkbookAction =
   /** Borra el contenido de un rango (Supr). Con `includeStyle`, también el formato. */
   | { type: 'cells/clear'; sheetId: string; range: CellRange; includeStyle?: boolean }
   | { type: 'column/resize'; sheetId: string; col: number; width: number }
+  /** Insertar o borrar filas o columnas. Las fórmulas de todo el libro se reescriben. */
+  | { type: 'structure/change'; sheetId: string; change: StructureChange }
+  /** Cortar y pegar: mueve el rango y las fórmulas que apuntaban a él lo siguen. */
+  | { type: 'range/move'; sheetId: string; source: CellRange; target: CellCoord }
   | { type: 'sheet/add'; sheet: Sheet }
   | { type: 'sheet/rename'; sheetId: string; name: string }
   | { type: 'sheet/delete'; sheetId: string }
@@ -82,6 +88,10 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         ...sheet,
         columnWidths: { ...sheet.columnWidths, [action.col]: Math.max(MIN_COLUMN_WIDTH, Math.round(action.width)) }
       }))
+    case 'structure/change':
+      return applyStructureChange(state, action.sheetId, action.change)
+    case 'range/move':
+      return moveRange(state, action.sheetId, action.source, action.target)
     case 'sheet/add':
       return { sheets: [...state.sheets, action.sheet], activeSheetId: action.sheet.id }
     case 'sheet/rename':

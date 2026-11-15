@@ -9,9 +9,11 @@ import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
 import { describeSheet } from '../model/ai/sheetContext'
 import { buildSheetAgentRequest, interpretSheetCalls } from '../model/ai/sheetTools'
 import { SHEETS_ACCENT } from '../constants'
-import { cellAddress, parseCellAddress, rangeAddress, rangeSize } from '../model/address'
+import { MAX_ROWS, cellAddress, parseCellAddress, rangeAddress, rangeSize } from '../model/address'
 import { getCellValue } from '../model/calc'
 import { copyRange, fillRange, pasteCopiedCells, pasteText, type CopiedCells } from '../model/clipboard'
+import type { Axis } from '../model/formula/structure'
+import { canInsert } from '../model/structureEdit'
 import { createSheet, nextSheetName } from '../model/factories'
 import { formatGeneralNumber } from '../model/format'
 import { localizedFunctionName } from '../model/formula/functionNames'
@@ -72,6 +74,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   const [selection, setSelection] = useState<Selection>(singleCell({ row: 0, col: 0 }))
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null)
+  /** Aviso corto en la barra de estado (p. ej. "no se puede insertar"). Se borra al cambiar la selección. */
+  const [notice, setNotice] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const cellInputRef = useRef<HTMLInputElement>(null)
   const barInputRef = useRef<HTMLInputElement>(null)
@@ -79,6 +83,11 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   const pointing = useRef(false)
 
   const range = selectionRange(selection)
+  const [noticeSelection, setNoticeSelection] = useState(selection)
+  if (noticeSelection !== selection) {
+    setNoticeSelection(selection)
+    if (notice) setNotice(null)
+  }
   const anchorAddress = cellAddress(selection.anchor)
   const activeCell = sheet.cells[anchorAddress]
 
@@ -274,6 +283,21 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
 
   const activeStyle: CellStyle = activeCell?.style ?? {}
 
+  /** Insertar o borrar tantas filas (o columnas) como abarque la selección, desde su primera. */
+  const changeStructure = (kind: 'insert' | 'delete', axis: Axis) => {
+    const at = axis === 'rows' ? range.start.row : range.start.col
+    const { rows, cols } = rangeSize(range)
+    const change = { kind, axis, at, count: axis === 'rows' ? rows : cols }
+    if (!canInsert(sheet, change)) {
+      setNotice('No se puede insertar: empujaría datos fuera de la hoja.')
+      return
+    }
+    if (editing) commitEditing(null)
+    apply({ type: 'structure/change', sheetId: sheet.id, change })
+    // Tras borrar, la selección se queda donde estaba (ahora con lo que había debajo o a la derecha).
+    setSelection(singleCell(axis === 'rows' ? { row: at, col: range.start.col } : { row: range.start.row, col: at }))
+  }
+
   const commands: SheetCommands = {
     toggleStyle: (key) => styleSelection({ [key]: activeStyle[key] ? undefined : true }),
     setStyle: styleSelection,
@@ -298,6 +322,10 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       startEditing('edit', formula)
     },
     insertFunction: (name) => startEditing('edit', `=${localizedFunctionName(name)}(`),
+    insertRows: () => changeStructure('insert', 'rows'),
+    insertColumns: () => changeStructure('insert', 'columns'),
+    deleteRows: () => changeStructure('delete', 'rows'),
+    deleteColumns: () => changeStructure('delete', 'columns'),
     fill: (direction) => {
       const target = clipForStyling(range)
       if (target) apply({ type: 'cells/set', sheetId: sheet.id, cells: fillRange(sheet, target, direction) })
@@ -333,7 +361,10 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           const used = usedRange(sheet)
           if (used) setSelection({ anchor: used.start, focus: used.end })
         },
-        home: () => setSelection(singleCell({ row: 0, col: 0 }))
+        home: () => setSelection(singleCell({ row: 0, col: 0 })),
+        // Ctrl+"+" y Ctrl+"-" de Excel: con columnas enteras seleccionadas, columnas; si no, filas.
+        '+': () => changeStructure('insert', isWholeColumns(range) ? 'columns' : 'rows'),
+        '-': () => changeStructure('delete', isWholeColumns(range) ? 'columns' : 'rows')
       }
       if (shortcuts[lower]) {
         event.preventDefault()
@@ -401,9 +432,13 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       const fromTintero = internal !== null && internal.copied.text === text
       let cells: Record<string, Cell | null>
       if (fromTintero && internal.cut && internal.sheetId === sheet.id) {
-        // Cortar y pegar MUEVE: se vacía el origen y las fórmulas movidas no cambian sus referencias.
-        cells = { ...emptyCells(internal.copied), ...movedCells(internal.copied, target) }
+        // Cortar y pegar MUEVE: las fórmulas de todo el libro que apuntaban a lo movido lo siguen.
+        const source = copiedRange(internal.copied)
+        apply({ type: 'range/move', sheetId: sheet.id, source, target })
         clipboard.current = null
+        const size = rangeSize(source)
+        setSelection({ anchor: target, focus: { row: target.row + size.rows - 1, col: target.col + size.cols - 1 } })
+        return
       } else if (fromTintero) {
         cells = pasteCopiedCells(internal.copied, target)
       } else {
@@ -497,6 +532,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           <span>
             {sheet.name} · {rangeAddress(range)}
           </span>
+          {notice && <span role="status">{notice}</span>}
           <span className="statusbar__spacer" />
           {stats.count > 1 && (
             <>
@@ -642,26 +678,18 @@ function defaultDecimals(kind: NumberFormatKind): number | undefined {
   return undefined
 }
 
-/** Celdas que se vacían en el origen al mover. */
-function emptyCells(copied: CopiedCells): Record<string, Cell | null> {
-  const cells: Record<string, Cell | null> = {}
-  copied.cells.forEach((row, rowIndex) =>
-    row.forEach((_, colIndex) => {
-      cells[cellAddress({ row: copied.origin.row + rowIndex, col: copied.origin.col + colIndex })] = null
-    })
-  )
-  return cells
+/** Rango del que salió lo copiado. */
+function copiedRange(copied: CopiedCells): CellRange {
+  const rows = copied.cells.length
+  const cols = copied.cells[0]?.length ?? 1
+  return {
+    start: copied.origin,
+    end: { row: copied.origin.row + rows - 1, col: copied.origin.col + cols - 1 }
+  }
 }
 
-/** Al mover, las celdas llegan tal cual (sin desplazar sus referencias). */
-function movedCells(copied: CopiedCells, target: CellCoord): Record<string, Cell | null> {
-  const cells: Record<string, Cell | null> = {}
-  copied.cells.forEach((row, rowIndex) =>
-    row.forEach((cell, colIndex) => {
-      cells[cellAddress({ row: target.row + rowIndex, col: target.col + colIndex })] = cell ?? null
-    })
-  )
-  return cells
+function isWholeColumns(range: CellRange): boolean {
+  return range.start.row === 0 && range.end.row === MAX_ROWS - 1
 }
 
 /** Esquina inferior derecha de lo pegado, para dejarlo seleccionado. */
