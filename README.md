@@ -1,6 +1,55 @@
-# Tintero
+<p align="center">
+  <img src="build/icon.png" alt="Icono de Tintero: un tintero con una plumilla" width="120">
+</p>
 
-Suite ofimática **100 % local** (sin nube, sin cuentas) con tres aplicaciones:
+<h1 align="center">Tintero</h1>
+
+<p align="center">
+  Suite ofimática de escritorio <strong>100 % local</strong>: texto, presentaciones y hojas de cálculo,<br>
+  compatible con Office y con una IA que funciona en tu equipo. Sin nube, sin cuentas.
+</p>
+
+<p align="center">
+  <a href="https://github.com/tonelo2244/tintero/actions/workflows/ci.yml"><img src="https://github.com/tonelo2244/tintero/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/tonelo2244/tintero/releases/latest"><img src="https://img.shields.io/github/v/release/tonelo2244/tintero?label=descargar" alt="Última versión"></a>
+  <img src="https://img.shields.io/badge/Electron-React_19-2f5aa8" alt="Electron y React 19">
+  <img src="https://img.shields.io/badge/TypeScript-strict-2f5aa8" alt="TypeScript estricto">
+</p>
+
+![Tintero Texto con el asistente de IA local proponiendo una mejor redacción](docs/capturas/ia-asistente.png)
+
+## En dos minutos
+
+**Qué es.** Una alternativa ligera a Office para Mac, Windows y Linux, hecha con Electron, React y
+TypeScript. Tus archivos se quedan en tu disco y la IA (Ollama) se ejecuta en tu ordenador.
+
+**Qué hay que mirar si revisas el código:**
+
+| Si te interesa…            | Mira                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Arquitectura extensible    | [`AppModule`](src/renderer/src/core/appModule.ts): cada app es un módulo; Hojas de cálculo se añadió sin tocar el proceso principal        |
+| Algoritmos propios         | El [motor de fórmulas](src/renderer/src/apps/sheets/model/formula) (tokenizer, parser, evaluador) y el recálculo con grafo de dependencias |
+| IA aplicada con criterio   | [IA local](#ia-local-sin-nube): salida estructurada con JSON Schema, validación y reintento, streaming y "solo local" impuesto en código   |
+| Interoperabilidad          | Lectura y escritura de .docx, .pptx y .xlsx, y [qué se pierde](#qué-se-pierde-en-cada-conversión) en cada conversión, documentado          |
+| Calidad y flujo de trabajo | 200+ tests unitarios, [pruebas e2e](#cómo-se-prueba) que arrancan la app en CI, ESLint/Prettier con pre-commit y un PR por funcionalidad   |
+| Seguridad de Electron      | `contextIsolation`, `sandbox`, CSP estricta y una API mínima en el preload                                                                 |
+
+Los cambios por versión están en el [CHANGELOG](CHANGELOG.md) y lo que viene en la [hoja de ruta](docs/ROADMAP.md).
+
+## Capturas
+
+| Pantalla de inicio                                                | Tintero Texto                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| ![Inicio con los temas de Diapositivas](docs/capturas/inicio.png) | ![Tintero Texto](docs/capturas/texto.png)                           |
+| **Tintero Diapositivas**                                          | **Tintero Hojas de cálculo**                                        |
+| ![Tintero Diapositivas](docs/capturas/diapositivas.png)           | ![Presupuesto en Tintero Hojas de cálculo](docs/capturas/hojas.png) |
+| **IA: mejorar la redacción**                                      | **IA: crear una presentación desde el documento**                   |
+| ![Asistente de redacción](docs/capturas/ia-asistente.png)         | ![Crear presentación con IA](docs/capturas/ia-presentacion.png)     |
+
+Las capturas se generan con la app real (`npm run capturas`); las de IA usan un modelo simulado
+para que salgan iguales en cualquier equipo.
+
+## Qué incluye
 
 - **Tintero Texto**: procesador de textos con asistente de **IA local** (ver [IA local](#ia-local-sin-nube)), cinta _Inicio_ (fuente, tamaño, negrita, cursiva, subrayado, tachado, subíndice/superíndice, color de fuente y resaltado, viñetas, numeración, sangría, alineación, interlineado, galería de estilos Normal / Título 1-3 / Título / Subtítulo / Cita), pestaña _Insertar_ (tabla, imagen, línea, fecha, cita, código), pestaña contextual _Tabla_ (filas, columnas, combinar y dividir celdas, fila de encabezado), buscar y reemplazar (Cmd/Ctrl+F), barra de estado con páginas, palabras y zoom.
 - **Tintero Diapositivas**: editor de presentaciones con miniaturas reordenables, diseños de diapositiva (título, título y contenido, sección…), cuadros de texto con formato por palabra, imágenes, formas, notas del orador, 5 temas, deshacer/rehacer y modo presentación a pantalla completa (F5).
@@ -16,6 +65,7 @@ Las tres comparten una pantalla de inicio con plantillas/temas, **Recientes** y 
 npm install
 npm run dev        # abre la app en modo desarrollo (recarga en caliente)
 npm test           # tests unitarios (Vitest)
+npm run test:e2e   # pruebas de extremo a extremo (compila y arranca la app con Playwright)
 npm run typecheck  # comprobación de tipos
 npm run build      # compila a ./out
 npm run lint       # ESLint
@@ -113,6 +163,25 @@ writingActions / outline  ──►  platform.ai.generate  ──IPC──►  A
 
 ## Arquitectura
 
+```mermaid
+flowchart LR
+  subgraph renderer["Interfaz (renderer, sin acceso a Node)"]
+    shell["shell: inicio, abrir, guardar, autoguardado"]
+    apps["apps: Texto · Diapositivas · Hojas<br/>model/ (lógica pura) + editor/ (React)"]
+    shell --> apps
+  end
+  preload["preload<br/>API mínima y tipada"]
+  subgraph main["Proceso principal (Node)"]
+    files["archivos, recientes, recuperación"]
+    ai["ai/: cliente de Ollama"]
+  end
+  disk[("Tu disco<br/>.tdoc · .tpres · .tsheet")]
+  ollama["Ollama<br/>127.0.0.1:11434"]
+  renderer -- IPC --> preload --> main
+  files --> disk
+  ai -- HTTP local --> ollama
+```
+
 ```
 src/
 ├── shared/            Contratos compartidos por los dos procesos
@@ -166,6 +235,49 @@ Nada más: aparecerá en la barra lateral del inicio con sus plantillas y recien
 - `calc.ts` mantiene un **grafo de dependencias**: al cambiar una celda solo se recalculan ella y lo que depende de ella, en orden topológico (algoritmo de Kahn, sin recursión). Lo que no se puede ordenar es un ciclo y muestra `#¡CIRCULAR!`.
 - Copiar, rellenar y renombrar hojas trabajan sobre el árbol (no con expresiones regulares), así que respetan `$A$1`, textos entre comillas y nombres de hoja con espacios.
 
+## Cómo se prueba
+
+Dos niveles, cada uno para lo que hace bien:
+
+- **Unitarios (Vitest, 200+ tests)**: la lógica pura de `model/` (motor de fórmulas, reducer de
+  diapositivas, conversiones a Office, validación de la salida de la IA) y los servicios de
+  `main/`. Son rápidos y dicen exactamente qué se rompió.
+- **De extremo a extremo (Playwright, [`e2e/`](e2e))**: arrancan la app compilada y la usan
+  como una persona: crear y guardar en las tres apps, volver a abrir desde Recientes, abrir
+  .docx/.pptx/.xlsx, exportar y el asistente de IA. Son pocos a propósito (caminos críticos):
+  cada uno tarda un segundo y prueba muchas piezas a la vez.
+
+Detalles que hacen que los e2e sean fiables:
+
+- **Ollama simulado** ([`e2e/support/fakeOllama.ts`](e2e/support/fakeOllama.ts)): un servidor
+  que habla la misma API (incluido el streaming NDJSON) con respuestas fijas. Prueba la
+  tubería entera sin GPU ni modelos de 4 GB en CI. La _calidad_ de las respuestas se medirá
+  aparte, con evaluaciones (fase 8 de la hoja de ruta).
+- **Cada prueba con su carpeta de datos** (`TINTERO_USER_DATA_DIR`): no comparten recientes ni
+  copias de recuperación, y no tocan tu Tintero instalado.
+- **Los diálogos nativos los contesta la prueba** sustituyendo `dialog.showSaveDialog` en el
+  proceso principal, solo para la siguiente llamada.
+
+En CI (GitHub Actions) los e2e corren en Ubuntu con `xvfb-run`, una pantalla virtual. Si
+fallan, el run guarda el informe HTML con una captura del momento del fallo.
+
+## Decisiones de diseño
+
+Cada una está explicada en su PR, con las alternativas que se descartaron:
+
+- **Un PR por funcionalidad y commits pequeños.** El historial cuenta cómo creció el proyecto.
+- **Importar = copia sin guardar con aviso de lo perdido** ([#8](https://github.com/tonelo2244/tintero/pull/8), [#10](https://github.com/tonelo2244/tintero/pull/10)): abrir un .docx nunca lo
+  sobrescribe, y el aviso dice qué no se pudo conservar en vez de perderlo en silencio.
+- **Un contrato de exportadores** ([#7](https://github.com/tonelo2244/tintero/pull/7)): cada app declara sus formatos; la conversión vive en la app y el proceso
+  principal solo escribe bytes.
+- **Autoguardado como copia de recuperación, no sobre tu archivo** ([#4](https://github.com/tonelo2244/tintero/pull/4)): igual que Word, para que un cierre
+  inesperado no te cueste trabajo pero tampoco se guarde algo que no querías.
+- **Motor de fórmulas propio** ([#13](https://github.com/tonelo2244/tintero/pull/13)): fórmulas guardadas en forma canónica (inglés y `,`) y mostradas en
+  español; recálculo incremental con el algoritmo de Kahn. ExcelJS solo para leer y escribir .xlsx.
+- **IA local con salida estructurada** ([#14](https://github.com/tonelo2244/tintero/pull/14)): el modelo devuelve un esquema (JSON) y el código construye
+  las diapositivas, así un error del modelo nunca produce un archivo roto. Nada se aplica sin tu revisión.
+- **Instaladores desde CI** ([#5](https://github.com/tonelo2244/tintero/pull/5)): cada sistema construye su instalador y una etiqueta `v*` publica la Release.
+
 ## Limitaciones conocidas (y siguiente paso natural)
 
 Qué viene después, por fases y con prioridades: [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -175,5 +287,5 @@ Qué viene después, por fases y con prioridades: [docs/ROADMAP.md](docs/ROADMAP
 - En Hojas de cálculo: no se pueden insertar ni borrar filas o columnas, no hay celdas combinadas, gráficos, formato condicional, ordenar/filtrar ni buscar; las filas tienen alto fijo; el formato de una columna o de la hoja entera se aplica solo a la zona con datos; cortar y pegar mueve las celdas pero no actualiza las fórmulas que apuntaban a ellas; al imprimir no se ajusta la hoja al ancho de la página.
 - Compatibilidad con Office parcial: ver la tabla de [Compatibilidad con Office](#compatibilidad-con-office).
 - El autoguardado es una copia de seguridad (cada 30 s en `userData/recovery`), no guarda sobre tu archivo: para eso sigue haciendo falta Guardar.
-- Instaladores sin firmar y con el icono por defecto de Electron (falta un `build/icon.png` de 1024×1024).
+- Instaladores sin firmar (ver [Instaladores](#instaladores)): firmar en macOS exige el Apple Developer Program.
 - IA local: el asistente trabaja con texto plano, así que al reemplazar se pierde el formato de carácter de la selección (negrita, colores…); los documentos de más de 12.000 caracteres se recortan para el modelo; las fórmulas en lenguaje natural esperan a la hoja de cálculo (fase 5).

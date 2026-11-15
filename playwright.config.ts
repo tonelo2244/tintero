@@ -7,6 +7,8 @@ import { defineConfig } from '@playwright/test'
  */
 export default defineConfig({
   testDir: 'e2e',
+  // `npm run capturas` ejecuta e2e/readme.capture.ts, que regenera las imágenes del README.
+  testMatch: process.env.CAPTURAS ? '**/*.capture.ts' : '**/*.spec.ts',
   // Cada prueba arranca su propio Electron; en paralelo se pisarían en los runners pequeños de CI.
   workers: 1,
   timeout: 60_000,
