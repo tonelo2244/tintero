@@ -85,7 +85,7 @@ describe('importar .xlsx', () => {
     const book = new ExcelJS.Workbook()
     const sheet = book.addWorksheet('Hoja1')
     sheet.getCell('A1').value = { richText: [{ text: 'Hola ', font: { bold: true } }, { text: 'mundo' }] }
-    sheet.getCell('A2').value = { formula: 'XLOOKUP(1,B1:B2,C1:C2)', result: 3 }
+    sheet.getCell('A2').value = { formula: 'SUMPRODUCT(B1:B2,C1:C2)', result: 3 }
     sheet.getCell('A3').value = { formula: 'SUM(A:A)', result: 0 }
     sheet.getCell('A4').font = { name: 'Arial', size: 14 }
     sheet.getCell('A4').value = 5
@@ -95,16 +95,17 @@ describe('importar .xlsx', () => {
     const { content, warnings } = await importXlsx(new Uint8Array(await book.xlsx.writeBuffer()))
     const cells = content.sheets[0].cells
     expect(cells.A1).toEqual({ value: 'Hola mundo' })
-    expect(cells.A2).toEqual({ formula: 'XLOOKUP(1,B1:B2,C1:C2)' })
+    expect(cells.A2).toEqual({ formula: 'SUMPRODUCT(B1:B2,C1:C2)' })
     expect(cells.A3).toEqual({ formula: 'SUM(A:A)' })
     expect(warnings).toEqual(
       expect.arrayContaining([
         'el formato dentro de una celda (se conserva el texto)',
         'las fuentes y tamaños de letra',
         'las celdas combinadas (se separan)',
-        expect.stringMatching(/XLOOKUP/),
-        expect.stringMatching(/A:A/)
+        expect.stringMatching(/SUMPRODUCT/)
       ])
     )
+    // Las columnas enteras (A:A) ya se entienden desde la fase 9: no hay aviso de sintaxis.
+    expect(warnings.some((warning) => warning.includes('sintaxis'))).toBe(false)
   })
 })

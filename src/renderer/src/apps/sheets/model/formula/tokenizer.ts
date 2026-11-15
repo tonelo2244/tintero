@@ -12,6 +12,8 @@ export type Token =
   | { type: 'error'; value: string }
   /** Celda como "B3" o "$B$3", con prefijo de hoja opcional ("Ventas!B3", "'Mi hoja'!B3"). */
   | { type: 'ref'; sheet?: string; value: string }
+  /** Columnas o filas enteras: "A:C", "$B:$B", "2:5", con prefijo de hoja opcional. */
+  | { type: 'span'; sheet?: string; value: string; axis: 'columns' | 'rows' }
   /** Nombre seguido de "(": una función. */
   | { type: 'func'; name: string }
   /** Cualquier otro nombre: VERDADERO, FALSO o un nombre desconocido. */
@@ -33,6 +35,9 @@ const ERROR_LITERALS = ['#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#N/A', '#NUM!'
 const TWO_CHAR_OPERATORS = ['<=', '>=', '<>']
 const ONE_CHAR_OPERATORS = '+-*/^&=<>%'
 const CELL_REF = /^\$?[A-Za-z]{1,3}\$?\d+$/
+// Lo que sigue a un rango de columnas o filas no puede ser parte de un nombre ni de una celda.
+const COLUMN_SPAN = /^\$?[A-Za-z]{1,3}:\$?[A-Za-z]{1,3}(?![\p{L}\d_.$(!])/u
+const ROW_SPAN = /^\$?\d+:\$?\d+(?![\p{L}\d_.$(!])/u
 // Letras (incluidas las acentuadas), dígitos, "_" y "." (SUMAR.SI, SI.ERROR).
 const NAME_CHAR = /[\p{L}\d_.$]/u
 
@@ -77,6 +82,13 @@ export function tokenize(source: string): Token[] {
       const token = readReferenceAfterSheet(source, end + 2, sheet)
       tokens.push(token)
       i = end + 2 + token.value.length
+      continue
+    }
+
+    const span = readSpan(source, i)
+    if (span) {
+      tokens.push(span)
+      i += span.value.length
       continue
     }
 
@@ -152,7 +164,23 @@ export function tokenize(source: string): Token[] {
   return tokens
 }
 
-function readReferenceAfterSheet(source: string, start: number, sheet: string): Token & { value: string } {
+function readSpan(source: string, start: number, sheet?: string): Extract<Token, { type: 'span' }> | null {
+  const rest = source.slice(start)
+  const columns = COLUMN_SPAN.exec(rest)
+  if (columns)
+    return { type: 'span', ...(sheet === undefined ? {} : { sheet }), value: columns[0].toUpperCase(), axis: 'columns' }
+  const rows = ROW_SPAN.exec(rest)
+  if (rows) return { type: 'span', ...(sheet === undefined ? {} : { sheet }), value: rows[0], axis: 'rows' }
+  return null
+}
+
+function readReferenceAfterSheet(
+  source: string,
+  start: number,
+  sheet: string
+): Extract<Token, { type: 'ref' | 'span' }> {
+  const span = readSpan(source, start, sheet)
+  if (span) return span
   const match = /^\$?[A-Za-z]{1,3}\$?\d+/.exec(source.slice(start))
   if (!match) throw new FormulaSyntaxError(`Falta la celda después de "${sheet}!".`)
   return { type: 'ref', sheet, value: match[0].toUpperCase() }

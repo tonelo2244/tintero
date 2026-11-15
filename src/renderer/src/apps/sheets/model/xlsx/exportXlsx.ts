@@ -8,7 +8,7 @@ import type { Cell, CellValue, Workbook } from '../types'
 import { hexToArgb, pixelsToExcelWidth, toExcelNumberFormat } from './xlsxFormats'
 
 /** Funciones posteriores a Excel 2007: en el archivo van con el prefijo "_xlfn." o Excel no las reconoce. */
-const XLFN_FUNCTIONS = new Set(['CONCAT'])
+const XLFN_FUNCTIONS = new Set(['CONCAT', 'IFS', 'IFNA', 'XLOOKUP'])
 
 /**
  * Libro de Tintero -> .xlsx con ExcelJS.

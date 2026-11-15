@@ -159,9 +159,7 @@ function checkNode(node: FormulaNode, target: FormulaTarget): void {
         return
       }
       case 'name':
-        throw new Error(
-          `«${current.value}» no es una función ni una celda; usa referencias como B2:B20 (las columnas enteras como B:B no se admiten)`
-        )
+        throw new Error(`«${current.value}» no es una función ni una celda; usa referencias como B2:B20`)
       case 'ref':
       case 'range': {
         if (current.sheet !== undefined && !sheetNames.has(current.sheet.toLowerCase())) {

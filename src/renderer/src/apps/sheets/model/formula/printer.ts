@@ -42,7 +42,7 @@ export function printFormula(node: FormulaNode, dialect: FormulaDialect): string
     case 'ref':
       return sheetPrefix(node.sheet) + printRef(node.ref)
     case 'range':
-      return `${sheetPrefix(node.sheet)}${printRef(node.start)}:${printRef(node.end)}`
+      return `${sheetPrefix(node.sheet)}${printRangeBody(node)}`
     case 'unary':
       return node.operator === '%' ? `${print(node.operand)}%` : `${node.operator}${print(node.operand)}`
     case 'binary':
@@ -55,11 +55,25 @@ export function printFormula(node: FormulaNode, dialect: FormulaDialect): string
       return `(${print(node.inner)})`
     case 'name':
       return node.value
+    case 'empty':
+      return ''
   }
 }
 
 export function printRef(ref: RefCoord): string {
   return `${ref.colAbsolute ? '$' : ''}${columnName(ref.col)}${ref.rowAbsolute ? '$' : ''}${ref.row + 1}`
+}
+
+function printRangeBody(node: Extract<FormulaNode, { type: 'range' }>): string {
+  if (node.span === 'columns') {
+    const column = (ref: RefCoord) => `${ref.colAbsolute ? '$' : ''}${columnName(ref.col)}`
+    return `${column(node.start)}:${column(node.end)}`
+  }
+  if (node.span === 'rows') {
+    const row = (ref: RefCoord) => `${ref.rowAbsolute ? '$' : ''}${ref.row + 1}`
+    return `${row(node.start)}:${row(node.end)}`
+  }
+  return `${printRef(node.start)}:${printRef(node.end)}`
 }
 
 /** Las hojas con espacios o símbolos van entre comillas simples: 'Mis datos'!A1 */

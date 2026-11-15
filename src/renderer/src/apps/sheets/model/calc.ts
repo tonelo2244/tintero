@@ -1,5 +1,6 @@
 import { cellAddress, normalizeRange, parseCellAddress, rangeContains } from './address'
 import type { FormulaNode } from './formula/ast'
+import { VOLATILE_FUNCTIONS } from './formula/dates'
 import { evaluateFormula, type EvaluationContext } from './formula/evaluate'
 import { parseFormula } from './formula/parser'
 import { err } from './formula/values'
@@ -41,6 +42,8 @@ interface CompiledFormula {
   node: FormulaNode | null
   sheetId: string
   dependencies: Dependency[]
+  /** Usa HOY o AHORA: se recalcula siempre, aunque no cambie nada de lo que lee. */
+  volatile: boolean
 }
 
 interface DependencyGraph {
@@ -49,6 +52,8 @@ interface DependencyGraph {
   cellDependents: Map<CellId, Set<CellId>>
   /** Referencias a rangos: se comprueban por contención (no se expanden celda a celda). */
   rangeDependents: { sheetId: string; range: CellRange; dependent: CellId }[]
+  /** Fórmulas volátiles (HOY, AHORA). Suele estar vacío: recorrerlo en cada edición no cuesta nada. */
+  volatile: Set<CellId>
 }
 
 export interface Evaluation {
@@ -75,7 +80,7 @@ function literalValue(cell: Cell | undefined): CellValue {
 export function evaluateWorkbook(workbook: Workbook): Evaluation {
   const empty: Evaluation = {
     workbook,
-    graph: { formulas: new Map(), cellDependents: new Map(), rangeDependents: [] },
+    graph: { formulas: new Map(), cellDependents: new Map(), rangeDependents: [], volatile: new Set() },
     values: new Map()
   }
   const allCells: CellId[] = []
@@ -94,7 +99,10 @@ export function updateEvaluation(previous: Evaluation, workbook: Workbook): Eval
   const changed = changedCells(previous.workbook, workbook)
   if (changed === 'all') return evaluateWorkbook(workbook)
   if (changed.length === 0) return { ...previous, workbook }
-  return recalculate(previous, workbook, changed)
+  // Si algo cambió, HOY y AHORA se vuelven a evaluar (como hace Excel en cada recálculo).
+  const alreadyChanged = new Set(changed)
+  const volatile = [...previous.graph.volatile].filter((id) => !alreadyChanged.has(id))
+  return recalculate(previous, workbook, [...changed, ...volatile])
 }
 
 /** Celdas cuyo contenido (valor o fórmula) cambió. Los cambios solo de formato no cuentan. */
@@ -177,9 +185,10 @@ function compile(formula: string, sheetId: string, sheetIdByName: Map<string, st
   try {
     node = parseFormula(formula)
   } catch {
-    return { node: null, sheetId, dependencies: [] }
+    return { node: null, sheetId, dependencies: [], volatile: false }
   }
   const dependencies: Dependency[] = []
+  let volatile = false
   const visit = (current: FormulaNode): void => {
     switch (current.type) {
       case 'ref':
@@ -198,6 +207,7 @@ function compile(formula: string, sheetId: string, sheetIdByName: Map<string, st
         visit(current.right)
         break
       case 'call':
+        if (VOLATILE_FUNCTIONS.has(current.name)) volatile = true
         current.args.forEach(visit)
         break
       case 'group':
@@ -206,7 +216,7 @@ function compile(formula: string, sheetId: string, sheetIdByName: Map<string, st
     }
   }
   visit(node)
-  return { node, sheetId, dependencies }
+  return { node, sheetId, dependencies, volatile }
 }
 
 function cloneGraph(graph: DependencyGraph): DependencyGraph {
@@ -214,7 +224,8 @@ function cloneGraph(graph: DependencyGraph): DependencyGraph {
     formulas: new Map(graph.formulas),
     // Los Set se copian al modificarlos (ver addFormula/removeFormula), no aquí.
     cellDependents: new Map(graph.cellDependents),
-    rangeDependents: graph.rangeDependents
+    rangeDependents: graph.rangeDependents,
+    volatile: graph.volatile
   }
 }
 
@@ -224,6 +235,7 @@ function isSingleCell(range: CellRange): boolean {
 
 function addFormula(graph: DependencyGraph, id: CellId, formula: CompiledFormula): void {
   graph.formulas.set(id, formula)
+  if (formula.volatile) graph.volatile = new Set(graph.volatile).add(id)
   const newRanges: DependencyGraph['rangeDependents'] = []
   for (const { sheetId, range } of formula.dependencies) {
     if (sheetId === null) continue
@@ -243,6 +255,10 @@ function removeFormula(graph: DependencyGraph, id: CellId): void {
   const formula = graph.formulas.get(id)
   if (!formula) return
   graph.formulas.delete(id)
+  if (formula.volatile) {
+    graph.volatile = new Set(graph.volatile)
+    graph.volatile.delete(id)
+  }
   let hasRanges = false
   for (const { sheetId, range } of formula.dependencies) {
     if (sheetId === null) continue

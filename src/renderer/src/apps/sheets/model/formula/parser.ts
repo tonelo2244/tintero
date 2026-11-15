@@ -1,4 +1,4 @@
-import { columnIndex } from '../address'
+import { columnIndex, MAX_COLUMNS, MAX_ROWS } from '../address'
 import type { ErrorCode } from '../types'
 import type { BinaryOperator, FormulaNode, RefCoord } from './ast'
 import { canonicalFunctionName } from './functionNames'
@@ -117,6 +117,8 @@ class Parser {
         return { type: 'error', code: token.value as ErrorCode }
       case 'ref':
         return this.parseReference(token)
+      case 'span':
+        return parseSpan(token)
       case 'func':
         return this.parseCall(token.name)
       case 'name':
@@ -151,7 +153,7 @@ class Parser {
       return { type: 'call', name: canonicalFunctionName(rawName), args }
     }
     for (;;) {
-      args.push(this.parseExpression())
+      args.push(this.peekArgumentEnd() ? { type: 'empty' } : this.parseExpression())
       const token = this.tokens[this.position++]
       if (token?.type === 'separator') continue
       if (token?.type === 'paren' && token.value === ')') break
@@ -163,6 +165,12 @@ class Parser {
   private peekOperator(operators: string[]): boolean {
     const token = this.tokens[this.position]
     return token?.type === 'operator' && operators.includes(token.value)
+  }
+
+  /** ¿Empieza aquí un argumento vacío? (un ";" o el ")" final justo detrás de otro ";"). */
+  private peekArgumentEnd(): boolean {
+    const token = this.tokens[this.position]
+    return token?.type === 'separator' || (token?.type === 'paren' && token.value === ')')
   }
 
   private peekParen(value: '(' | ')'): boolean {
@@ -189,4 +197,39 @@ function parseRefCoord(text: string): RefCoord {
     colAbsolute: match[1] === '$',
     rowAbsolute: match[3] === '$'
   }
+}
+
+/**
+ * "A:C" -> rango de A1 a C10000; "2:5" -> de A2 a ZZ5. La dimensión que no se escribe se marca
+ * como absoluta: así copiar =SUMA(A:A) una fila abajo no la convierte en A2:A10001.
+ */
+function parseSpan(token: Extract<Token, { type: 'span' }>): FormulaNode {
+  const [first, second] = token.value.split(':')
+  const sheet = token.sheet === undefined ? {} : { sheet: token.sheet }
+  if (token.axis === 'columns') {
+    const column = (text: string, row: number): RefCoord => ({
+      col: columnIndex(text.replace('$', '')),
+      row,
+      colAbsolute: text.startsWith('$'),
+      rowAbsolute: true
+    })
+    const start = column(first, 0)
+    const end = column(second, MAX_ROWS - 1)
+    if (start.col < 0 || end.col < 0 || start.col >= MAX_COLUMNS || end.col >= MAX_COLUMNS) {
+      throw new FormulaSyntaxError(`"${token.value}" no es un rango de columnas válido.`)
+    }
+    return { type: 'range', ...sheet, start, end, span: 'columns' }
+  }
+  const row = (text: string, col: number): RefCoord => ({
+    row: Number(text.replace('$', '')) - 1,
+    col,
+    rowAbsolute: text.startsWith('$'),
+    colAbsolute: true
+  })
+  const start = row(first, 0)
+  const end = row(second, MAX_COLUMNS - 1)
+  if (start.row < 0 || end.row < 0 || start.row >= MAX_ROWS || end.row >= MAX_ROWS) {
+    throw new FormulaSyntaxError(`"${token.value}" no es un rango de filas válido.`)
+  }
+  return { type: 'range', ...sheet, start, end, span: 'rows' }
 }

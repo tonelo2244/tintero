@@ -132,7 +132,7 @@ function readFormula(formula: string, warnings: Set<string>, unknownFunctions: S
   try {
     node = parseFormula(clean)
   } catch {
-    warnings.add('algunas fórmulas con sintaxis que Tintero no entiende (p. ej. columnas enteras como A:A)')
+    warnings.add('algunas fórmulas con sintaxis que Tintero no entiende (p. ej. tablas estructuradas o matrices)')
     return clean
   }
   collectUnknownFunctions(node, unknownFunctions)

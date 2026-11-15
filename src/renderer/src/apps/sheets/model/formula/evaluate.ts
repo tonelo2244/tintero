@@ -31,6 +31,8 @@ export function evaluateNode(node: FormulaNode, context: EvaluationContext): Eva
       return err(node.code)
     case 'name':
       return err('#NAME?')
+    case 'empty':
+      return null
     case 'ref':
       return context.cell(node.sheet, node.ref.row, node.ref.col)
     case 'range':
@@ -38,9 +40,12 @@ export function evaluateNode(node: FormulaNode, context: EvaluationContext): Eva
     case 'group':
       return evaluateNode(node.inner, context)
     case 'call':
+      // Un argumento omitido llega como undefined: para la función es igual que no escribirlo.
       return callFunction(
         node.name,
-        node.args.map((arg) => evaluateNode(arg, context))
+        node.args.map((arg) =>
+          arg.type === 'empty' ? (undefined as unknown as EvalValue) : evaluateNode(arg, context)
+        )
       )
     case 'unary': {
       const operand = toNumber(evaluateNode(node.operand, context))

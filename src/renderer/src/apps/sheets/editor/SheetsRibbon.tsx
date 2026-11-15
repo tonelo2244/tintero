@@ -69,7 +69,11 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
       { name: 'MIN', description: 'El menor valor' },
       { name: 'MAX', description: 'El mayor valor' },
       { name: 'ROUND', description: 'Redondea a N decimales' },
-      { name: 'SUMIF', description: 'Suma las celdas que cumplen un criterio' }
+      { name: 'ROUNDUP', description: 'Redondea alejándose del cero' },
+      { name: 'ROUNDDOWN', description: 'Redondea hacia el cero' },
+      { name: 'SUMIF', description: 'Suma las celdas que cumplen un criterio' },
+      { name: 'SUMIFS', description: 'Suma las celdas que cumplen varios criterios' },
+      { name: 'AVERAGEIF', description: 'Media de las celdas que cumplen un criterio' }
     ]
   },
   {
@@ -77,14 +81,18 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
     functions: [
       { name: 'COUNT', description: 'Cuenta las celdas con números' },
       { name: 'COUNTA', description: 'Cuenta las celdas no vacías' },
-      { name: 'COUNTIF', description: 'Cuenta las celdas que cumplen un criterio' }
+      { name: 'COUNTIF', description: 'Cuenta las celdas que cumplen un criterio' },
+      { name: 'COUNTIFS', description: 'Cuenta las que cumplen varios criterios' },
+      { name: 'COUNTBLANK', description: 'Cuenta las celdas vacías' }
     ]
   },
   {
     label: 'Lógicas',
     functions: [
       { name: 'IF', description: 'Un valor u otro según una condición' },
+      { name: 'IFS', description: 'El valor de la primera condición que se cumple' },
       { name: 'IFERROR', description: 'Un valor alternativo si hay error' },
+      { name: 'IFNA', description: 'Un valor alternativo si da #N/D' },
       { name: 'AND', description: 'VERDADERO si todo se cumple' },
       { name: 'OR', description: 'VERDADERO si algo se cumple' }
     ]
@@ -95,7 +103,22 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
       { name: 'CONCAT', description: 'Une textos' },
       { name: 'LEN', description: 'Número de caracteres' },
       { name: 'UPPER', description: 'Pasa a mayúsculas' },
-      { name: 'VLOOKUP', description: 'Busca un valor en la primera columna de una tabla' }
+      { name: 'TEXT', description: 'Da formato a un número o una fecha' },
+      { name: 'XLOOKUP', description: 'Busca un valor y devuelve el de otro rango' },
+      { name: 'VLOOKUP', description: 'Busca un valor en la primera columna de una tabla' },
+      { name: 'INDEX', description: 'El valor de una fila y columna de un rango' },
+      { name: 'MATCH', description: 'La posición de un valor en un rango' }
+    ]
+  },
+  {
+    label: 'Fecha',
+    functions: [
+      { name: 'TODAY', description: 'La fecha de hoy' },
+      { name: 'NOW', description: 'La fecha y hora actuales' },
+      { name: 'DATE', description: 'Una fecha a partir de año, mes y día' },
+      { name: 'YEAR', description: 'El año de una fecha' },
+      { name: 'MONTH', description: 'El mes de una fecha' },
+      { name: 'DAY', description: 'El día de una fecha' }
     ]
   }
 ]
