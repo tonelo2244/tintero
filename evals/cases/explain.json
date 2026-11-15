@@ -1,0 +1,27 @@
+[
+  {
+    "id": "sumar-si",
+    "why": "Debe hablar de las columnas por su cabecera.",
+    "sheet": "ventas",
+    "address": "E2",
+    "formula": "SUMIF(C2:C5,\">20\",B2:B5)",
+    "mustMention": ["ventas", "unidades", "20"]
+  },
+  {
+    "id": "si-anidado",
+    "why": "Fórmula con dos condiciones: la explicación debe cubrir los tres casos.",
+    "sheet": "ventas",
+    "address": "D2",
+    "formula": "IF(B2>1000,\"Alta\",IF(B2>900,\"Media\",\"Baja\"))",
+    "mustMention": ["alta", "media", "baja"]
+  },
+  {
+    "id": "rango-corto",
+    "why": "El rango se queda corto (B2:B4 y hay datos hasta B5): debería avisar.",
+    "sheet": "ventas",
+    "address": "E2",
+    "formula": "SUM(B2:B4)",
+    "mustMention": ["ventas"],
+    "shouldWarn": true
+  }
+]

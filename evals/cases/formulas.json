@@ -1,0 +1,101 @@
+[
+  {
+    "id": "suma-simple",
+    "why": "Lo más básico: el total de una columna.",
+    "sheet": "ventas",
+    "target": "E2",
+    "request": "Suma de todas las ventas",
+    "expected": 4450,
+    "reference": "SUM(B2:B5)"
+  },
+  {
+    "id": "sumar-si",
+    "why": "Caso del roadmap: sumar con condición sobre otra columna.",
+    "sheet": "ventas",
+    "target": "E2",
+    "request": "Suma las ventas de las regiones que tienen más de 20 unidades",
+    "expected": 2700,
+    "reference": "SUMIF(C2:C5,\">20\",B2:B5)"
+  },
+  {
+    "id": "media",
+    "why": "Elegir PROMEDIO y el rango sin la cabecera.",
+    "sheet": "ventas",
+    "target": "E2",
+    "request": "Media de unidades",
+    "expected": 23.75,
+    "reference": "AVERAGE(C2:C5)"
+  },
+  {
+    "id": "contar-si",
+    "why": "Contar con condición numérica.",
+    "sheet": "ventas",
+    "target": "E2",
+    "request": "¿Cuántas regiones venden más de 1000?",
+    "expected": 2,
+    "reference": "COUNTIF(B2:B5,\">1000\")"
+  },
+  {
+    "id": "maximo",
+    "why": "Función de agregado distinta de la suma.",
+    "sheet": "ventas",
+    "target": "E2",
+    "request": "La venta más alta",
+    "expected": 1500,
+    "reference": "MAX(B2:B5)"
+  },
+  {
+    "id": "precio-unidad",
+    "why": "Operación entre celdas de una fila, no un agregado.",
+    "sheet": "ventas",
+    "target": "D2",
+    "request": "Precio por unidad de esta fila (ventas entre unidades)",
+    "expected": 40,
+    "reference": "B2/C2"
+  },
+  {
+    "id": "si-texto",
+    "why": "Condicional con textos de resultado.",
+    "sheet": "ventas",
+    "target": "D3",
+    "request": "Si las ventas de esta fila superan 1000 pon Alta y si no Baja",
+    "expected": "Baja",
+    "reference": "IF(B3>1000,\"Alta\",\"Baja\")"
+  },
+  {
+    "id": "contar-texto",
+    "why": "Criterio de texto (comillas dentro de la fórmula).",
+    "sheet": "tareas",
+    "target": "E2",
+    "request": "Cuántas tareas están pendientes",
+    "expected": 3,
+    "reference": "COUNTIF(B2:B8,\"Pendiente\")"
+  },
+  {
+    "id": "sumar-si-texto",
+    "why": "Suma condicionada por un texto.",
+    "sheet": "tareas",
+    "target": "E3",
+    "request": "Horas que quedan en tareas pendientes",
+    "expected": 8,
+    "reference": "SUMIF(B2:B8,\"Pendiente\",C2:C8)"
+  },
+  {
+    "id": "rango-largo",
+    "why": "30 filas: el rango debe llegar hasta la última (el modelo solo ve unas pocas).",
+    "sheet": "gastos",
+    "target": "F2",
+    "request": "Total gastado",
+    "expected": 832.89,
+    "reference": "SUM(D2:D31)"
+  },
+  {
+    "id": "categoria",
+    "why": "SUMAR.SI sobre una tabla larga con varias columnas.",
+    "sheet": "gastos",
+    "target": "F3",
+    "request": "Cuánto he gastado en comida",
+    "expected": 403.2,
+    "reference": "SUMIF(C2:C31,\"Comida\",D2:D31)"
+  }
+]

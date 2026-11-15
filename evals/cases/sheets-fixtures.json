@@ -1,0 +1,61 @@
+{
+  "ventas": {
+    "name": "Ventas",
+    "rows": [
+      ["Región", "Ventas", "Unidades"],
+      ["Norte", 1200, 30],
+      ["Sur", 800, 12],
+      ["Este", 1500, 45],
+      ["Oeste", 950, 8]
+    ]
+  },
+  "tareas": {
+    "name": "Tareas",
+    "rows": [
+      ["Tarea", "Estado", "Horas"],
+      ["Diseño", "Hecha", 6],
+      ["Maqueta", "Pendiente", 4],
+      ["Textos", "Pendiente", 3],
+      ["Pruebas", "En curso", 5],
+      ["Publicar", "Pendiente", 1],
+      ["Revisión", "Hecha", 2],
+      ["Fotos", "Hecha", 3]
+    ]
+  },
+  "gastos": {
+    "name": "Gastos",
+    "rows": [
+      ["Fecha", "Concepto", "Categoría", "Importe"],
+      ["01/01/2026", "Supermercado", "Comida", 64.2],
+      ["02/02/2026", "Gasolina", "Transporte", 50],
+      ["03/03/2026", "Cine", "Ocio", 18],
+      ["04/01/2026", "Fruta", "Comida", 12.5],
+      ["05/02/2026", "Autobús", "Transporte", 1.5],
+      ["06/03/2026", "Cena", "Ocio", 42],
+      ["07/01/2026", "Supermercado", "Comida", 71.8],
+      ["08/02/2026", "Parking", "Transporte", 6],
+      ["09/03/2026", "Libro", "Ocio", 19.9],
+      ["10/01/2026", "Panadería", "Comida", 4.3],
+      ["11/02/2026", "Taxi", "Transporte", 14],
+      ["12/03/2026", "Concierto", "Ocio", 35],
+      ["13/01/2026", "Supermercado", "Comida", 58.4],
+      ["14/02/2026", "Gasolina", "Transporte", 48],
+      ["15/03/2026", "Museo", "Ocio", 12],
+      ["16/01/2026", "Carnicería", "Comida", 23.6],
+      ["17/02/2026", "Metro", "Transporte", 2],
+      ["18/03/2026", "Bar", "Ocio", 9.5],
+      ["19/01/2026", "Supermercado", "Comida", 66],
+      ["20/02/2026", "Tren", "Transporte", 27.3],
+      ["21/03/2026", "Teatro", "Ocio", 24],
+      ["22/01/2026", "Fruta", "Comida", 9.8],
+      ["23/02/2026", "Gasolina", "Transporte", 52],
+      ["24/03/2026", "Videojuego", "Ocio", 29.99],
+      ["25/01/2026", "Supermercado", "Comida", 61.2],
+      ["26/02/2026", "Bicicleta", "Transporte", 3],
+      ["27/03/2026", "Pizza", "Ocio", 16],
+      ["28/01/2026", "Pescadería", "Comida", 31.4],
+      ["01/02/2026", "Autobús", "Transporte", 1.5],
+      ["02/03/2026", "Cine", "Ocio", 18]
+    ]
+  }
+}
