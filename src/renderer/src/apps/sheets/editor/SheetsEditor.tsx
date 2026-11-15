@@ -47,7 +47,9 @@ import { SheetPrintView } from './SheetPrintView'
 import { SHEETS_TABS, SheetsRibbon, type SheetCommands, type SheetsTabId } from './SheetsRibbon'
 import { SheetTabs } from './SheetTabs'
 import { useEvaluation } from './useEvaluation'
+import { useCharts } from './charts/useCharts'
 import { useSheetData } from './data/useSheetData'
+import { useConditionalFormats } from './format/useConditionalFormats'
 import './sheets.css'
 import { SheetAssistantPanel } from './ai/SheetAssistantPanel'
 import { SheetsAssistantTab } from './ai/SheetsAssistantTab'
@@ -297,6 +299,10 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
 
   const activeStyle: CellStyle = activeCell?.style ?? {}
 
+  const valueAt = useCallback((address: string) => getCellValue(evaluation, sheet.id, address), [evaluation, sheet.id])
+  const conditional = useConditionalFormats({ sheet, range, valueAt, apply, focusGrid })
+  const charts = useCharts({ sheet, range, anchor: selection.anchor, valueAt, apply, setNotice })
+
   const data = useSheetData({
     workbook,
     sheet,
@@ -410,6 +416,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       focusGrid()
     },
     ...data.commands,
+    ...conditional.commands,
+    insertChart: charts.insertChart,
     insertRows: () => changeStructure('insert', 'rows'),
     insertColumns: () => changeStructure('insert', 'columns'),
     deleteRows: () => changeStructure('delete', 'rows'),
@@ -479,7 +487,11 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       case 'Delete':
       case 'Backspace':
         event.preventDefault()
-        apply({ type: 'cells/clear', sheetId: sheet.id, range })
+        // Con un gráfico seleccionado, Supr borra el gráfico y no las celdas.
+        if (!charts.deleteSelected()) apply({ type: 'cells/clear', sheetId: sheet.id, range })
+        return
+      case 'Escape':
+        charts.deselect()
         return
       case 'Home':
         event.preventDefault()
@@ -671,6 +683,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
         />
       )}
       {data.overlays}
+      {conditional.overlay}
       <div className="sheets-workspace">
         <FormulaBar
           location={rangeAddress(range)}
@@ -692,11 +705,14 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           }
           editor={cellEditor || null}
           hiddenRows={data.hiddenRows}
+          conditionalStyle={conditional.styler}
+          overlay={charts.layer}
           filterButtons={data.filterButtons}
           onOpenFilter={data.openFilterMenu}
           viewportRef={viewportRef}
           onKeyDown={onGridKeyDown}
           onCellPointerDown={(coord, extend) => {
+            charts.deselect()
             if (editing && isPointable()) {
               pointing.current = true
               pointAt(extend && editing.reference ? editing.reference.anchor : coord, coord)
@@ -768,7 +784,12 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       </div>
 
       {/* Solo visible al imprimir (y al exportar a PDF): la zona con datos de la hoja activa. */}
-      <SheetPrintView sheet={sheet} evaluation={evaluation} />
+      <SheetPrintView
+        sheet={sheet}
+        evaluation={evaluation}
+        hiddenRows={data.hiddenRows}
+        conditionalStyle={conditional.styler}
+      />
     </EditorLayout>
   )
 }

@@ -23,6 +23,7 @@ function sampleWorkbook(): Workbook {
     D3: { value: true }
   })
   data.columnWidths = { 0: 150 }
+  data.merges = [{ start: { row: 5, col: 0 }, end: { row: 5, col: 2 } }]
   const summary = createSheet('Resumen 2026', { A1: { formula: 'Datos!B4*2' } })
   return createWorkbook([data, summary])
 }
@@ -77,6 +78,7 @@ describe('importar .xlsx', () => {
     expect(data.cells.A1.style).toEqual(original.sheets[0].cells.A1.style)
     expect(data.cells.B3.style).toEqual(original.sheets[0].cells.B3.style)
     expect(data.columnWidths[0]).toBe(150)
+    expect(data.merges).toEqual(original.sheets[0].merges)
     const evaluation = evaluateWorkbook(content)
     expect(getCellValue(evaluation, content.sheets[1].id, 'A1')).toBe(7.5)
   })
@@ -97,11 +99,11 @@ describe('importar .xlsx', () => {
     expect(cells.A1).toEqual({ value: 'Hola mundo' })
     expect(cells.A2).toEqual({ formula: 'SUMPRODUCT(B1:B2,C1:C2)' })
     expect(cells.A3).toEqual({ formula: 'SUM(A:A)' })
+    expect(content.sheets[0].merges).toEqual([{ start: { row: 4, col: 1 }, end: { row: 4, col: 2 } }])
     expect(warnings).toEqual(
       expect.arrayContaining([
         'el formato dentro de una celda (se conserva el texto)',
         'las fuentes y tamaños de letra',
-        'las celdas combinadas (se separan)',
         expect.stringMatching(/SUMPRODUCT/)
       ])
     )

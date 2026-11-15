@@ -135,3 +135,78 @@
   align-items: center;
   gap: 4px;
 }
+
+.sheet-chart {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: move;
+}
+.sheet-chart.is-selected {
+  outline: 2px solid var(--accent);
+}
+.sheet-chart__svg {
+  display: block;
+  font-family: var(--font-ui);
+}
+.sheet-chart__title {
+  font-size: 13px;
+  font-weight: 600;
+  fill: #222;
+}
+.sheet-chart__axis,
+.sheet-chart__legend {
+  font-size: 10.5px;
+  fill: #555;
+}
+.sheet-chart__empty {
+  font-size: 12px;
+  fill: #888;
+}
+.sheet-chart__grid {
+  stroke: #e6e6e6;
+}
+.sheet-chart__baseline {
+  stroke: #9a9a9a;
+}
+.sheet-chart__toolbar {
+  position: absolute;
+  top: -36px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+.sheet-chart__title-input {
+  width: 160px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+}
+.sheet-chart__resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 1px solid #fff;
+  border-radius: 2px;
+  cursor: nwse-resize;
+}
+.sheet-popover__error {
+  color: #b3261e;
+  font-size: 12px;
+  margin: 4px 0 0;
+}

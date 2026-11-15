@@ -94,3 +94,50 @@ test('Hojas v2: filtrar oculta filas, ordenar las reordena y buscar salta a la c
   await expect(grid).toContainText('Oeste')
   if (process.env.SCREENSHOTS) await page.screenshot({ path: 'test-results/hojas-v2-datos.png' })
 })
+
+test('Hojas v2: un gráfico de columnas se actualiza al cambiar los datos, y el formato condicional pinta', async ({
+  tintero
+}) => {
+  const { page } = tintero
+  await createBlank(page, 'Hojas de cálculo')
+  const grid = page.getByRole('grid', { name: 'Hoja Hoja1' })
+  await grid.focus()
+  await typeCells(page, [
+    ['Mes', 'Ventas', 'Gastos'],
+    ['Ene', '120', '80'],
+    ['Feb', '150', '95'],
+    ['Mar', '90', '110']
+  ])
+  await page.keyboard.press('Control+Home')
+
+  await page.getByRole('tab', { name: 'Insertar' }).click()
+  await page.getByRole('button', { name: 'Columnas' }).click()
+  const chart = page.getByRole('img', { name: 'Gráfico' })
+  await expect(chart).toBeVisible()
+  // Tres columnas de la serie Ventas y su cuadrito en la leyenda.
+  await expect(chart.locator('rect[fill="#1f7a4d"]')).toHaveCount(4)
+
+  await page.getByRole('textbox', { name: 'Título del gráfico' }).fill('Primer trimestre')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('img', { name: 'Gráfico: Primer trimestre' })).toBeVisible()
+
+  // Formato condicional en Ventas (B2:B4): mayor que 100.
+  // B2 (cabecera de 22 px + fila 1 de 22 px).
+  await grid.click({ position: { x: 150, y: 55 } })
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.getByRole('tab', { name: 'Inicio' }).click()
+  await page.getByRole('button', { name: 'Formato condicional' }).click()
+  await page.getByRole('button', { name: 'Es mayor que…' }).click()
+  await page.getByRole('textbox', { name: 'Valor' }).fill('100')
+  await page.getByRole('button', { name: 'Aceptar' }).click()
+  await expect(page.locator('.sheet-cell', { hasText: /^150$/ })).toHaveCSS('background-color', 'rgb(255, 199, 206)')
+  await expect(page.locator('.sheet-cell', { hasText: /^90$/ })).not.toHaveCSS('background-color', 'rgb(255, 199, 206)')
+
+  // Cambiar un dato recalcula el gráfico (el eje llega ahora hasta 300).
+  await grid.click({ position: { x: 150, y: 99 } })
+  await page.keyboard.type('300')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('img', { name: 'Gráfico: Primer trimestre' })).toContainText('300')
+  if (process.env.SCREENSHOTS) await page.screenshot({ path: 'test-results/hojas-v2-grafico.png' })
+})

@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
 import type { ImportResult } from '@/core/appModule'
-import { cellAddress, MAX_COLUMNS, MAX_ROWS } from '../address'
+import { cellAddress, MAX_COLUMNS, MAX_ROWS, normalizeRange, parseCellAddress } from '../address'
 import { createSheet, createWorkbook, validateSheetName } from '../factories'
 import { dateToSerial } from '../format'
 import type { FormulaNode } from '../formula/ast'
@@ -9,7 +9,7 @@ import { FUNCTIONS } from '../formula/functions'
 import { localizedFunctionName } from '../formula/functionNames'
 import { parseFormula } from '../formula/parser'
 import { printFormula } from '../formula/printer'
-import type { Cell, CellStyle, Scalar, Sheet, Workbook } from '../types'
+import type { Cell, CellRange, CellStyle, Scalar, Sheet, Workbook } from '../types'
 import { argbToHex, excelWidthToPixels, fromExcelNumberFormat } from './xlsxFormats'
 
 /**
@@ -46,7 +46,7 @@ export async function importXlsx(bytes: Uint8Array): Promise<ImportResult<Workbo
       })
     })
 
-    readSheetFeatures(worksheet, warnings)
+    readSheetFeatures(worksheet, sheet, warnings)
     sheets.push(sheet)
   }
 
@@ -204,13 +204,14 @@ function readStyle(excelCell: ExcelJS.Cell, warnings: Set<string>): CellStyle {
 }
 
 /** Cosas de la hoja (no de las celdas) que Tintero aún no tiene. */
-function readSheetFeatures(worksheet: ExcelJS.Worksheet, warnings: Set<string>): void {
+function readSheetFeatures(worksheet: ExcelJS.Worksheet, sheet: Sheet, warnings: Set<string>): void {
   const model = worksheet.model as unknown as {
     merges?: string[]
     conditionalFormattings?: unknown[]
     dataValidations?: { model?: Record<string, unknown> }
   }
-  if ((model.merges?.length ?? 0) > 0) warnings.add('las celdas combinadas (se separan)')
+  const merges = (model.merges ?? []).map(parseRangeAddress).filter((range): range is CellRange => range !== null)
+  if (merges.length > 0) sheet.merges = merges
   if ((model.conditionalFormattings?.length ?? 0) > 0) warnings.add('el formato condicional')
   if (Object.keys(model.dataValidations?.model ?? {}).length > 0) warnings.add('la validación de datos')
   if (worksheet.getImages().length > 0) warnings.add('las imágenes')
@@ -221,6 +222,15 @@ function readSheetFeatures(worksheet: ExcelJS.Worksheet, warnings: Set<string>):
   })
   if (heights.size > 1) warnings.add('el alto de las filas')
   if (worksheet.views?.some((view) => view.state === 'frozen')) warnings.add('los paneles inmovilizados')
+}
+
+/** "B2:D4" -> rango. Las combinadas que se salen de la hoja de Tintero se descartan. */
+function parseRangeAddress(text: string): CellRange | null {
+  const [first, second = first] = text.split(':')
+  const start = parseCellAddress(first)
+  const end = parseCellAddress(second)
+  if (!start || !end || end.row >= MAX_ROWS || end.col >= MAX_COLUMNS) return null
+  return normalizeRange(start, end)
 }
 
 /**

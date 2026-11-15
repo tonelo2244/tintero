@@ -14,6 +14,7 @@ import {
   DecimalsArrowRight,
   Grid2x2,
   Grid2x2X,
+  Highlighter,
   Italic,
   PaintBucket,
   PanelBottom,
@@ -34,9 +35,11 @@ import {
 import { ColorPicker } from '@/ui/ColorPicker'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
 import { localizedFunctionName } from '../model/formula/functionNames'
-import type { CellStyle, HorizontalAlign, NumberFormatKind } from '../model/types'
+import type { CellStyle, ChartKind, HorizontalAlign, NumberFormatKind } from '../model/types'
+import type { ConditionalKind } from './format/useConditionalFormats'
 import type { BorderMode } from '../model/workbookReducer'
 import { DataTab } from './SheetsDataTab'
+import { InsertTab } from './SheetsInsertTab'
 import { ViewTab } from './SheetsViewTab'
 
 export type SheetsTabId = 'home' | 'insert' | 'formulas' | 'data' | 'view' | 'assistant'
@@ -75,6 +78,9 @@ export interface SheetCommands {
   toggleFilter(): void
   clearFilters(): void
   openFind(mode: 'find' | 'replace'): void
+  insertChart(kind: ChartKind): void
+  openConditional(kind: ConditionalKind): void
+  clearConditional(): void
 }
 
 export type FreezeMode = 'selection' | 'firstRow' | 'firstColumn' | 'none'
@@ -86,6 +92,14 @@ const NUMBER_FORMATS: { label: string; value: NumberFormatKind }[] = [
   { label: 'Porcentaje', value: 'percent' },
   { label: 'Fecha', value: 'date' },
   { label: 'Texto', value: 'text' }
+]
+
+const CONDITIONAL_OPTIONS: { kind: ConditionalKind; label: string }[] = [
+  { kind: 'greaterThan', label: 'Es mayor que…' },
+  { kind: 'lessThan', label: 'Es menor que…' },
+  { kind: 'between', label: 'Entre…' },
+  { kind: 'textContains', label: 'Texto que contiene…' },
+  { kind: 'colorScale', label: 'Escala de color…' }
 ]
 
 /** Funciones del menú "Insertar función", agrupadas como en la pestaña Fórmulas de Excel. */
@@ -168,6 +182,7 @@ export function SheetsRibbon(props: SheetsRibbonProps) {
   const { tab, activeStyle, canDeleteSheet, inMerge, frozen, hasFilter, commands } = props
   if (tab === 'formulas') return <FormulasTab commands={commands} />
   if (tab === 'view') return <ViewTab commands={commands} frozen={frozen} />
+  if (tab === 'insert') return <InsertTab commands={commands} />
   if (tab === 'data') return <DataTab commands={commands} hasFilter={hasFilter} />
 
   const align = activeStyle.align
@@ -295,6 +310,34 @@ export function SheetsRibbon(props: SheetsRibbonProps) {
             <DecimalsArrowLeft size={16} />
           </ToolButton>
         </RibbonRow>
+      </RibbonGroup>
+
+      <RibbonGroup label="Estilos">
+        <Dropdown label="Formato condicional" large trigger={<Highlighter size={22} />}>
+          {(close) => (
+            <>
+              {CONDITIONAL_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option.kind}
+                  onSelect={() => {
+                    commands.openConditional(option.kind)
+                    close()
+                  }}
+                >
+                  {option.label}
+                </MenuItem>
+              ))}
+              <MenuItem
+                onSelect={() => {
+                  commands.clearConditional()
+                  close()
+                }}
+              >
+                Borrar reglas de la selección
+              </MenuItem>
+            </>
+          )}
+        </Dropdown>
       </RibbonGroup>
 
       <RibbonGroup label="Celdas">
