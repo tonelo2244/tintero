@@ -8,6 +8,7 @@ import {
   BetweenHorizontalStart,
   BetweenVerticalStart,
   Bold,
+  ChevronDown,
   Columns3,
   DecimalsArrowLeft,
   DecimalsArrowRight,
@@ -22,21 +23,28 @@ import {
   Sigma,
   Square,
   SquareFunction,
+  TableCellsMerge,
+  TableCellsSplit,
   TableRowsSplit,
   Trash2,
-  Underline
+  Underline,
+  WrapText
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
 import { localizedFunctionName } from '../model/formula/functionNames'
 import type { CellStyle, HorizontalAlign, NumberFormatKind } from '../model/types'
 import type { BorderMode } from '../model/workbookReducer'
+import { ViewTab } from './SheetsViewTab'
 
-export type SheetsTabId = 'home' | 'formulas' | 'assistant'
+export type SheetsTabId = 'home' | 'insert' | 'formulas' | 'data' | 'view' | 'assistant'
 
 export const SHEETS_TABS: { id: SheetsTabId; label: string }[] = [
   { id: 'home', label: 'Inicio' },
+  { id: 'insert', label: 'Insertar' },
   { id: 'formulas', label: 'Fórmulas' },
+  { id: 'data', label: 'Datos' },
+  { id: 'view', label: 'Vista' },
   { id: 'assistant', label: 'Asistente' }
 ]
 
@@ -57,7 +65,12 @@ export interface SheetCommands {
   insertColumns(): void
   deleteRows(): void
   deleteColumns(): void
+  merge(mode: 'center' | 'merge' | 'unmerge'): void
+  toggleWrap(): void
+  freeze(mode: FreezeMode): void
 }
+
+export type FreezeMode = 'selection' | 'firstRow' | 'firstColumn' | 'none'
 
 const NUMBER_FORMATS: { label: string; value: NumberFormatKind }[] = [
   { label: 'General', value: 'general' },
@@ -137,11 +150,15 @@ interface SheetsRibbonProps {
   /** Formato de la celda activa: decide qué botones aparecen pulsados. */
   activeStyle: CellStyle
   canDeleteSheet: boolean
+  /** La celda activa está dentro de una combinada. */
+  inMerge: boolean
+  frozen: boolean
   commands: SheetCommands
 }
 
-export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: SheetsRibbonProps) {
+export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, inMerge, frozen, commands }: SheetsRibbonProps) {
   if (tab === 'formulas') return <FormulasTab commands={commands} />
+  if (tab === 'view') return <ViewTab commands={commands} frozen={frozen} />
 
   const align = activeStyle.align
   const setAlign = (value: HorizontalAlign) => commands.setStyle({ align: align === value ? undefined : value })
@@ -205,6 +222,48 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: She
           <ToolButton label="Alinear a la derecha" active={align === 'right'} onClick={() => setAlign('right')}>
             <AlignRight size={16} />
           </ToolButton>
+        </RibbonRow>
+        <RibbonRow>
+          <ToolButton label="Ajustar texto" active={activeStyle.wrap} onClick={commands.toggleWrap}>
+            <WrapText size={16} />
+          </ToolButton>
+          <ToolButton
+            label={inMerge ? 'Separar celdas' : 'Combinar y centrar'}
+            active={inMerge}
+            onClick={() => commands.merge(inMerge ? 'unmerge' : 'center')}
+          >
+            <TableCellsMerge size={16} />
+          </ToolButton>
+          <Dropdown label="Más opciones de combinar" trigger={<ChevronDown size={12} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('center')
+                    close()
+                  }}
+                >
+                  <TableCellsMerge size={14} /> Combinar y centrar
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('merge')
+                    close()
+                  }}
+                >
+                  <TableCellsMerge size={14} /> Combinar celdas
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('unmerge')
+                    close()
+                  }}
+                >
+                  <TableCellsSplit size={14} /> Separar celdas
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
         </RibbonRow>
       </RibbonGroup>
 

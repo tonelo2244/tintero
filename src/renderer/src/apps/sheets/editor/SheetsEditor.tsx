@@ -9,7 +9,16 @@ import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
 import { describeSheet } from '../model/ai/sheetContext'
 import { buildSheetAgentRequest, interpretSheetCalls } from '../model/ai/sheetTools'
 import { SHEETS_ACCENT } from '../constants'
-import { MAX_ROWS, cellAddress, parseCellAddress, rangeAddress, rangeSize } from '../model/address'
+import {
+  MAX_COLUMNS,
+  MAX_ROWS,
+  cellAddress,
+  normalizeRange,
+  parseCellAddress,
+  rangeAddress,
+  rangeSize
+} from '../model/address'
+import { expandToMerges, mergeAt } from '../model/merges'
 import { getCellValue } from '../model/calc'
 import { copyRange, fillRange, pasteCopiedCells, pasteText, type CopiedCells } from '../model/clipboard'
 import type { Axis } from '../model/formula/structure'
@@ -30,7 +39,7 @@ import {
   type Direction,
   type Selection
 } from '../model/selection'
-import type { Cell, CellCoord, CellRange, CellStyle, NumberFormatKind, Workbook } from '../model/types'
+import type { Cell, CellCoord, CellRange, CellStyle, NumberFormatKind, Sheet, Workbook } from '../model/types'
 import { workbookReducer, type WorkbookAction } from '../model/workbookReducer'
 import { FormulaBar } from './FormulaBar'
 import { SheetGrid } from './SheetGrid'
@@ -296,6 +305,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
     apply({ type: 'structure/change', sheetId: sheet.id, change })
     // Tras borrar, la selección se queda donde estaba (ahora con lo que había debajo o a la derecha).
     setSelection(singleCell(axis === 'rows' ? { row: at, col: range.start.col } : { row: range.start.row, col: at }))
+    focusGrid()
   }
 
   const commands: SheetCommands = {
@@ -322,6 +332,58 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       startEditing('edit', formula)
     },
     insertFunction: (name) => startEditing('edit', `=${localizedFunctionName(name)}(`),
+    merge: (mode) => {
+      if (mode === 'unmerge') {
+        apply({ type: 'cells/unmerge', sheetId: sheet.id, range })
+        focusGrid()
+        return
+      }
+      const { rows, cols } = rangeSize(range)
+      if (rows * cols > MAX_STYLED_CELLS || (rows === 1 && cols === 1)) return
+      const losesData = Object.keys(sheet.cells).some((address) => {
+        const coord = parseCellAddress(address)!
+        const cell = sheet.cells[address]
+        return (
+          address !== cellAddress(range.start) &&
+          coord.row >= range.start.row &&
+          coord.row <= range.end.row &&
+          coord.col >= range.start.col &&
+          coord.col <= range.end.col &&
+          (cell.value !== undefined || cell.formula !== undefined)
+        )
+      })
+      dispatch({
+        type: 'history/applyBatch',
+        actions: [
+          { type: 'cells/merge', sheetId: sheet.id, range },
+          ...(mode === 'center'
+            ? [{ type: 'cells/style', sheetId: sheet.id, range, style: { align: 'center' } } as const]
+            : [])
+        ]
+      })
+      setSelection({ anchor: range.start, focus: range.end })
+      if (losesData)
+        setNotice('Al combinar solo se conserva el contenido de la celda superior izquierda (Ctrl+Z lo deshace).')
+      focusGrid()
+    },
+    toggleWrap: () => styleSelection({ wrap: activeStyle.wrap ? undefined : true }),
+    freeze: (mode) => {
+      const anchor = selection.anchor
+      const target =
+        mode === 'firstRow'
+          ? { rows: 1, cols: 0 }
+          : mode === 'firstColumn'
+            ? { rows: 0, cols: 1 }
+            : mode === 'none'
+              ? { rows: 0, cols: 0 }
+              : { rows: anchor.row, cols: anchor.col }
+      if (mode === 'selection' && target.rows === 0 && target.cols === 0) {
+        setNotice('Elige la celda que quedará justo debajo y a la derecha de lo inmovilizado.')
+        return
+      }
+      apply({ type: 'view/freeze', sheetId: sheet.id, ...target })
+      focusGrid()
+    },
     insertRows: () => changeStructure('insert', 'rows'),
     insertColumns: () => changeStructure('insert', 'columns'),
     deleteRows: () => changeStructure('delete', 'rows'),
@@ -342,9 +404,9 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
     if (key in ARROWS) {
       event.preventDefault()
       const direction = ARROWS[key]
-      const from = event.shiftKey ? selection.focus : selection.anchor
+      const from = event.shiftKey ? selection.focus : edgeOfMerge(sheet, selection.anchor, direction)
       const to = mod ? jump(sheet, from, direction) : step(from, direction)
-      setSelection(event.shiftKey ? { anchor: selection.anchor, focus: to } : singleCell(to))
+      setSelection(event.shiftKey ? extendSelection(sheet, selection.anchor, to) : selectCell(sheet, to))
       return
     }
     if (mod) {
@@ -379,7 +441,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
         event.preventDefault()
         const direction: Direction =
           key === 'Enter' ? (event.shiftKey ? 'up' : 'down') : event.shiftKey ? 'left' : 'right'
-        setSelection(singleCell(step(selection.anchor, direction)))
+        setSelection(selectCell(sheet, step(edgeOfMerge(sheet, selection.anchor, direction), direction)))
         return
       }
       case 'F2':
@@ -523,6 +585,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             tab={tab}
             activeStyle={activeStyle}
             canDeleteSheet={workbook.sheets.length > 1}
+            inMerge={mergeAt(sheet, selection.anchor) !== null}
+            frozen={sheet.frozen !== undefined}
             commands={commands}
           />
         )
@@ -607,7 +671,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             }
             pointing.current = false
             if (editing) commitEditing(null)
-            setSelection(extend ? { anchor: selection.anchor, focus: coord } : singleCell(coord))
+            setSelection(extend ? extendSelection(sheet, selection.anchor, coord) : selectCell(sheet, coord))
             focusGrid()
             return false
           }}
@@ -640,6 +704,14 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           onColumnResize={(col, width) =>
             apply({ type: 'column/resize', sheetId: sheet.id, col, width }, `resize-${sheet.id}-${col}`)
           }
+          onRowResize={(row, height) => {
+            // Si la fila forma parte de una selección de filas enteras, se cambian todas (como Excel).
+            const rows =
+              isWholeRows(range) && row >= range.start.row && row <= range.end.row
+                ? Array.from({ length: range.end.row - range.start.row + 1 }, (_, i) => range.start.row + i)
+                : [row]
+            apply({ type: 'rows/resize', sheetId: sheet.id, rows, height }, `row-resize-${sheet.id}-${row}`)
+          }}
         />
         <SheetTabs
           workbook={workbook}
@@ -686,6 +758,39 @@ function copiedRange(copied: CopiedCells): CellRange {
     start: copied.origin,
     end: { row: copied.origin.row + rows - 1, col: copied.origin.col + cols - 1 }
   }
+}
+
+function isWholeRows(range: CellRange): boolean {
+  return range.start.col === 0 && range.end.col === MAX_COLUMNS - 1
+}
+
+/** Seleccionar una celda; si está combinada, se selecciona la combinada entera. */
+function selectCell(sheet: Sheet, coord: CellCoord): Selection {
+  const merge = mergeAt(sheet, coord)
+  return merge ? { anchor: merge.start, focus: merge.end } : singleCell(coord)
+}
+
+/** Mayús+clic o Mayús+flecha: el rango nunca corta una combinada por la mitad. */
+function extendSelection(sheet: Sheet, anchor: CellCoord, focus: CellCoord): Selection {
+  if (!sheet.merges?.length) return { anchor, focus }
+  const expanded = expandToMerges(normalizeRange(anchor, focus), sheet)
+  const corner = (start: number, end: number, value: number) => (value === start ? end : start)
+  return {
+    anchor,
+    focus: {
+      row: corner(expanded.start.row, expanded.end.row, anchor.row),
+      col: corner(expanded.start.col, expanded.end.col, anchor.col)
+    }
+  }
+}
+
+/** Al salir de una combinada con las flechas, se sale por su borde, no desde la esquina. */
+function edgeOfMerge(sheet: Sheet, coord: CellCoord, direction: Direction): CellCoord {
+  const merge = mergeAt(sheet, coord)
+  if (!merge) return coord
+  if (direction === 'down') return { row: merge.end.row, col: coord.col }
+  if (direction === 'right') return { row: coord.row, col: merge.end.col }
+  return coord
 }
 
 function isWholeColumns(range: CellRange): boolean {

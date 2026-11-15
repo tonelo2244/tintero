@@ -22,6 +22,14 @@ export type WorkbookAction =
   /** Borra el contenido de un rango (Supr). Con `includeStyle`, también el formato. */
   | { type: 'cells/clear'; sheetId: string; range: CellRange; includeStyle?: boolean }
   | { type: 'column/resize'; sheetId: string; col: number; width: number }
+  /** Alto de una o varias filas. null vuelve al alto por defecto. */
+  | { type: 'rows/resize'; sheetId: string; rows: number[]; height: number | null }
+  /** Inmovilizar las primeras filas y columnas. 0 y 0 quita la inmovilización. */
+  | { type: 'view/freeze'; sheetId: string; rows: number; cols: number }
+  /** Combinar un rango: solo se conserva el contenido de la esquina superior izquierda, como en Excel. */
+  | { type: 'cells/merge'; sheetId: string; range: CellRange }
+  /** Separar las combinadas que toquen el rango. */
+  | { type: 'cells/unmerge'; sheetId: string; range: CellRange }
   /** Insertar o borrar filas o columnas. Las fórmulas de todo el libro se reescriben. */
   | { type: 'structure/change'; sheetId: string; change: StructureChange }
   /** Cortar y pegar: mueve el rango y las fórmulas que apuntaban a él lo siguen. */
@@ -88,6 +96,31 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         ...sheet,
         columnWidths: { ...sheet.columnWidths, [action.col]: Math.max(MIN_COLUMN_WIDTH, Math.round(action.width)) }
       }))
+    case 'rows/resize':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const rowHeights = { ...sheet.rowHeights }
+        for (const row of action.rows) {
+          if (action.height === null) delete rowHeights[row]
+          else rowHeights[row] = Math.max(0, Math.round(action.height))
+        }
+        const { rowHeights: _old, ...rest } = sheet
+        return Object.keys(rowHeights).length > 0 ? { ...rest, rowHeights } : rest
+      })
+    case 'view/freeze':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const { frozen: _old, ...rest } = sheet
+        if (action.rows <= 0 && action.cols <= 0) return sheet.frozen ? rest : sheet
+        return { ...rest, frozen: { rows: Math.max(0, action.rows), cols: Math.max(0, action.cols) } }
+      })
+    case 'cells/merge':
+      return mergeCells(state, action.sheetId, action.range)
+    case 'cells/unmerge':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const merges = (sheet.merges ?? []).filter((merge) => !rangesOverlap(merge, action.range))
+        if (merges.length === (sheet.merges?.length ?? 0)) return sheet
+        const { merges: _old, ...rest } = sheet
+        return merges.length > 0 ? { ...rest, merges } : rest
+      })
     case 'structure/change':
       return applyStructureChange(state, action.sheetId, action.change)
     case 'range/move':
@@ -164,12 +197,20 @@ function updateSheet(state: Workbook, sheetId: string, update: (sheet: Sheet) =>
   return changed ? { ...state, sheets } : state
 }
 
-/** Copia el mapa de celdas una vez, deja que `mutate` lo modifique y lo vuelve a congelar en el estado. */
-function updateCells(state: Workbook, sheetId: string, mutate: (cells: Record<string, Cell>) => void): Workbook {
+/**
+ * Copia el mapa de celdas una vez, deja que `mutate` lo modifique y lo vuelve a congelar en el estado.
+ * `alsoUpdate` permite cambiar a la vez otras partes de la hoja (p. ej. las combinadas).
+ */
+function updateCells(
+  state: Workbook,
+  sheetId: string,
+  mutate: (cells: Record<string, Cell>) => void,
+  alsoUpdate: (sheet: Sheet) => Sheet = (sheet) => sheet
+): Workbook {
   return updateSheet(state, sheetId, (sheet) => {
     const cells = { ...sheet.cells }
     mutate(cells)
-    return { ...sheet, cells }
+    return alsoUpdate({ ...sheet, cells })
   })
 }
 
@@ -191,4 +232,31 @@ function renameSheet(state: Workbook, sheetId: string, name: string): Workbook {
     return cells === current.cells ? renamed : { ...renamed, cells }
   })
   return { ...state, sheets }
+}
+
+export function rangesOverlap(a: CellRange, b: CellRange): boolean {
+  return a.start.row <= b.end.row && b.start.row <= a.end.row && a.start.col <= b.end.col && b.start.col <= a.end.col
+}
+
+function mergeCells(state: Workbook, sheetId: string, range: CellRange): Workbook {
+  if (range.start.row === range.end.row && range.start.col === range.end.col) return state
+  return updateCells(
+    state,
+    sheetId,
+    (cells) => {
+      // El contenido de las demás celdas se pierde (Excel avisa antes; el editor también).
+      const anchor = cellAddress(range.start)
+      for (const address of Object.keys(cells)) {
+        const coord = parseCellAddress(address)
+        if (!coord || address === anchor || !rangeContains(range, coord)) continue
+        const { style } = cells[address]
+        if (style) cells[address] = { style }
+        else delete cells[address]
+      }
+    },
+    (sheet) => ({
+      ...sheet,
+      merges: [...(sheet.merges ?? []).filter((merge) => !rangesOverlap(merge, range)), range]
+    })
+  )
 }

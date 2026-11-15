@@ -89,12 +89,43 @@ export function canInsert(sheet: Sheet, change: StructureChange): boolean {
   return true
 }
 
-/** Lo que cuelga de filas y columnas, recolocado. Las fases siguientes añaden aquí lo suyo. */
+/** Lo que cuelga de filas y columnas, recolocado: anchos, altos, combinadas, filtro, gráficos… */
 function shiftSheetLayout(sheet: Sheet, change: StructureChange): Sheet {
-  return {
-    ...sheet,
-    ...(change.axis === 'columns' ? { columnWidths: shiftIndexedRecord(sheet.columnWidths, change) } : {})
+  const next: Sheet = { ...sheet }
+  if (change.axis === 'columns') next.columnWidths = shiftIndexedRecord(sheet.columnWidths, change)
+  if (change.axis === 'rows' && sheet.rowHeights) next.rowHeights = shiftIndexedRecord(sheet.rowHeights, change)
+  if (sheet.merges) {
+    // Una combinada que pierde filas o columnas sigue combinada; si queda en una sola celda, se deshace.
+    next.merges = sheet.merges
+      .map((merge) => shiftRange(merge, change))
+      .filter((merge): merge is CellRange => !!merge && !isSingleCell(merge))
   }
+  if (sheet.filter) {
+    const range = shiftRange(sheet.filter.range, change)
+    if (!range) delete next.filter
+    else {
+      const excluded =
+        change.axis === 'columns' ? shiftIndexedRecord(sheet.filter.excluded, change) : sheet.filter.excluded
+      next.filter = { range, excluded }
+    }
+  }
+  if (sheet.charts) {
+    next.charts = sheet.charts.flatMap((chart) => {
+      const source = shiftRange(chart.source, change)
+      return source ? [{ ...chart, source }] : []
+    })
+  }
+  if (sheet.conditionalFormats) {
+    next.conditionalFormats = sheet.conditionalFormats.flatMap((format) => {
+      const range = shiftRange(format.range, change)
+      return range ? [{ ...format, range }] : []
+    })
+  }
+  return next
+}
+
+function isSingleCell(range: CellRange): boolean {
+  return range.start.row === range.end.row && range.start.col === range.end.col
 }
 
 export function applyStructureChange(workbook: Workbook, sheetId: string, change: StructureChange): Workbook {

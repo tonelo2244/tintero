@@ -1664,9 +1664,16 @@ button {
   height: 22px;
   z-index: 4;
 }
-.sheet-corner {
+.sheet-header-fixed {
   position: sticky;
   left: 0;
+  height: 22px;
+  z-index: 5;
+}
+.sheet-corner {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 48px;
   height: 22px;
   z-index: 5;
@@ -1680,6 +1687,12 @@ button {
   left: 0;
   width: 48px;
   z-index: 3;
+}
+.sheet-row-headers-fixed {
+  position: sticky;
+  top: 22px;
+  z-index: 1;
+  background: #efefef;
 }
 .sheet-header {
   position: absolute;
@@ -1717,9 +1730,74 @@ button {
   cursor: col-resize;
   z-index: 1;
 }
+.sheet-resize-handle,
+.sheet-row-resize-handle {
+  touch-action: none;
+}
+.sheet-row-resize-handle {
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 1;
+}
 .sheet-cells {
   position: absolute;
   cursor: cell;
+}
+/*
+ * Paneles inmovilizados: capas "sticky" dentro de la zona de celdas. overflow: clip (y no hidden)
+ * porque hidden las convertiría en contenedores de scroll y romperían el sticky de la esquina.
+ */
+.sheet-pane {
+  position: sticky;
+  overflow: clip;
+  background: #fff;
+}
+.sheet-pane--left {
+  left: 48px;
+  z-index: 3;
+  box-shadow: 1px 0 0 #8a8a8a;
+}
+.sheet-pane--top {
+  top: 22px;
+  z-index: 4;
+  box-shadow: 0 1px 0 #8a8a8a;
+}
+.sheet-pane--corner {
+  left: 48px;
+  z-index: 3;
+  box-shadow: 1px 0 0 #8a8a8a;
+}
+.sheet-cell--wrap {
+  white-space: normal;
+  line-height: 16px;
+  padding-top: 2px;
+  overflow-wrap: anywhere;
+}
+.sheet-filter-button {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #b9b9b9;
+  border-radius: 2px;
+  background: #f4f4f4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #444;
+}
+.sheet-filter-button.is-active {
+  background: #d6e9dd;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .sheet-cell {
   position: absolute;

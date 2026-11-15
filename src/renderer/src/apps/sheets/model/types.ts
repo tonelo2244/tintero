@@ -50,6 +50,8 @@ export interface CellStyle {
   align?: HorizontalAlign
   numberFormat?: NumberFormat
   borders?: CellBorders
+  /** Ajustar texto: el contenido se parte en varias líneas dentro del ancho de la celda. */
+  wrap?: boolean
 }
 
 export interface Cell {
@@ -71,6 +73,63 @@ export interface Sheet {
   cells: Record<string, Cell>
   /** Ancho en píxeles de las columnas que no tienen el de por defecto (índice desde 0). */
   columnWidths: Record<number, number>
+  /*
+   * Lo siguiente llegó en la fase 9. Es opcional para que los .tsheet anteriores se sigan abriendo
+   * tal cual (sin subir la versión del formato): ausente = "no hay", igual que un mapa vacío.
+   */
+  /** Alto en píxeles de las filas que no tienen el de por defecto. */
+  rowHeights?: Record<number, number>
+  /** Paneles inmovilizados: las primeras `rows` filas y `cols` columnas no se desplazan. */
+  frozen?: { rows: number; cols: number }
+  /** Celdas combinadas. El contenido vive en la esquina superior izquierda de cada rango. */
+  merges?: CellRange[]
+  filter?: SheetFilter
+  charts?: SheetChart[]
+  conditionalFormats?: ConditionalFormat[]
+}
+
+/**
+ * Autofiltro: un rango con su fila de cabecera. Cada columna guarda los valores (tal y como se
+ * ven) que el usuario ha desmarcado. Filtrar oculta filas; los datos no se tocan.
+ */
+export interface SheetFilter {
+  range: CellRange
+  /** Índice de columna de la hoja -> textos ocultos. */
+  excluded: Record<number, string[]>
+}
+
+export type ChartKind = 'bar' | 'line' | 'pie'
+
+/**
+ * Gráfico flotante sobre la cuadrícula. `source` es el rango de datos: la primera columna son las
+ * categorías y cada columna siguiente una serie (con su nombre en la primera fila).
+ */
+export interface SheetChart {
+  id: string
+  kind: ChartKind
+  source: CellRange
+  title?: string
+  /** Posición y tamaño en píxeles, desde la esquina de la celda A1. */
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type ConditionalRule =
+  | { kind: 'greaterThan'; value: number }
+  | { kind: 'lessThan'; value: number }
+  | { kind: 'between'; min: number; max: number }
+  | { kind: 'textContains'; text: string }
+  /** Escala de dos colores: el menor valor del rango toma `minColor` y el mayor `maxColor`. */
+  | { kind: 'colorScale'; minColor: string; maxColor: string }
+
+export interface ConditionalFormat {
+  id: string
+  range: CellRange
+  rule: ConditionalRule
+  /** Formato que se aplica si se cumple la regla (no se usa en la escala de color). */
+  style?: Pick<CellStyle, 'bold' | 'color' | 'fill'>
 }
 
 export interface Workbook {
