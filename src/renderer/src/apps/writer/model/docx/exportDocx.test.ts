@@ -89,4 +89,33 @@ describe('exportDocx', () => {
     expect(xml).toContain('<pic:pic')
     expect(Object.keys(zip.files).some((name) => name.startsWith('word/media/'))).toBe(true)
   })
+
+  it('convierte tablas con encabezado, celdas combinadas y anchos de columna', async () => {
+    const cell = (type: string, label: string, attrs: Record<string, unknown> = {}): JSONContent => ({
+      type,
+      attrs,
+      content: [paragraph([text(label)])]
+    })
+    const xml = await documentXml([
+      {
+        type: 'table',
+        content: [
+          {
+            type: 'tableRow',
+            content: [cell('tableHeader', 'Nombre', { colwidth: [200] }), cell('tableHeader', 'Nota')]
+          },
+          { type: 'tableRow', content: [cell('tableCell', 'Media', { colspan: 2, rowspan: 2 })] },
+          { type: 'tableRow', content: [] }
+        ]
+      }
+    ])
+    expect(xml.match(/<w:tbl>/g)).toHaveLength(1)
+    expect(xml).toContain('<w:tblHeader/>')
+    expect(xml).toContain('<w:gridSpan w:val="2"/>')
+    expect(xml).toContain('<w:vMerge w:val="restart"/>')
+    // 200 px -> 3000 twips; el resto del ancho útil (9070) va a la segunda columna.
+    expect(xml).toContain('<w:gridCol w:w="3000"/>')
+    expect(xml).toContain('<w:gridCol w:w="6070"/>')
+    expect(xml).toContain('w:fill="F2F2F2"')
+  })
 })

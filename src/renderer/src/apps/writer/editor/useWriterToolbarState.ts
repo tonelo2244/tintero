@@ -31,12 +31,34 @@ export function useWriterToolbarState(editor: Editor | null) {
         align: ALIGNMENTS.find((align) => current.isActive({ textAlign: align })) ?? 'left',
         lineHeight: (current.getAttributes('paragraph').lineHeight as string | undefined) ?? null,
         paragraphStyleId: activeParagraphStyleId(current),
+        table: {
+          active: current.isActive('table'),
+          canMerge: current.can().mergeCells(),
+          canSplit: current.can().splitCell(),
+          headerRow: isInHeaderRow(current)
+        },
         canUndo: current.can().undo(),
         canRedo: current.can().redo(),
         words: current.storage.characterCount.words() as number
       }
     }
   })
+}
+
+/** ¿La fila donde está el cursor es de encabezado? (todas sus celdas son `tableHeader`) */
+function isInHeaderRow(editor: Editor): boolean {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === 'tableRow') {
+      let allHeaders = node.childCount > 0
+      node.forEach((cell) => {
+        if (cell.type.name !== 'tableHeader') allHeaders = false
+      })
+      return allHeaders
+    }
+  }
+  return false
 }
 
 export type WriterToolbarState = NonNullable<ReturnType<typeof useWriterToolbarState>>

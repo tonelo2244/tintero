@@ -103,8 +103,9 @@ export const ParagraphFormat = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      Tab: () => this.editor.commands.indent(),
-      'Shift-Tab': () => this.editor.commands.outdent()
+      // Dentro de una tabla, Tab salta de celda (lo gestiona la extensión de tablas), como en Word.
+      Tab: () => !this.editor.isActive('table') && this.editor.commands.indent(),
+      'Shift-Tab': () => !this.editor.isActive('table') && this.editor.commands.outdent()
     }
   }
 })

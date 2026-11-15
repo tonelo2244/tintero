@@ -37,6 +37,7 @@ import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } f
 import { readImageFile } from '@/ui/readImageFile'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE_PT } from '../constants'
 import { PARAGRAPH_STYLES } from '../model/paragraphStyles'
+import { TableGridPicker } from './TableGridPicker'
 import type { TextAlignment, WriterToolbarState } from './useWriterToolbarState'
 
 const LINE_HEIGHTS = ['1', '1.15', '1.5', '2', '2.5', '3']
@@ -259,6 +260,11 @@ export function WriterInsertTab({ editor }: { editor: Editor }) {
 
   return (
     <>
+      <RibbonGroup label="Tablas">
+        <TableGridPicker
+          onInsert={({ rows, cols }) => chain().insertTable({ rows, cols, withHeaderRow: false }).run()}
+        />
+      </RibbonGroup>
       <RibbonGroup label="Ilustraciones">
         <label className="tool-button tool-button--large" title="Insertar imagen desde el disco">
           <ImagePlus size={22} />
