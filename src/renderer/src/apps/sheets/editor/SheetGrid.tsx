@@ -15,6 +15,7 @@ import { getCellValue, type Evaluation } from '../model/calc'
 import { defaultAlignment, formatCellValue } from '../model/format'
 import { mergeIndex } from '../model/merges'
 import { selectionRange, type Selection } from '../model/selection'
+import { cssFontFamilyFor } from '@/ui/fonts'
 import type { CellCoord, CellRange, CellStyle, CellValue, Sheet } from '../model/types'
 import { HEADER_HEIGHT, ROW_HEADER_WIDTH, ROW_HEIGHT } from '../constants'
 import { columnMetrics, rowMetrics } from './gridMetrics'
@@ -458,6 +459,8 @@ export function cellCss(style: CellStyle | undefined, value: CellValue): CSSProp
   if (style?.bold) css.fontWeight = 700
   if (style?.italic) css.fontStyle = 'italic'
   if (style?.underline) css.textDecoration = 'underline'
+  if (style?.fontFamily) css.fontFamily = cssFontFamilyFor(style.fontFamily)
+  if (style?.fontSize) css.fontSize = `${style.fontSize}pt`
   if (style?.color) css.color = style.color
   else if (value !== null && typeof value === 'object') css.color = '#b3261e'
   if (style?.fill) css.background = style.fill

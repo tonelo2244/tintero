@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
 import type { ImportResult } from '@/core/appModule'
+import { attr, child, parseXml } from '@/core/office/xml'
 import { cellAddress, MAX_COLUMNS, MAX_ROWS, normalizeRange, parseCellAddress } from '../address'
 import { createSheet, createWorkbook, validateSheetName } from '../factories'
 import { dateToSerial } from '../format'
@@ -10,7 +11,14 @@ import { localizedFunctionName } from '../formula/functionNames'
 import { parseFormula } from '../formula/parser'
 import { printFormula } from '../formula/printer'
 import type { Cell, CellRange, CellStyle, Scalar, Sheet, Workbook } from '../types'
-import { argbToHex, excelWidthToPixels, fromExcelNumberFormat } from './xlsxFormats'
+import { importConditionalFormats } from './xlsxConditional'
+import {
+  argbToHex,
+  EXCEL_DEFAULT_ROW_HEIGHT_PT,
+  excelWidthToPixels,
+  fromExcelNumberFormat,
+  pointsToPixels
+} from './xlsxFormats'
 
 /**
  * .xlsx -> libro de Tintero con ExcelJS. Lo que no sabemos representar se pierde, pero se dice:
@@ -21,10 +29,9 @@ export async function importXlsx(bytes: Uint8Array): Promise<ImportResult<Workbo
   // ExcelJS espera un ArrayBuffer exacto (no una vista sobre un buffer mayor).
   await book.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
 
-  const warnings = new Set<string>(await packageWarnings(bytes))
+  const zip = await JSZip.loadAsync(bytes)
+  const warnings = new Set<string>(packageWarnings(zip))
   const unknownFunctions = new Set<string>()
-  // Fuentes distintas usadas en el libro: si todo usa una sola (la de por defecto), no hay nada que avisar.
-  const fonts = new Set<string>()
   const sheets: Sheet[] = []
 
   for (const worksheet of book.worksheets) {
@@ -39,8 +46,6 @@ export async function importXlsx(bytes: Uint8Array): Promise<ImportResult<Workbo
           warnings.add(`los datos más allá de la fila ${MAX_ROWS} o la columna ZZ`)
           return
         }
-        const font = excelCell.font
-        if (font?.name || font?.size) fonts.add(`${font.name ?? ''}|${font.size ?? ''}`)
         const cell = readCell(excelCell, warnings, unknownFunctions)
         if (cell) sheet.cells[cellAddress({ row: rowNumber - 1, col: colNumber - 1 })] = cell
       })
@@ -50,7 +55,7 @@ export async function importXlsx(bytes: Uint8Array): Promise<ImportResult<Workbo
     sheets.push(sheet)
   }
 
-  if (fonts.size > 1) warnings.add('las fuentes y tamaños de letra')
+  removeBaseFont(sheets, await readBaseFont(zip))
   if (sheets.length === 0) sheets.push(createSheet('Hoja1'))
   if (unknownFunctions.size > 0) {
     const names = [...unknownFunctions].map(localizedFunctionName).join(', ')
@@ -164,6 +169,9 @@ function readStyle(excelCell: ExcelJS.Cell, warnings: Set<string>): CellStyle {
   if (font?.bold) style.bold = true
   if (font?.italic) style.italic = true
   if (font?.underline) style.underline = true
+  // Se guardan siempre; removeBaseFont quita después la fuente "normal" del libro.
+  if (font?.name) style.fontFamily = font.name
+  if (font?.size) style.fontSize = font.size
   const color = argbToHex(font?.color?.argb)
   if (color && color !== '#000000') style.color = color
   else if (font?.color?.theme !== undefined && font.color.theme !== 1) warnings.add('los colores del tema de Excel')
@@ -179,10 +187,9 @@ function readStyle(excelCell: ExcelJS.Cell, warnings: Set<string>): CellStyle {
 
   const horizontal = excelCell.alignment?.horizontal
   if (horizontal === 'left' || horizontal === 'center' || horizontal === 'right') style.align = horizontal
+  if (excelCell.alignment?.wrapText) style.wrap = true
   const vertical = excelCell.alignment?.vertical
-  if (excelCell.alignment?.wrapText || (vertical && vertical !== 'bottom')) {
-    warnings.add('el ajuste de texto y la alineación vertical')
-  }
+  if (vertical && vertical !== 'bottom') warnings.add('la alineación vertical')
 
   const { format, lossy } = fromExcelNumberFormat(excelCell.numFmt)
   if (format) style.numberFormat = format
@@ -203,25 +210,78 @@ function readStyle(excelCell: ExcelJS.Cell, warnings: Set<string>): CellStyle {
   return style
 }
 
-/** Cosas de la hoja (no de las celdas) que Tintero aún no tiene. */
+/** Lo que es de la hoja y no de las celdas: combinadas, alto de filas, paneles y formato condicional. */
 function readSheetFeatures(worksheet: ExcelJS.Worksheet, sheet: Sheet, warnings: Set<string>): void {
+  // ExcelJS expone las combinadas y el formato condicional en el modelo, sin tipos públicos.
   const model = worksheet.model as unknown as {
     merges?: string[]
-    conditionalFormattings?: unknown[]
+    conditionalFormattings?: ExcelJS.ConditionalFormattingOptions[]
     dataValidations?: { model?: Record<string, unknown> }
   }
   const merges = (model.merges ?? []).map(parseRangeAddress).filter((range): range is CellRange => range !== null)
   if (merges.length > 0) sheet.merges = merges
-  if ((model.conditionalFormattings?.length ?? 0) > 0) warnings.add('el formato condicional')
+
+  const conditional = importConditionalFormats(model.conditionalFormattings, parseRangeAddress)
+  if (conditional.formats.length > 0) sheet.conditionalFormats = conditional.formats
+  if (conditional.unsupported > 0) warnings.add('algunas reglas de formato condicional (Tintero tiene cinco tipos)')
+
   if (Object.keys(model.dataValidations?.model ?? {}).length > 0) warnings.add('la validación de datos')
   if (worksheet.getImages().length > 0) warnings.add('las imágenes')
-  // Algunos programas (LibreOffice) escriben el mismo alto en todas las filas: solo avisamos si varía.
-  const heights = new Set<number>()
-  worksheet.eachRow((row) => {
-    if (row.height) heights.add(Math.round(row.height))
+
+  readRowHeights(worksheet, sheet)
+
+  const frozen = worksheet.views?.find((view) => view.state === 'frozen') as
+    { xSplit?: number; ySplit?: number } | undefined
+  const rows = Math.min(Math.max(0, Math.round(frozen?.ySplit ?? 0)), MAX_ROWS - 1)
+  const cols = Math.min(Math.max(0, Math.round(frozen?.xSplit ?? 0)), MAX_COLUMNS - 1)
+  if (rows + cols > 0) sheet.frozen = { rows, cols }
+  if (worksheet.views?.some((view) => view.state === 'split')) warnings.add('la división de la ventana en paneles')
+}
+
+/**
+ * Solo guardamos las filas con un alto distinto del normal de la hoja. Algunos programas
+ * (LibreOffice) escriben el alto de todas las filas; las que miden lo normal no aportan nada.
+ */
+function readRowHeights(worksheet: ExcelJS.Worksheet, sheet: Sheet): void {
+  const normal = worksheet.properties.defaultRowHeight || EXCEL_DEFAULT_ROW_HEIGHT_PT
+  const heights: Record<number, number> = {}
+  worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    if (!row.height || rowNumber > MAX_ROWS || Math.abs(row.height - normal) < 0.5) return
+    heights[rowNumber - 1] = pointsToPixels(row.height)
   })
-  if (heights.size > 1) warnings.add('el alto de las filas')
-  if (worksheet.views?.some((view) => view.state === 'frozen')) warnings.add('los paneles inmovilizados')
+  if (Object.keys(heights).length > 0) sheet.rowHeights = heights
+}
+
+interface BaseFont {
+  name?: string
+  size?: number
+}
+
+/**
+ * Fuente del estilo "Normal" del libro (la primera de `xl/styles.xml`): Calibri 11 en Excel,
+ * Arial 10 en LibreOffice... No la guardamos en cada celda: así esas celdas se ven con la fuente
+ * de la cuadrícula, como en una hoja nueva, y solo destacan las que el autor cambió a propósito.
+ */
+async function readBaseFont(zip: JSZip): Promise<BaseFont> {
+  const styles = await zip.file('xl/styles.xml')?.async('string')
+  const font = styles ? child(child(parseXml(styles), 'fonts'), 'font') : null
+  const size = Number(attr(child(font, 'sz'), 'val'))
+  return { name: attr(child(font, 'name'), 'val') ?? undefined, size: size > 0 ? size : undefined }
+}
+
+function removeBaseFont(sheets: Sheet[], base: BaseFont): void {
+  for (const sheet of sheets) {
+    for (const [address, cell] of Object.entries(sheet.cells)) {
+      const style = cell.style
+      if (!style) continue
+      if (style.fontFamily === base.name) delete style.fontFamily
+      if (style.fontSize === base.size) delete style.fontSize
+      if (Object.keys(style).length === 0) {
+        delete cell.style
+        if (cell.value === undefined && cell.formula === undefined) delete sheet.cells[address]
+      }
+    }
+  }
 }
 
 /** "B2:D4" -> rango. Las combinadas que se salen de la hoja de Tintero se descartan. */
@@ -237,8 +297,7 @@ function parseRangeAddress(text: string): CellRange | null {
  * ExcelJS ignora en silencio gráficos, tablas dinámicas y comentarios. Para no perderlos sin avisar,
  * miramos qué partes trae el paquete (un .xlsx es un .zip con un XML por cada cosa).
  */
-async function packageWarnings(bytes: Uint8Array): Promise<string[]> {
-  const zip = await JSZip.loadAsync(bytes)
+function packageWarnings(zip: JSZip): string[] {
   const paths = Object.keys(zip.files)
   const has = (prefix: string) => paths.some((path) => path.startsWith(prefix))
   const warnings: string[] = []

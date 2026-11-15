@@ -1,3 +1,6 @@
+// @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import ExcelJS from 'exceljs'
 import { describe, expect, it } from 'vitest'
 import { evaluateWorkbook, getCellValue } from '../calc'
@@ -100,14 +103,86 @@ describe('importar .xlsx', () => {
     expect(cells.A2).toEqual({ formula: 'SUMPRODUCT(B1:B2,C1:C2)' })
     expect(cells.A3).toEqual({ formula: 'SUM(A:A)' })
     expect(content.sheets[0].merges).toEqual([{ start: { row: 4, col: 1 }, end: { row: 4, col: 2 } }])
+    // Arial 14 se conserva; Calibri 11 es la fuente normal del libro y no se guarda en la celda.
+    expect(cells.A4).toEqual({ value: 5, style: { fontFamily: 'Arial', fontSize: 14 } })
+    expect(cells.A5).toEqual({ value: 6 })
     expect(warnings).toEqual(
       expect.arrayContaining([
         'el formato dentro de una celda (se conserva el texto)',
-        'las fuentes y tamaños de letra',
         expect.stringMatching(/SUMPRODUCT/)
       ])
     )
     // Las columnas enteras (A:A) ya se entienden desde la fase 9: no hay aviso de sintaxis.
     expect(warnings.some((warning) => warning.includes('sintaxis'))).toBe(false)
+  })
+})
+
+describe('fase 10: fuentes, altos, paneles y formato condicional', () => {
+  it('ida y vuelta de lo que es de la hoja', async () => {
+    const sheet = createSheet('Datos', {
+      A1: { value: 'Título', style: { fontFamily: 'Georgia', fontSize: 16, bold: true } },
+      A2: { value: 'Texto largo', style: { wrap: true } },
+      B2: { value: 120 }
+    })
+    sheet.rowHeights = { 0: 40, 1: 60 }
+    sheet.frozen = { rows: 1, cols: 1 }
+    sheet.conditionalFormats = [
+      {
+        id: 'r1',
+        range: { start: { row: 1, col: 1 }, end: { row: 5, col: 1 } },
+        rule: { kind: 'greaterThan', value: 100 },
+        style: { bold: true, fill: '#c6efce' }
+      },
+      {
+        id: 'r2',
+        range: { start: { row: 1, col: 1 }, end: { row: 5, col: 1 } },
+        rule: { kind: 'between', min: 1, max: 9 }
+      },
+      {
+        id: 'r3',
+        range: { start: { row: 1, col: 0 }, end: { row: 5, col: 0 } },
+        rule: { kind: 'textContains', text: 'urgente' },
+        style: { color: '#c0392b' }
+      },
+      {
+        id: 'r4',
+        range: { start: { row: 1, col: 1 }, end: { row: 5, col: 1 } },
+        rule: { kind: 'colorScale', minColor: '#ffffff', maxColor: '#63be7b' }
+      }
+    ]
+    const { content, warnings } = await importXlsx(await exportXlsx(createWorkbook([sheet])))
+    expect(warnings).toEqual([])
+    const [read] = content.sheets
+    expect(read.cells.A1.style).toEqual({ fontFamily: 'Georgia', fontSize: 16, bold: true })
+    expect(read.cells.A2.style).toEqual({ wrap: true })
+    expect(read.rowHeights).toEqual({ 0: 40, 1: 60 })
+    expect(read.frozen).toEqual({ rows: 1, cols: 1 })
+    expect(read.conditionalFormats?.map(({ range, rule, style }) => ({ range, rule, style }))).toEqual(
+      sheet.conditionalFormats.map(({ range, rule, style }) => ({ range, rule, style }))
+    )
+  })
+})
+
+const fixture = (name: string) => new Uint8Array(readFileSync(resolve('fixtures/office', name)))
+
+describe.each(['excel-formato.xlsx', 'libreoffice-formato.xlsx'])('corpus: %s', (name) => {
+  it('conserva fuentes, alto de filas, paneles, ajuste y formato condicional', async () => {
+    const { content, warnings } = await importXlsx(fixture(name))
+    const [sheet] = content.sheets
+    expect(sheet.cells.A1.style).toMatchObject({ fontFamily: 'Georgia', fontSize: 16, bold: true })
+    // La fuente normal del libro no se copia a cada celda.
+    expect(sheet.cells.A3.style?.fontFamily).toBeUndefined()
+    expect(sheet.rowHeights?.[0]).toBe(40)
+    expect(sheet.frozen).toEqual({ rows: 2, cols: 0 })
+    expect(sheet.merges).toEqual([{ start: { row: 0, col: 0 }, end: { row: 0, col: 2 } }])
+    expect(sheet.cells.C3.style?.wrap).toBe(true)
+    const rules = sheet.conditionalFormats?.map((format) => format.rule)
+    expect(rules).toEqual([
+      { kind: 'greaterThan', value: 100 },
+      { kind: 'colorScale', minColor: '#ffffff', maxColor: '#63be7b' }
+    ])
+    expect(sheet.conditionalFormats?.[0].style).toEqual({ bold: true, color: '#006100', fill: '#c6efce' })
+    // La regla con fórmula (ISBLANK) no existe en Tintero: se avisa.
+    expect(warnings).toContain('algunas reglas de formato condicional (Tintero tiene cinco tipos)')
   })
 })
