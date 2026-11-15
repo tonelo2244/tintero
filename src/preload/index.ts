@@ -20,12 +20,19 @@ const api: TinteroApi = {
   },
   window: {
     setTitle: (title) => ipcRenderer.send(IpcChannel.WindowSetTitle, title),
-    print: () => ipcRenderer.invoke(IpcChannel.WindowPrint)
+    print: () => ipcRenderer.invoke(IpcChannel.WindowPrint),
+    setUnsavedChanges: (documentName) => ipcRenderer.send(IpcChannel.WindowSetUnsavedChanges, documentName),
+    confirmClose: () => ipcRenderer.send(IpcChannel.WindowConfirmClose)
   },
   onMenuCommand: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, command: MenuCommand) => handler(command)
     ipcRenderer.on(IpcChannel.MenuCommand, listener)
     return () => ipcRenderer.removeListener(IpcChannel.MenuCommand, listener)
+  },
+  onSaveBeforeClose: (handler) => {
+    const listener = () => handler()
+    ipcRenderer.on(IpcChannel.WindowSaveBeforeClose, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.WindowSaveBeforeClose, listener)
   }
 }
 

@@ -97,8 +97,9 @@ export function useDocumentSession(registry: AppRegistry) {
   )
 
   const save = useCallback(
-    async (forceNewPath = false) => {
-      if (!document) return
+    /** Devuelve true si el documento quedó guardado en disco. */
+    async (forceNewPath = false): Promise<boolean> => {
+      if (!document) return false
       try {
         const contents = serializeDocument(document.app.id, latestContent.current)
         const path = await platform.files.save(
@@ -107,13 +108,15 @@ export function useDocumentSession(registry: AppRegistry) {
           `${document.name}.${document.app.file.extension}`,
           [fileFilterFor(document.app)]
         )
-        if (!path) return // el usuario canceló el diálogo
+        if (!path) return false // el usuario canceló el diálogo
         const name = displayNameFromPath(path)
         setDocument((current) => (current ? { ...current, path, name } : current))
         setIsDirty(false)
         await platform.recents.touch({ path, name, appId: document.app.id })
+        return true
       } catch (error) {
         setNotice(`No se pudo guardar. ${errorMessage(error)}`)
+        return false
       }
     },
     [document]
