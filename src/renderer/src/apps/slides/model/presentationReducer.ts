@@ -1,4 +1,5 @@
-import { clearRunFormat } from './richText'
+import { groupElements, setElementBox, ungroupElement } from './arrange'
+import { clearParagraphFormat, clearRunFormat } from './richText'
 import {
   RUN_FORMAT_KEYS,
   type Box,
@@ -6,6 +7,7 @@ import {
   type ShapeStyle,
   type Slide,
   type SlideElement,
+  type SlideTransition,
   type TableCell,
   type TextParagraph,
   type TextStyle
@@ -29,6 +31,12 @@ export type PresentationAction =
   | { type: 'element/setShapeStyle'; slideId: string; elementId: string; style: Partial<ShapeStyle> }
   | { type: 'element/reorder'; slideId: string; elementId: string; direction: 'front' | 'back' }
   | { type: 'element/setRotation'; slideId: string; elementId: string; rotation: number }
+  | { type: 'elements/add'; slideId: string; elements: SlideElement[] }
+  | { type: 'elements/delete'; slideId: string; elementIds: string[] }
+  | { type: 'elements/setBoxes'; slideId: string; boxes: Record<string, Box> }
+  | { type: 'elements/group'; slideId: string; elementIds: string[]; groupId: string }
+  | { type: 'elements/ungroup'; slideId: string; groupId: string }
+  | { type: 'slide/setTransition'; slideId: string; transition: SlideTransition }
   | { type: 'table/setCell'; slideId: string; elementId: string; row: number; col: number; cell: Partial<TableCell> }
   | { type: 'presentation/setTheme'; themeId: string }
 
@@ -64,7 +72,45 @@ export function presentationReducer(state: Presentation, action: PresentationAct
         elements: slide.elements.filter((element) => element.id !== action.elementId)
       }))
     case 'element/setBox':
-      return updateElement(state, action.slideId, action.elementId, (element) => ({ ...element, ...action.box }))
+      return updateElement(state, action.slideId, action.elementId, (element) => setElementBox(element, action.box))
+    case 'elements/add':
+      if (action.elements.length === 0) return state
+      return updateSlide(state, action.slideId, (slide) => ({
+        ...slide,
+        elements: [...slide.elements, ...action.elements]
+      }))
+    case 'elements/delete':
+      return updateSlide(state, action.slideId, (slide) => {
+        const elements = slide.elements.filter((element) => !action.elementIds.includes(element.id))
+        return elements.length === slide.elements.length ? slide : { ...slide, elements }
+      })
+    case 'elements/setBoxes':
+      return updateSlide(state, action.slideId, (slide) => {
+        let changed = false
+        const elements = slide.elements.map((element) => {
+          const box = action.boxes[element.id]
+          if (!box) return element
+          changed = true
+          return setElementBox(element, box)
+        })
+        return changed ? { ...slide, elements } : slide
+      })
+    case 'elements/group':
+      return updateSlide(state, action.slideId, (slide) => {
+        const elements = groupElements(slide.elements, action.elementIds, action.groupId)
+        return elements === slide.elements ? slide : { ...slide, elements }
+      })
+    case 'elements/ungroup':
+      return updateSlide(state, action.slideId, (slide) => {
+        const elements = ungroupElement(slide.elements, action.groupId)
+        return elements === slide.elements ? slide : { ...slide, elements }
+      })
+    case 'slide/setTransition':
+      return updateSlide(state, action.slideId, (slide) => {
+        if ((slide.transition ?? 'none') === action.transition) return slide
+        const { transition: _previous, ...rest } = slide
+        return action.transition === 'none' ? rest : { ...rest, transition: action.transition }
+      })
     case 'element/setParagraphs':
       return updateElement(state, action.slideId, action.elementId, (element) =>
         element.type === 'text' ? { ...element, paragraphs: action.paragraphs } : element
@@ -75,10 +121,12 @@ export function presentationReducer(state: Presentation, action: PresentationAct
         // Formato al cuadro entero: las palabras con ese formato propio dejan de tenerlo,
         // si no, "negrita" en el cuadro no se vería en una palabra marcada como "sin negrita".
         const changedKeys = RUN_FORMAT_KEYS.filter((key) => key in action.style)
+        // Igual con la alineación y la viñeta propias de cada párrafo.
+        const paragraphKeys = (['align', 'bullets'] as const).filter((key) => key in action.style)
         return {
           ...element,
           style: { ...element.style, ...action.style },
-          paragraphs: clearRunFormat(element.paragraphs, changedKeys)
+          paragraphs: clearParagraphFormat(clearRunFormat(element.paragraphs, changedKeys), [...paragraphKeys])
         }
       })
     case 'element/setShapeStyle':

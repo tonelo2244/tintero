@@ -1,4 +1,5 @@
-import type { Extensions } from '@tiptap/core'
+import { Extension, type Extensions } from '@tiptap/core'
+import TextAlign from '@tiptap/extension-text-align'
 import StarterKit from '@tiptap/starter-kit'
 import { Color, FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 
@@ -28,6 +29,55 @@ export function createSlideTextExtensions(): Extensions {
     TextStyle,
     Color,
     FontFamily,
-    FontSize
+    FontSize,
+    // Alineación por párrafo. Sin valor por defecto: un párrafo sin alineación propia sigue al cuadro.
+    TextAlign.configure({ types: ['paragraph'], defaultAlignment: null }),
+    ParagraphBullet
   ]
 }
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    paragraphBullet: {
+      /** Pone o quita la viñeta de los párrafos seleccionados. */
+      setParagraphBullet: (bullet: boolean) => ReturnType
+    }
+  }
+}
+
+/**
+ * Viñeta por párrafo: atributo `bullet` (true, false o null = la del cuadro), que se pinta como
+ * `data-bullet`. Es un atributo y no una lista de Tiptap porque el modelo de la diapositiva no tiene
+ * listas anidadas: cada párrafo es una línea con o sin viñeta, como en PowerPoint.
+ */
+const ParagraphBullet = Extension.create({
+  name: 'paragraphBullet',
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph'],
+        attributes: {
+          bullet: {
+            default: null,
+            parseHTML: (element) => {
+              const value = element.getAttribute('data-bullet')
+              return value === null ? null : value === 'true'
+            },
+            renderHTML: (attributes) =>
+              attributes.bullet === null || attributes.bullet === undefined
+                ? {}
+                : { 'data-bullet': String(attributes.bullet) }
+          }
+        }
+      }
+    ]
+  },
+  addCommands() {
+    return {
+      setParagraphBullet:
+        (bullet) =>
+        ({ commands }) =>
+          commands.updateAttributes('paragraph', { bullet })
+    }
+  }
+})

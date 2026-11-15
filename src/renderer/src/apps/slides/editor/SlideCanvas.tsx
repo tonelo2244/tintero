@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
+import { boundingBox, boxOf } from '../model/arrange'
 import { RESIZE_HANDLES, resizeBox, snapToCenter, type ResizeHandle } from '../model/geometry'
 import type { PresentationAction } from '../model/presentationReducer'
 import { fromEditorDoc, hasText, toEditorDoc } from '../model/richText'
@@ -22,9 +23,10 @@ export type ApplyAction = (action: PresentationAction, coalesceKey?: string) => 
 interface SlideCanvasProps {
   slide: Slide
   theme: SlideTheme
-  selectedElementId: string | null
+  /** Elementos seleccionados (Mayús + clic añade o quita uno). */
+  selectedElementIds: string[]
   editingElementId: string | null
-  onSelectElement(id: string | null): void
+  onSelectElements(ids: string[]): void
   onEditElement(id: string | null): void
   /** Avisa del editor de texto activo (o null al dejar de escribir), para que la cinta lo use. */
   onTextEditorChange(editor: Editor | null): void
@@ -37,15 +39,55 @@ let gestureCounter = 0
 
 /** Lienzo editable: selección, mover, redimensionar y editar texto. */
 export function SlideCanvas(props: SlideCanvasProps) {
-  const { slide, selectedElementId, editingElementId, onSelectElement, onEditElement, onTextEditorChange, apply } =
+  const { slide, selectedElementIds, editingElementId, onSelectElements, onEditElement, onTextEditorChange, apply } =
     props
   const theme = props.theme
   const containerRef = useRef<HTMLDivElement>(null)
   const scale = useFitScale(containerRef)
   const [guides, setGuides] = useState({ vertical: false, horizontal: false })
 
+  /**
+   * Pulsar un elemento. Con Mayús (o Ctrl) lo añade o quita de la selección y no arrastra; si no,
+   * devuelve las cajas de lo que se va a mover: toda la selección si el elemento ya estaba en ella
+   * (así se arrastran varios a la vez), o solo él.
+   */
+  const pressElement = (id: string, additive: boolean): Record<string, Box> | null => {
+    const isSelected = selectedElementIds.includes(id)
+    if (additive) {
+      onSelectElements(isSelected ? selectedElementIds.filter((other) => other !== id) : [...selectedElementIds, id])
+      return null
+    }
+    const moving = isSelected ? selectedElementIds : [id]
+    if (!isSelected) onSelectElements([id])
+    return Object.fromEntries(
+      slide.elements.filter((element) => moving.includes(element.id)).map((element) => [element.id, boxOf(element)])
+    )
+  }
+
+  /** Mueve varias cajas a la vez; el imán al centro actúa sobre la caja que las envuelve. */
+  const moveBoxes = (startBoxes: Record<string, Box>, dx: number, dy: number, gestureKey: string) => {
+    const start = boundingBox(Object.values(startBoxes))
+    const { box, guides: snapped } = snapToCenter({
+      ...start,
+      x: Math.round(start.x + dx),
+      y: Math.round(start.y + dy)
+    })
+    setGuides(snapped)
+    const offsetX = box.x - start.x
+    const offsetY = box.y - start.y
+    const boxes = Object.fromEntries(
+      Object.entries(startBoxes).map(([id, startBox]) => [
+        id,
+        { ...startBox, x: startBox.x + offsetX, y: startBox.y + offsetY }
+      ])
+    )
+    apply({ type: 'elements/setBoxes', slideId: slide.id, boxes }, gestureKey)
+  }
+
+  const isMultiple = selectedElementIds.length > 1
+
   return (
-    <div className="slide-canvas" ref={containerRef} onPointerDown={() => onSelectElement(null)}>
+    <div className="slide-canvas" ref={containerRef} onPointerDown={() => onSelectElements([])}>
       <div
         className="slide-view slide-view--editable"
         style={{ width: SLIDE_WIDTH * scale, height: SLIDE_HEIGHT * scale }}
@@ -55,7 +97,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
           style={{ background: slideBackground(slide, theme), transform: `scale(${scale})` }}
           onPointerDown={(event) => {
             event.stopPropagation()
-            onSelectElement(null)
+            if (!event.shiftKey) onSelectElements([])
           }}
         >
           {slide.elements.map((element) => (
@@ -64,9 +106,13 @@ export function SlideCanvas(props: SlideCanvasProps) {
               element={element}
               theme={theme}
               scale={scale}
-              isSelected={element.id === selectedElementId}
+              isSelected={selectedElementIds.includes(element.id)}
+              isOnlySelected={!isMultiple && selectedElementIds[0] === element.id}
               isEditing={element.id === editingElementId}
-              onSelect={() => onSelectElement(element.id)}
+              onPress={(additive) => pressElement(element.id, additive)}
+              onClick={() => isMultiple && onSelectElements([element.id])}
+              onMove={moveBoxes}
+              onGestureEnd={() => setGuides({ vertical: false, horizontal: false })}
               onEdit={(editing) => onEditElement(editing ? element.id : null)}
               onBoxChange={(box, gestureKey) =>
                 apply({ type: 'element/setBox', slideId: slide.id, elementId: element.id, box }, gestureKey)
@@ -91,7 +137,6 @@ export function SlideCanvas(props: SlideCanvasProps) {
                 )
               }
               onTextEditorChange={onTextEditorChange}
-              onGuides={setGuides}
             />
           ))}
           {guides.vertical && <div className="slide-guide slide-guide--vertical" />}
@@ -126,18 +171,25 @@ interface EditableElementProps {
   theme: SlideTheme
   scale: number
   isSelected: boolean
+  /** Seleccionado y solo: muestra tiradores y se puede entrar a escribir. */
+  isOnlySelected: boolean
   isEditing: boolean
-  onSelect(): void
+  /** Pulsar el elemento: devuelve las cajas que arrastrar, o null si el gesto no mueve nada. */
+  onPress(additive: boolean): Record<string, Box> | null
+  /** Clic sin arrastrar (no aditivo). */
+  onClick(): void
+  onMove(startBoxes: Record<string, Box>, dx: number, dy: number, gestureKey: string): void
+  /** Fin de un arrastre: quita las guías. */
+  onGestureEnd(): void
   onEdit(editing: boolean): void
   onBoxChange(box: Box, gestureKey: string): void
   onParagraphsChange(paragraphs: TextParagraph[], sessionKey: string): void
   onTableCellChange(row: number, col: number, text: string, sessionKey: string): void
   onTextEditorChange(editor: Editor | null): void
-  onGuides(guides: { vertical: boolean; horizontal: boolean }): void
 }
 
 function EditableElement(props: EditableElementProps) {
-  const { element, theme, scale, isSelected, isEditing } = props
+  const { element, theme, scale, isSelected, isOnlySelected, isEditing } = props
   const isText = element.type === 'text'
   /** Elementos con contenido que se escribe dentro: texto y tablas. */
   const isWritable = isText || element.type === 'table'
@@ -146,8 +198,11 @@ function EditableElement(props: EditableElementProps) {
   const startGesture = (event: ReactPointerEvent, handle: ResizeHandle | null) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    const wasSelected = isSelected
-    props.onSelect()
+    const wasSelected = isOnlySelected
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey
+    // Los tiradores solo existen con un elemento seleccionado: redimensionar no cambia la selección.
+    const startBoxes = handle ? null : props.onPress(additive)
+    if (!handle && !startBoxes) return
 
     const target = event.currentTarget as HTMLElement
     target.setPointerCapture(event.pointerId)
@@ -163,15 +218,11 @@ function EditableElement(props: EditableElementProps) {
       if (!moved && Math.hypot(dx * scale, dy * scale) < DRAG_THRESHOLD) return
       moved = true
       if (handle) {
-        props.onBoxChange(resizeBox(startBox, handle, dx, dy, element.type === 'image'), gestureKey)
-      } else {
-        const { box, guides } = snapToCenter({
-          ...startBox,
-          x: Math.round(startBox.x + dx),
-          y: Math.round(startBox.y + dy)
-        })
-        props.onGuides(guides)
-        props.onBoxChange(box, gestureKey)
+        // Grupos e imágenes conservan la proporción al tirar de una esquina.
+        const keepAspect = element.type === 'image' || element.type === 'group'
+        props.onBoxChange(resizeBox(startBox, handle, dx, dy, keepAspect), gestureKey)
+      } else if (startBoxes) {
+        props.onMove(startBoxes, dx, dy, gestureKey)
       }
     }
 
@@ -179,7 +230,8 @@ function EditableElement(props: EditableElementProps) {
       target.removeEventListener('pointermove', onMove)
       target.removeEventListener('pointerup', onUp)
       target.removeEventListener('pointercancel', onUp)
-      props.onGuides({ vertical: false, horizontal: false })
+      props.onGestureEnd()
+      if (!moved && !handle) props.onClick()
       // Clic (sin arrastrar) sobre un texto ya seleccionado o vacío -> entrar a escribir.
       if (!moved && !handle && isWritable && (wasSelected || (isText && !hasText(element.paragraphs)))) {
         props.onEdit(true)
@@ -220,7 +272,7 @@ function EditableElement(props: EditableElementProps) {
       ) : (
         <ElementContent element={element} theme={theme} showPlaceholder />
       )}
-      {isSelected &&
+      {isOnlySelected &&
         !isEditing &&
         RESIZE_HANDLES.map((handle) => (
           <span

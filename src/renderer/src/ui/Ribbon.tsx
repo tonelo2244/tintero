@@ -23,10 +23,21 @@ interface ToolButtonProps {
   /** Botón grande con icono arriba y texto debajo (p. ej. "Nueva diapositiva"). */
   large?: boolean
   showLabel?: boolean
+  /** Atajo de teclado ("Ctrl+C"): se muestra en la ayuda emergente y se anuncia a los lectores de pantalla. */
+  shortcut?: string
   children: ReactNode
 }
 
-export function ToolButton({ label, onClick, active, disabled, large, showLabel, children }: ToolButtonProps) {
+export function ToolButton({
+  label,
+  onClick,
+  active,
+  disabled,
+  large,
+  showLabel,
+  shortcut,
+  children
+}: ToolButtonProps) {
   // onMouseDown + preventDefault evita que el botón robe el foco al editor
   // (si no, se perdería la selección de texto al pulsar "Negrita").
   const keepFocus = (event: ReactMouseEvent) => event.preventDefault()
@@ -34,8 +45,9 @@ export function ToolButton({ label, onClick, active, disabled, large, showLabel,
     <button
       type="button"
       className={`tool-button ${large ? 'tool-button--large' : ''} ${active ? 'is-active' : ''}`}
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
       aria-label={label}
+      aria-keyshortcuts={shortcut?.replace('Ctrl', 'Control').replace('Mayús', 'Shift')}
       aria-pressed={active}
       disabled={disabled}
       onMouseDown={keepFocus}
@@ -103,9 +115,17 @@ export function Dropdown({ label, trigger, large, showLabel, disabled, children 
   )
 }
 
-export function MenuItem({ onSelect, children }: { onSelect(): void; children: ReactNode }) {
+export function MenuItem({
+  onSelect,
+  disabled,
+  children
+}: {
+  onSelect(): void
+  disabled?: boolean
+  children: ReactNode
+}) {
   return (
-    <button type="button" className="menu-item" onClick={onSelect}>
+    <button type="button" className="menu-item" disabled={disabled} onClick={onSelect}>
       {children}
     </button>
   )

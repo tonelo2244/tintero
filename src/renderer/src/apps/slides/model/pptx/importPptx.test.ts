@@ -5,7 +5,7 @@ import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import { createShapeElement, createSlide, createTableElement, createTextElement } from '../factories'
 import { plainText } from '../richText'
-import type { Presentation, ShapeElement, TextElement } from '../types'
+import type { GroupElement, Presentation, ShapeElement, TextElement } from '../types'
 import { exportPptx } from './exportPptx'
 import { importPptx } from './importPptx'
 
@@ -26,14 +26,17 @@ const xfrm = (x: number, y: number, w: number, h: number) =>
  * .pptx mínimo escrito a mano: el título de la diapositiva NO tiene posición ni tamaño de letra,
  * así que debe heredarlos del diseño (posición) y del patrón (44 pt, centrado).
  */
-async function handmadePptx(slideShapes: string): Promise<Uint8Array> {
+async function handmadePptx(slideShapes: string, afterShapeTree = ''): Promise<Uint8Array> {
   const zip = new JSZip()
   zip.file(
     'ppt/presentation.xml',
     `<p:presentation ${NS}><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst><p:sldSz cx="${1280 * EMU}" cy="${720 * EMU}"/></p:presentation>`
   )
   zip.file('ppt/_rels/presentation.xml.rels', rels([['rId1', 'slide', 'slides/slide1.xml']]))
-  zip.file('ppt/slides/slide1.xml', `<p:sld ${NS}><p:cSld><p:spTree>${slideShapes}</p:spTree></p:cSld></p:sld>`)
+  zip.file(
+    'ppt/slides/slide1.xml',
+    `<p:sld ${NS}><p:cSld><p:spTree>${slideShapes}</p:spTree></p:cSld>${afterShapeTree}</p:sld>`
+  )
   zip.file('ppt/slides/_rels/slide1.xml.rels', rels([['rId1', 'slideLayout', '../slideLayouts/slideLayout1.xml']]))
   zip.file(
     'ppt/slideLayouts/slideLayout1.xml',
@@ -187,5 +190,64 @@ describe('fase 10: tablas, giros y fondos (ida y vuelta)', () => {
     expect(imported.find((element) => element.type === 'shape')?.rotation).toBe(45)
     expect(content.slides[0].background).toBeUndefined()
     expect(content.slides[1].background).toBe('#123456')
+  })
+})
+
+describe('fase 11: grupos, transiciones y formato por párrafo', () => {
+  const box = (id: number, x: number, prst: string) =>
+    `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="s${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(x, 0, 50, 50)}<a:prstGeom prst="${prst}"/><a:solidFill><a:srgbClr val="228844"/></a:solidFill></p:spPr></p:sp>`
+
+  it('lee un grupo de PowerPoint como grupo, con su giro', async () => {
+    const group = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="5" name="g"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm rot="5400000"><a:off x="0" y="0"/><a:ext cx="${200 * EMU}" cy="${50 * EMU}"/><a:chOff x="0" y="0"/><a:chExt cx="${200 * EMU}" cy="${50 * EMU}"/></a:xfrm></p:grpSpPr>${box(6, 0, 'rect')}${box(7, 150, 'ellipse')}</p:grpSp>`
+    const { content } = await importPptx(await handmadePptx(group))
+    const [read] = content.slides[0].elements as GroupElement[]
+    expect(read).toMatchObject({ type: 'group', x: 0, y: 0, width: 200, height: 50, rotation: 90 })
+    expect(read.children.map((element) => element.type === 'shape' && element.shape)).toEqual(['rect', 'ellipse'])
+  })
+
+  it('lee la transición también dentro de mc:AlternateContent', async () => {
+    const alternate =
+      '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><mc:Choice Requires="p14"><p:transition spd="slow"><p:push dir="u"/></p:transition></mc:Choice><mc:Fallback><p:transition><p:push/></p:transition></mc:Fallback></mc:AlternateContent>'
+    const { content } = await importPptx(await handmadePptx(titlePlaceholder, alternate))
+    expect(content.slides[0].transition).toBe('push')
+
+    const wipe = await importPptx(await handmadePptx(titlePlaceholder, '<p:transition><p:wipe/></p:transition>'))
+    expect(wipe.content.slides[0].transition).toBe('fade')
+    expect(wipe.warnings).toEqual(['1 transición de otro tipo (pasan a desvanecer)'])
+  })
+
+  it('un párrafo con otra alineación o sin viñeta lo guarda como propio', async () => {
+    const body = `<p:sp><p:nvSpPr><p:cNvPr id="3" name="b"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm(0, 200, 600, 300)}</p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>uno</a:t></a:r></a:p><a:p><a:pPr algn="r"><a:buNone/></a:pPr><a:r><a:t>dos</a:t></a:r></a:p></p:txBody></p:sp>`
+    const { content } = await importPptx(await handmadePptx(body))
+    const [text] = content.slides[0].elements as TextElement[]
+    expect(text.style).toMatchObject({ align: 'left', bullets: true })
+    expect(text.paragraphs).toEqual([
+      { runs: [{ text: 'uno' }] },
+      { runs: [{ text: 'dos' }], align: 'right', bullets: false }
+    ])
+  })
+
+  it('ida y vuelta: transiciones y formato por párrafo se conservan; los grupos salen sueltos', async () => {
+    const slide = createSlide('blank')
+    const paragraphs = [{ runs: [{ text: 'izquierda' }] }, { runs: [{ text: 'centro' }], align: 'center' as const }]
+    const text = createTextElement('free', { x: 80, y: 60, width: 700, height: 200 }, { paragraphs })
+    const a = createShapeElement('rect', { x: 100, y: 400, width: 100, height: 100 })
+    const b = createShapeElement('ellipse', { x: 300, y: 400, width: 100, height: 100 })
+    const group: GroupElement = { id: 'g', type: 'group', x: 100, y: 400, width: 300, height: 100, children: [a, b] }
+    slide.elements = [text, group]
+    slide.transition = 'fade'
+    const second = { ...createSlide('blank'), transition: 'push' as const }
+    const { content, warnings } = await importPptx(
+      await exportPptx({ themeId: 'blank', slides: [slide, second, createSlide('blank')] })
+    )
+    expect(warnings).toEqual([])
+    expect(content.slides.map((item) => item.transition)).toEqual(['fade', 'push', undefined])
+    const [readText, ...shapes] = content.slides[0].elements
+    expect(readText.type === 'text' && readText.paragraphs).toEqual(paragraphs)
+    // pptxgenjs no escribe grupos: vuelven como dos formas en su sitio.
+    expect(shapes.map((shape) => [shape.type, shape.x])).toEqual([
+      ['shape', 100],
+      ['shape', 300]
+    ])
   })
 })

@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import {
   RUN_FORMAT_KEYS,
+  type HorizontalAlign,
   type RunFormat,
   type RunFormatKey,
   type TextParagraph,
@@ -59,7 +60,29 @@ export function normalizeParagraphs(paragraphs: TextParagraph[]): TextParagraph[
       if (previous && sameFormat(previous, run)) runs[runs.length - 1] = { ...previous, text: previous.text + run.text }
       else runs.push({ ...run })
     }
-    return { runs }
+    return withParagraphFormat({ runs }, paragraph)
+  })
+}
+
+/** Copia la alineación y la viñeta propias de un párrafo (solo si las tiene). */
+function withParagraphFormat(target: TextParagraph, source: Pick<TextParagraph, 'align' | 'bullets'>): TextParagraph {
+  if (source.align !== undefined) target.align = source.align
+  if (source.bullets !== undefined) target.bullets = source.bullets
+  return target
+}
+
+/** Alineación y viñeta con las que se pinta un párrafo: las suyas o las del cuadro. */
+export function resolveParagraphFormat(style: TextStyle, paragraph: TextParagraph) {
+  return { align: paragraph.align ?? style.align, bullets: paragraph.bullets ?? style.bullets }
+}
+
+/** Quita a los párrafos la alineación o la viñeta propias (al aplicarlas al cuadro entero). */
+export function clearParagraphFormat(paragraphs: TextParagraph[], keys: ('align' | 'bullets')[]): TextParagraph[] {
+  if (keys.length === 0 || !paragraphs.some((paragraph) => keys.some((key) => key in paragraph))) return paragraphs
+  return paragraphs.map((paragraph) => {
+    const copy = { ...paragraph }
+    for (const key of keys) delete copy[key]
+    return copy
   })
 }
 
@@ -71,6 +94,7 @@ export function clearRunFormat(paragraphs: TextParagraph[], keys: RunFormatKey[]
   if (keys.length === 0) return paragraphs
   return normalizeParagraphs(
     paragraphs.map((paragraph) => ({
+      ...paragraph,
       runs: paragraph.runs.map((run) => {
         const next = { ...run }
         for (const key of keys) delete next[key]
@@ -105,8 +129,12 @@ export function resolveRunFormat(style: TextStyle, run: RunFormat) {
 const px = (size: number) => `${size}px`
 
 export function toEditorDoc(paragraphs: TextParagraph[], style: TextStyle): JSONContent {
-  const content = (paragraphs.length > 0 ? paragraphs : [{ runs: [] }]).map((paragraph) => ({
+  const content = (paragraphs.length > 0 ? paragraphs : [{ runs: [] } as TextParagraph]).map((paragraph) => ({
     type: 'paragraph',
+    // Solo lo propio del párrafo: sin atributo, el párrafo sigue al cuadro.
+    ...(paragraph.align !== undefined || paragraph.bullets !== undefined
+      ? { attrs: { textAlign: paragraph.align ?? null, bullet: paragraph.bullets ?? null } }
+      : {}),
     content: paragraph.runs
       .filter((run) => run.text)
       .map((run) => {
@@ -124,11 +152,18 @@ export function toEditorDoc(paragraphs: TextParagraph[], style: TextStyle): JSON
 }
 
 export function fromEditorDoc(doc: JSONContent, style: TextStyle): TextParagraph[] {
-  const paragraphs = (doc.content ?? []).map((block) => ({
-    runs: (block.content ?? [])
-      .filter((node) => node.type === 'text' && node.text)
-      .map((node) => runFromEditor(node, style))
-  }))
+  const paragraphs = (doc.content ?? []).map((block) => {
+    const paragraph: TextParagraph = {
+      runs: (block.content ?? [])
+        .filter((node) => node.type === 'text' && node.text)
+        .map((node) => runFromEditor(node, style))
+    }
+    const align = block.attrs?.textAlign as HorizontalAlign | null | undefined
+    if (align && align !== style.align) paragraph.align = align
+    const bullet = block.attrs?.bullet as boolean | null | undefined
+    if (typeof bullet === 'boolean' && bullet !== style.bullets) paragraph.bullets = bullet
+    return paragraph
+  })
   return normalizeParagraphs(paragraphs)
 }
 

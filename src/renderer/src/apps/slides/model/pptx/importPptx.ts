@@ -17,6 +17,7 @@ import {
 } from '@/core/office/xml'
 import { cssFontFamilyFor } from '@/ui/fonts'
 import { createShapeElement, createTextElement } from '../factories'
+import { boundingBox } from '../arrange'
 import { normalizeRotation } from '../presentationReducer'
 import { normalizeParagraphs } from '../richText'
 import { IMPORTED_THEME_ID, type SlideTheme } from '../themes'
@@ -24,11 +25,13 @@ import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
   type Box,
+  type GroupElement,
   type HorizontalAlign,
   type ImageElement,
   type ShapeKind,
   type Slide,
   type SlideElement,
+  type SlideTransition,
   type Presentation,
   type RunFormat,
   type TableCell,
@@ -79,6 +82,8 @@ const ANCHOR: Record<string, VerticalAlign> = { t: 'top', ctr: 'middle', b: 'bot
 /** Lo que no se puede representar en Tintero; se cuenta para el aviso final. */
 interface Losses {
   background: boolean
+  /** Transiciones sin equivalente (se usa un fundido). */
+  transitions: number
   flipped: number
   unsupportedShapes: number
   charts: number
@@ -106,6 +111,7 @@ class PptxReader {
   private readonly xmlCache = new Map<string, Promise<Element | null>>()
   private readonly losses: Losses = {
     background: false,
+    transitions: 0,
     flipped: 0,
     unsupportedShapes: 0,
     charts: 0,
@@ -233,6 +239,8 @@ class PptxReader {
     const notes = notesPath ? notesText(await this.xml(notesPath)) : ''
     const result: Slide = { id: createId('slide'), layout: 'blank', elements, notes }
     if (background) result.background = background
+    const transition = this.readTransition(slide)
+    if (transition !== 'none') result.transition = transition
     return result
   }
 
@@ -248,9 +256,11 @@ class PptxReader {
           if (image) elements.push(image)
           break
         }
-        case 'grpSp':
-          elements.push(...(await this.readShapeTree(node, context, groupTransform(node, transform))))
+        case 'grpSp': {
+          const children = await this.readShapeTree(node, context, groupTransform(node, transform))
+          elements.push(...this.group(node, children))
           break
+        }
         case 'graphicFrame': {
           // Marco de "contenido gráfico": tablas (las leemos), gráficos y SmartArt (no).
           const table = this.readTable(node, transform)
@@ -363,7 +373,7 @@ class PptxReader {
     const element = createTextElement(role, box, { style })
     // El formato del primer trozo es el del cuadro; cada trozo guarda solo lo que cambia respecto a él.
     element.paragraphs = normalizeParagraphs(
-      paragraphs.flatMap((paragraph) => this.readParagraph(paragraph, element.style, insideShape))
+      paragraphs.flatMap((paragraph) => this.readParagraph(paragraph, element.style, insideShape, levelOneSources))
     )
     return element
   }
@@ -374,11 +384,23 @@ class PptxReader {
   }
 
   /** Un a:p con sus trozos (a:r). Un salto de línea (a:br) abre un párrafo nuevo, como en el editor. */
-  private readParagraph(paragraph: Element, style: TextStyle, insideShape: boolean): TextParagraph[] {
-    const result: TextParagraph[] = [{ runs: [] }]
+  private readParagraph(
+    paragraph: Element,
+    style: TextStyle,
+    insideShape: boolean,
+    levelOneSources: Element[]
+  ): TextParagraph[] {
+    // Alineación y viñeta propias del párrafo, solo si difieren de las del cuadro (las del primero).
+    const format: Pick<TextParagraph, 'align' | 'bullets'> = {}
+    const algn = attr(child(paragraph, 'pPr'), 'algn') ?? levelOneSources.map((s) => attr(s, 'algn')).find(isSet)
+    const align = ALIGN[algn ?? ''] ?? 'left'
+    if (align !== style.align) format.align = align
+    const bullets = hasBullets(paragraph, levelOneSources)
+    if (bullets !== style.bullets) format.bullets = bullets
+    const result: TextParagraph[] = [{ runs: [], ...format }]
     for (const node of childElements(paragraph)) {
       if (node.localName === 'br') {
-        result.push({ runs: [] })
+        result.push({ runs: [], ...format })
       } else if (node.localName === 'r' || node.localName === 'fld') {
         const text = child(node, 't')?.textContent ?? ''
         if (text) result.at(-1)!.runs.push({ text, ...this.readRunFormat(child(node, 'rPr'), style, insideShape) })
@@ -496,6 +518,35 @@ class PptxReader {
   }
 
   /** Giro en grados (PowerPoint lo guarda en 60000 de grado). El volteo no existe en Tintero. */
+  /**
+   * Un p:grpSp pasa a grupo de Tintero si queda con dos elementos o más (uno solo no lo necesita).
+   * Los hijos ya vienen en coordenadas de la diapositiva; el giro del grupo se queda en el grupo.
+   */
+  private group(node: Element, children: SlideElement[]): SlideElement[] {
+    if (children.length < 2) return children
+    const group: GroupElement = { id: createId('el'), type: 'group', ...boundingBox(children), children }
+    const xfrm = path(node, 'grpSpPr', 'xfrm')
+    const rotation = xfrm ? this.rotation(xfrm) : 0
+    return [rotation ? { ...group, rotation } : group]
+  }
+
+  /**
+   * Transición de entrada (p:transition). PowerPoint 2010+ la escribe dentro de mc:AlternateContent,
+   * con una versión "p14" y otra de reserva: nos vale cualquiera. Las que no tenemos se aproximan
+   * con un fundido.
+   */
+  private readTransition(slide: Element | null): SlideTransition {
+    const direct = child(slide, 'transition')
+    const alternate = childElements(slide, 'AlternateContent').flatMap((node) => descendants(node, 'transition'))[0]
+    const transition = direct ?? alternate ?? null
+    if (!transition) return 'none'
+    const effect = childElements(transition)[0]?.localName
+    if (!effect) return 'none' // solo tiempos de avance, sin efecto visual
+    if (effect === 'push') return 'push'
+    if (effect !== 'fade') this.losses.transitions++
+    return 'fade'
+  }
+
   private rotation(xfrm: Element): number {
     if (attr(xfrm, 'flipH') === '1' || attr(xfrm, 'flipV') === '1') this.losses.flipped++
     return normalizeRotation((numberAttr(xfrm, 'rot') ?? 0) / 60000)
@@ -677,6 +728,9 @@ export function describeLosses(losses: Losses): string[] {
     warnings.push(
       `${plural(losses.unsupportedShapes, 'forma o línea', 'formas o líneas')} sin equivalente (se omiten o pasan a rectángulo)`
     )
+  }
+  if (losses.transitions > 0) {
+    warnings.push(`${plural(losses.transitions, 'transición', 'transiciones')} de otro tipo (pasan a desvanecer)`)
   }
   if (losses.flipped > 0) warnings.push(`el volteo de ${plural(losses.flipped, 'elemento')}`)
   if (losses.unsupportedImages > 0) {

@@ -614,6 +614,13 @@ button {
 }
 .ribbon-stack .tool-button {
   justify-content: flex-start;
+  height: 24px;
+}
+/* En las pilas de botones pequeños el texto va en una línea: si no, tres no caben en la cinta. */
+.ribbon-stack .tool-button__label {
+  white-space: nowrap;
+  max-width: none;
+  text-align: left;
 }
 
 .select-field {
@@ -660,8 +667,28 @@ button {
   border-radius: 5px;
   cursor: pointer;
 }
-.menu-item:hover {
+.menu-item:hover:not(:disabled) {
   background: var(--hover);
+}
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* Menú Organizar de Diapositivas: secciones con título, iconos alineados con el texto. */
+.arrange-menu {
+  min-width: 240px;
+  padding: 2px 0;
+}
+.arrange-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.arrange-menu__title {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .color-trigger {
@@ -1259,10 +1286,18 @@ button {
 .slide-text__content p {
   margin: 0;
 }
-.slide-text--bullets .slide-text__content p {
+/* Viñetas: las del cuadro, salvo los párrafos que digan lo contrario (data-bullet). */
+.slide-text--bullets .slide-text__content p:not([data-bullet='false']),
+.slide-text__content p[data-bullet='true'] {
   display: list-item;
   list-style: disc;
   margin: 0 0 0.35em 1.1em;
+}
+/* Grupo: los hijos se colocan respecto a la caja del grupo (ElementContent). */
+.slide-group {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 .slides-notes-slot {
   display: contents;
@@ -1581,6 +1616,39 @@ button {
   align-items: center;
   justify-content: center;
   cursor: none;
+  overflow: hidden;
+}
+/* Transiciones del modo presentación: solo la entrada de la diapositiva nueva. */
+.slideshow__slide {
+  display: contents;
+}
+.slideshow__slide--fade,
+.slideshow__slide--push {
+  display: block;
+  animation-duration: 0.5s;
+  animation-timing-function: ease-out;
+}
+.slideshow__slide--fade {
+  animation-name: slideshow-fade;
+}
+.slideshow__slide--push {
+  animation-name: slideshow-push;
+}
+@keyframes slideshow-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes slideshow-push {
+  from {
+    transform: translateX(100vw);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .slideshow__slide--fade,
+  .slideshow__slide--push {
+    animation: none;
+  }
 }
 .slideshow__counter {
   position: absolute;

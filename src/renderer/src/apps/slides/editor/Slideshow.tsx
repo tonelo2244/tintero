@@ -22,6 +22,9 @@ function useViewportSize() {
 /** Modo presentación a pantalla completa. Flechas/espacio/clic avanzan, Esc sale. */
 export function Slideshow({ presentation, startIndex, onExit }: SlideshowProps) {
   const [index, setIndex] = useState(startIndex)
+  // Al volver a la diapositiva de partida también se ve su transición.
+  const [hasMoved, setHasMoved] = useState(false)
+  if (!hasMoved && index !== startIndex) setHasMoved(true)
   const viewport = useViewportSize()
   const lastIndex = presentation.slides.length - 1
 
@@ -86,7 +89,14 @@ export function Slideshow({ presentation, startIndex, onExit }: SlideshowProps) 
         setIndex(Math.max(0, index - 1))
       }}
     >
-      <SlideView slide={slide} theme={presentationTheme(presentation)} width={width} />
+      {/* La clave cambia con la diapositiva: el envoltorio se vuelve a montar y su animación de
+          entrada (la transición) se reproduce. La primera diapositiva aparece sin transición. */}
+      <div
+        key={slide.id}
+        className={`slideshow__slide ${index !== startIndex || hasMoved ? `slideshow__slide--${slide.transition ?? 'none'}` : ''}`}
+      >
+        <SlideView slide={slide} theme={presentationTheme(presentation)} width={width} />
+      </div>
       <div className="slideshow__counter">
         {index + 1} / {presentation.slides.length}
       </div>
