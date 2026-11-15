@@ -13,7 +13,7 @@ files:
   - out/**
   - package.json
 
-# Doble clic en un .tdoc o .tpres => se abre con Tintero.
+# Doble clic en un .tdoc, .tpres o .tsheet => se abre con Tintero.
 fileAssociations:
   - ext: tdoc
     name: Documento de Tintero
@@ -24,6 +24,11 @@ fileAssociations:
     name: Presentación de Tintero
     description: Presentación de Tintero Diapositivas
     mimeType: application/x-tintero-presentation
+    role: Editor
+  - ext: tsheet
+    name: Hoja de cálculo de Tintero
+    description: Hoja de cálculo de Tintero Hojas de cálculo
+    mimeType: application/x-tintero-spreadsheet
     role: Editor
 
 win:

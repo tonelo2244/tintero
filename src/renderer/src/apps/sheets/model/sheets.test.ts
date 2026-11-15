@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellAddress, columnIndex, columnName, parseCellAddress, rangeAddress } from './address'
+import { cellAddress, columnIndex, columnName, MAX_ROWS, parseCellAddress, rangeAddress } from './address'
 import { changedCells, evaluateWorkbook, getCellValue, sheetValues, updateEvaluation } from './calc'
 import { copyRange, fillRange, pasteCopiedCells, pasteText } from './clipboard'
 import { parseWorkbook } from './content'
@@ -8,6 +8,8 @@ import { parseDelimited, serializeDelimited } from './delimited'
 import { createSheet, createWorkbook, nextSheetName, validateSheetName } from './factories'
 import { formatCellValue, formatGeneralNumber } from './format'
 import { cellEditText, cellFromInput, parseNumberText, parseUserInput } from './input'
+import { canInsertReference, writeReference } from './pointMode'
+import { autoSumRange, jump } from './selection'
 import type { Cell, Workbook } from './types'
 import { workbookReducer } from './workbookReducer'
 
@@ -162,8 +164,11 @@ describe('lo que escribe el usuario', () => {
     const cell = cellFromInput('=suma(A1:A2;1)', undefined)!
     expect(cell).toEqual({ formula: 'SUM(A1:A2,1)' })
     expect(cellEditText(cell)).toBe('=SUMA(A1:A2;1)')
+    // Como en Excel, se cierran los paréntesis que falten.
+    expect(cellFromInput('=SUMA(A1:A3;MAX(B1', undefined)).toEqual({ formula: 'SUM(A1:A3,MAX(B1))' })
+    expect(cellFromInput('=CONCAT("(";A1', undefined)).toEqual({ formula: 'CONCAT("(",A1)' })
     // Una fórmula que no se entiende se guarda tal cual en vez de perderse.
-    expect(cellFromInput('=SUMA(1;', undefined)).toEqual({ formula: 'SUMA(1;' })
+    expect(cellFromInput('=SUMA(1;+', undefined)).toEqual({ formula: 'SUMA(1;+' })
   })
 
   it('conserva el formato de la celda y el apóstrofo de los textos que parecen números', () => {
@@ -267,5 +272,44 @@ describe('archivo .tsheet', () => {
     expect(workbook.sheets[0].cells).toEqual({ A1: { value: 1 } })
     expect(workbook.activeSheetId).toBe('a')
     expect(() => parseWorkbook({ sheets: [] }, 2)).toThrow()
+  })
+})
+
+describe('selección, modo señalar y bordes', () => {
+  const sheet = createSheet('Hoja1', { A1: v(1), A2: v(2), A3: v(3), A6: v('x'), C1: v(5) })
+
+  it('Ctrl+flecha salta al final del bloque, a la siguiente celda con datos o al borde', () => {
+    expect(jump(sheet, { row: 0, col: 0 }, 'down')).toEqual({ row: 2, col: 0 })
+    expect(jump(sheet, { row: 2, col: 0 }, 'down')).toEqual({ row: 5, col: 0 })
+    expect(jump(sheet, { row: 5, col: 0 }, 'down')).toEqual({ row: MAX_ROWS - 1, col: 0 })
+    expect(jump(sheet, { row: 0, col: 0 }, 'right')).toEqual({ row: 0, col: 2 })
+  })
+
+  it('autosuma propone los números de encima o de la izquierda', () => {
+    const valueAt = (coord: { row: number; col: number }) => sheet.cells[cellAddress(coord)]?.value
+    expect(autoSumRange({ row: 3, col: 0 }, valueAt)).toEqual({ start: { row: 0, col: 0 }, end: { row: 2, col: 0 } })
+    expect(autoSumRange({ row: 0, col: 3 }, valueAt)).toEqual({ start: { row: 0, col: 2 }, end: { row: 0, col: 2 } })
+    expect(autoSumRange({ row: 9, col: 9 }, valueAt)).toBeNull()
+  })
+
+  it('solo inserta referencias donde tienen sentido', () => {
+    expect(canInsertReference('=SUMA(', 6)).toBe(true)
+    expect(canInsertReference('=A1+ ', 5)).toBe(true)
+    expect(canInsertReference('=A1', 3)).toBe(false)
+    expect(canInsertReference('hola(', 5)).toBe(false)
+    const first = writeReference('=SUMA()', 'B2', { start: 6, end: 6 })
+    expect(first).toEqual({ text: '=SUMA(B2)', inserted: { start: 6, end: 8 } })
+    expect(writeReference(first.text, 'B2:B5', first.inserted).text).toBe('=SUMA(B2:B5)')
+  })
+
+  it('los bordes externos se suman a los existentes; "todos" y "ninguno" los sustituyen', () => {
+    const range = { start: { row: 0, col: 0 }, end: { row: 1, col: 1 } }
+    let workbook = book(['Hoja1', { A1: { value: 1, style: { borders: { right: true } } } }])
+    workbook = workbookReducer(workbook, { type: 'cells/borders', sheetId: 's1', range, mode: 'outside' })
+    const cells = workbook.sheets[0].cells
+    expect(cells.A1.style?.borders).toEqual({ right: true, top: true, left: true })
+    expect(cells.B2.style?.borders).toEqual({ bottom: true, right: true })
+    workbook = workbookReducer(workbook, { type: 'cells/borders', sheetId: 's1', range, mode: 'none' })
+    expect(workbook.sheets[0].cells).toEqual({ A1: { value: 1 } })
   })
 })

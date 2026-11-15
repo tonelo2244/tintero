@@ -1,12 +1,13 @@
 import type { ImportResult } from '@/core/appModule'
-import { cellAddress, MAX_COLUMNS, MAX_ROWS, parseCellAddress } from './address'
+import { cellAddress, MAX_COLUMNS, MAX_ROWS } from './address'
 import { evaluateWorkbook, getCellValue } from './calc'
 import { detectDelimiter, parseDelimited, serializeDelimited } from './delimited'
 import { createSheet, createWorkbook } from './factories'
 import { dateToSerial, formatDate } from './format'
 import { localizedError } from './formula/printer'
 import { parseNumberText } from './input'
-import type { Cell, CellValue, Sheet, Workbook } from './types'
+import { usedSize } from './selection'
+import type { Cell, CellValue, Workbook } from './types'
 
 /**
  * CSV: un formato sin tipos ni formato, solo texto. Decisiones:
@@ -46,19 +47,6 @@ function csvText(value: CellValue, cell: Cell | undefined): string {
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
   if (typeof value === 'string') return value
   return localizedError(value.error)
-}
-
-/** Filas y columnas hasta la última celda con contenido. */
-export function usedSize(sheet: Sheet): { rows: number; cols: number } {
-  let rows = 0
-  let cols = 0
-  for (const [address, cell] of Object.entries(sheet.cells)) {
-    if (cell.value === undefined && cell.formula === undefined) continue
-    const coord = parseCellAddress(address)!
-    rows = Math.max(rows, coord.row + 1)
-    cols = Math.max(cols, coord.col + 1)
-  }
-  return { rows, cols }
 }
 
 export function importCsv(bytes: Uint8Array): ImportResult<Workbook> {

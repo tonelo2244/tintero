@@ -1530,3 +1530,357 @@ button {
 .recovery-bar__button:hover {
   background: #f2f7fd;
 }
+
+/* ===== Hojas de cálculo ===== */
+.sheet-thumb {
+  width: 136px;
+  height: 104px;
+  background-color: #fff;
+  /* Cuadrícula dibujada con dos degradados: una línea cada 17 x 13 px. */
+  background-image:
+    linear-gradient(to right, #e3e3e3 1px, transparent 1px), linear-gradient(to bottom, #e3e3e3 1px, transparent 1px);
+  background-size: 17px 13px;
+  position: relative;
+  line-height: normal;
+}
+.sheet-thumb--budget {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  text-align: left;
+}
+.sheet-thumb--budget b {
+  font-size: 9px;
+  color: var(--accent);
+}
+.sheet-thumb--budget i {
+  display: block;
+  height: 6px;
+  background: linear-gradient(to right, #d8eee1 45%, transparent 45% 55%, #cfcfcf 55%);
+  border-radius: 1px;
+}
+.sheet-thumb--tour {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  color: var(--accent);
+  font-size: 14px;
+  text-align: left;
+  background-color: #fff;
+}
+.sheet-thumb__formula {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 1px 4px;
+  align-self: flex-start;
+}
+
+.sheets-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.formula-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: #fafafa;
+}
+.formula-bar__location {
+  width: 92px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.formula-bar__button {
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  padding: 4px;
+  display: inline-flex;
+  cursor: pointer;
+  color: #444;
+}
+.formula-bar__button:hover {
+  background: var(--hover);
+}
+.formula-bar__fx {
+  font-style: italic;
+  font-family: Georgia, serif;
+  color: var(--text-muted);
+  padding-right: 4px;
+  border-right: 1px solid var(--border);
+}
+.formula-bar__input {
+  flex: 1;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 13px;
+  background: transparent;
+}
+.formula-bar__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: #fff;
+}
+
+.sheet-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  outline: none;
+  font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+.sheet-canvas {
+  position: relative;
+}
+.sheet-column-headers {
+  position: sticky;
+  top: 0;
+  height: 22px;
+  z-index: 4;
+}
+.sheet-corner {
+  position: sticky;
+  left: 0;
+  width: 48px;
+  height: 22px;
+  z-index: 5;
+  background: #efefef;
+  border-right: 1px solid #c8c8c8;
+  border-bottom: 1px solid #c8c8c8;
+  cursor: cell;
+}
+.sheet-row-headers {
+  position: sticky;
+  left: 0;
+  width: 48px;
+  z-index: 3;
+}
+.sheet-header {
+  position: absolute;
+  background: #efefef;
+  color: #555;
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid #d4d4d4;
+  border-bottom: 1px solid #d4d4d4;
+  font-family: var(--font-ui);
+}
+.sheet-header--col {
+  top: 0;
+  height: 22px;
+  cursor: s-resize;
+}
+.sheet-header--row {
+  left: 0;
+  width: 48px;
+  cursor: e-resize;
+}
+.sheet-header.is-selected {
+  background: #d6e9dd;
+  color: var(--accent);
+  font-weight: 600;
+}
+.sheet-resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+.sheet-cells {
+  position: absolute;
+  cursor: cell;
+}
+.sheet-cell {
+  position: absolute;
+  padding: 0 4px;
+  line-height: 21px;
+  white-space: nowrap;
+  overflow: hidden;
+  background: #fff;
+  border-right: 1px solid #e2e2e2;
+  border-bottom: 1px solid #e2e2e2;
+}
+.sheet-cell--spill {
+  overflow: visible;
+  z-index: 1;
+  border-right-color: transparent;
+}
+.sheet-cell--spill > span {
+  display: block;
+  overflow: hidden;
+}
+.sheet-selection {
+  position: absolute;
+  background: rgba(31, 122, 77, 0.1);
+  border: 1px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.sheet-active-cell {
+  position: absolute;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  z-index: 2;
+}
+.sheet-cell-editor {
+  position: absolute;
+  z-index: 6;
+  height: 22px;
+  display: flex;
+}
+.sheet-cell-editor__input {
+  flex: 1;
+  min-width: 100%;
+  height: 22px;
+  border: 2px solid var(--accent);
+  padding: 0 3px;
+  font: inherit;
+  outline: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.sheet-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 30px;
+  padding: 0 8px;
+  background: #f3f3f3;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+.sheet-tabs__add {
+  border: 0;
+  background: none;
+  padding: 0 8px;
+  cursor: pointer;
+  color: #444;
+  display: inline-flex;
+  align-items: center;
+}
+.sheet-tabs__add:hover {
+  background: var(--hover);
+}
+.sheet-tabs__tab {
+  border: 0;
+  background: none;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+}
+.sheet-tabs__tab:hover {
+  background: var(--hover);
+}
+.sheet-tabs__tab[aria-selected='true'] {
+  background: #fff;
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+.sheet-tabs__rename {
+  align-self: center;
+  height: 22px;
+  font: inherit;
+  font-size: 12.5px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 6px;
+}
+.sheet-tabs__rename.is-invalid {
+  border-color: #c0392b;
+  outline: 2px solid rgba(192, 57, 43, 0.2);
+}
+
+.function-menu {
+  min-width: 300px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.function-menu__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 10px 2px;
+}
+.function-menu .menu-item {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.function-menu .menu-item b {
+  min-width: 82px;
+  font-weight: 600;
+}
+.function-menu__description {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.ribbon-note {
+  max-width: 420px;
+  font-size: 12px;
+  color: #444;
+  line-height: 1.45;
+}
+.ribbon-note code {
+  background: #eee;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.sheet-print table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+  font-size: 10pt;
+}
+.sheet-print td {
+  padding: 2px 4px;
+  white-space: nowrap;
+  /* El texto largo se desborda sobre las celdas vacías de al lado, como en pantalla. */
+  overflow: visible;
+  border: 0.5pt solid #e0e0e0;
+}
+@media print {
+  .sheets-workspace {
+    display: none !important;
+  }
+  .sheet-print td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

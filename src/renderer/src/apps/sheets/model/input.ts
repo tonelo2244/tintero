@@ -93,18 +93,44 @@ export function cellFromInput(text: string, previous: Cell | undefined): Cell | 
   const style = previous?.style
   if (parsed.kind === 'empty') return style ? { style } : null
   if (parsed.kind === 'formula') {
-    let formula: string
-    try {
-      formula = toCanonicalFormula(parsed.formula)
-    } catch {
-      formula = parsed.formula
-    }
-    return withStyle({ formula }, style)
+    return withStyle({ formula: canonicalOrRaw(parsed.formula) }, style)
   }
   // El formato reconocido ("50%") solo se aplica si la celda no tenía ya uno elegido por el usuario.
   const hasFormat = style?.numberFormat && style.numberFormat.kind !== 'general'
   const nextStyle = parsed.format && !hasFormat ? { ...style, numberFormat: parsed.format } : style
   return withStyle({ value: parsed.value }, nextStyle)
+}
+
+/**
+ * Forma canónica de lo escrito. Como Excel, si solo faltan paréntesis de cierre ("=SUMA(A1:A3"),
+ * los añadimos. Si aun así no se entiende, se guarda tal cual.
+ */
+function canonicalOrRaw(formula: string): string {
+  try {
+    return toCanonicalFormula(formula)
+  } catch {
+    const missing = unclosedParentheses(formula)
+    if (missing > 0) {
+      try {
+        return toCanonicalFormula(formula + ')'.repeat(missing))
+      } catch {
+        // Seguimos abajo: no era solo un paréntesis.
+      }
+    }
+    return formula
+  }
+}
+
+/** Paréntesis abiertos sin cerrar, sin contar los que van dentro de textos entre comillas. */
+function unclosedParentheses(formula: string): number {
+  let depth = 0
+  let inString = false
+  for (const char of formula) {
+    if (char === '"') inString = !inString
+    else if (!inString && char === '(') depth++
+    else if (!inString && char === ')') depth--
+  }
+  return depth
 }
 
 function withStyle(cell: Cell, style: Cell['style']): Cell {

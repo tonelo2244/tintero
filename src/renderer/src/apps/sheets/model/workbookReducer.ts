@@ -1,7 +1,7 @@
 import { cellAddress, parseCellAddress, rangeContains, rangeCoords } from './address'
 import { validateSheetName } from './factories'
 import { renameSheetInFormula } from './formula/transform'
-import type { Cell, CellRange, CellStyle, Sheet, Workbook } from './types'
+import type { Cell, CellBorders, CellRange, CellStyle, Sheet, Workbook } from './types'
 
 /**
  * Toda la edición del libro como funciones puras (estado, acción) -> estado nuevo,
@@ -15,6 +15,8 @@ export type WorkbookAction =
   | { type: 'cells/set'; sheetId: string; cells: Record<string, Cell | null> }
   /** Aplica formato a un rango. Una propiedad a undefined la quita. */
   | { type: 'cells/style'; sheetId: string; range: CellRange; style: Partial<CellStyle> }
+  /** Bordes: en todas las celdas, solo el contorno del rango, solo abajo o ninguno. */
+  | { type: 'cells/borders'; sheetId: string; range: CellRange; mode: BorderMode }
   /** Borra el contenido de un rango (Supr). Con `includeStyle`, también el formato. */
   | { type: 'cells/clear'; sheetId: string; range: CellRange; includeStyle?: boolean }
   | { type: 'column/resize'; sheetId: string; col: number; width: number }
@@ -22,6 +24,8 @@ export type WorkbookAction =
   | { type: 'sheet/rename'; sheetId: string; name: string }
   | { type: 'sheet/delete'; sheetId: string }
   | { type: 'sheet/select'; sheetId: string }
+
+export type BorderMode = 'all' | 'outside' | 'bottom' | 'none'
 
 export const MIN_COLUMN_WIDTH = 24
 
@@ -39,6 +43,25 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         for (const coord of rangeCoords(action.range)) {
           const address = cellAddress(coord)
           const cell = applyStyle(cells[address] ?? {}, action.style)
+          if (isEmptyCell(cell)) delete cells[address]
+          else cells[address] = cell
+        }
+      })
+    case 'cells/borders':
+      return updateCells(state, action.sheetId, (cells) => {
+        const { start, end } = action.range
+        for (const coord of rangeCoords(action.range)) {
+          const address = cellAddress(coord)
+          const current = cells[address] ?? {}
+          const edge = {
+            top: coord.row === start.row,
+            bottom: coord.row === end.row,
+            left: coord.col === start.col,
+            right: coord.col === end.col
+          }
+          const borders = bordersFor(action.mode, edge, current.style?.borders)
+          if (borders === current.style?.borders) continue
+          const cell = applyStyle(current, { borders })
           if (isEmptyCell(cell)) delete cells[address]
           else cells[address] = cell
         }
@@ -78,6 +101,31 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         return state
       }
       return { ...state, activeSheetId: action.sheetId }
+  }
+}
+
+/**
+ * "Todos" y "ninguno" sustituyen los bordes de cada celda; "contorno" e "inferior" solo añaden
+ * los lados que tocan el borde del rango y respetan el resto (así se combinan, como en Excel).
+ */
+function bordersFor(
+  mode: BorderMode,
+  edge: Required<CellBorders>,
+  current: CellBorders | undefined
+): CellBorders | undefined {
+  switch (mode) {
+    case 'all':
+      return { top: true, right: true, bottom: true, left: true }
+    case 'none':
+      return undefined
+    case 'outside': {
+      if (!Object.values(edge).some(Boolean)) return current
+      const borders = { ...current }
+      for (const side of ['top', 'right', 'bottom', 'left'] as const) if (edge[side]) borders[side] = true
+      return borders
+    }
+    case 'bottom':
+      return edge.bottom ? { ...current, bottom: true } : current
   }
 }
 
