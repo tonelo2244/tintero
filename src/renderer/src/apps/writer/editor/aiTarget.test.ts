@@ -59,4 +59,33 @@ describe('applyResult', () => {
     expect(applyResult(target, captured.target, 'DOS', 'replace')).toBe(false)
     expect(target.getText()).toBe('XXUno dos tres.')
   })
+
+  it('conserva negrita y cursiva al reescribir: el modelo recibe marcas y se reconstruyen', () => {
+    const target = createEditor('<p>El <strong>proyecto</strong> se ha <em>terminado</em> a tienpo.</p>')
+    target.commands.selectAll()
+    const captured = captureTarget(target, writingAction('proofread'))
+    if (!captured.ok) throw new Error(captured.message)
+    expect(captured.target.modelText).toBe('El **proyecto** se ha *terminado* a tienpo.')
+    expect(applyResult(target, captured.target, 'El **proyecto** se ha *terminado* a tiempo.', 'replace')).toBe(true)
+    expect(target.getHTML()).toBe('<p>El <strong>proyecto</strong> se ha <em>terminado</em> a tiempo.</p>')
+  })
+
+  it('reaplica el formato común de la selección (un color) y avisa si una parte se pierde', () => {
+    const target = createEditor('<p><span style="color: #ff0000">Todo en rojo con eror.</span></p>')
+    target.commands.selectAll()
+    const captured = captureTarget(target, writingAction('proofread'))
+    if (!captured.ok) throw new Error(captured.message)
+    expect(captured.target.formatLost).toBe(false)
+    applyResult(target, captured.target, 'Todo en rojo con error.', 'replace')
+    // jsdom normaliza el color a rgb(); lo que importa es que el texto nuevo sigue rojo.
+    expect(target.getHTML()).toMatch(
+      /^<p><span style="color: (#ff0000|rgb\(255, 0, 0\));?">Todo en rojo con error\.<\/span><\/p>$/
+    )
+    target.destroy()
+
+    const mixed = createEditor('<p>Una <span style="color: #ff0000">palabra</span> roja.</p>')
+    mixed.commands.selectAll()
+    const partial = captureTarget(mixed, writingAction('improve'))
+    expect(partial.ok && partial.target.formatLost).toBe(true)
+  })
 })

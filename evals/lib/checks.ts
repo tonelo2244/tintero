@@ -1,3 +1,4 @@
+import { markedToInline } from '@/apps/writer/model/ai/inlineMarks'
 import type { CheckResult } from './types'
 
 /**
@@ -97,4 +98,39 @@ export function inLanguage(output: string, expected: Language): CheckResult {
 /** Una comprobación cualquiera expresada como condición. */
 export function check(name: string, passed: boolean, detail?: string): CheckResult {
   return { name, passed, detail }
+}
+
+/** Palabras con cada formato (negrita, cursiva...) según las marcas de inlineMarks.ts. */
+function markedWords(text: string): Map<string, string> {
+  const words = new Map<string, string>()
+  for (const node of markedToInline(text.replace(/\n\s*\n/g, ' '))) {
+    for (const mark of node.marks ?? []) {
+      words.set(mark.type, `${words.get(mark.type) ?? ''} ${node.text ?? ''}`.trim())
+    }
+  }
+  return words
+}
+
+/** Las mismas palabras siguen con el mismo formato (para «Corregir», que no debe cambiarlas). */
+export function keepsMarks(output: string, input: string): CheckResult {
+  const expected = markedWords(input)
+  const actual = markedWords(output)
+  const problems = [...expected].filter(([mark, words]) => normalize(actual.get(mark) ?? '') !== normalize(words))
+  return {
+    name: 'conserva el formato',
+    passed: problems.length === 0,
+    detail: problems.length
+      ? problems.map(([mark, words]) => `${mark}: esperaba «${words}», salió «${actual.get(mark) ?? ''}»`).join('; ')
+      : undefined
+  }
+}
+
+/** Al reescribir las palabras pueden cambiar: basta con que cada tipo de formato siga presente. */
+export function keepsMarkTypes(output: string, input: string): CheckResult {
+  const missing = [...markedWords(input).keys()].filter((mark) => !markedWords(output).has(mark))
+  return {
+    name: 'conserva el formato',
+    passed: missing.length === 0,
+    detail: missing.length ? `pierde: ${missing.join(', ')}` : undefined
+  }
 }

@@ -30,5 +30,14 @@
     "input": "Queríamos comentaros que, después de haberlo estado pensando durante bastante tiempo y de haberlo hablado con todas las personas implicadas, hemos decidido que lo mejor para todos es retrasar el lanzamiento de la nueva versión hasta el mes de junio, porque así tendremos tiempo suficiente para corregir los errores que aparecieron en las pruebas.",
     "keep": ["junio"],
     "maxRatio": 0.7
+  },
+  {
+    "id": "formal-con-negrita",
+    "why": "Fase 8: al reescribir, la palabra en negrita sigue en negrita.",
+    "action": "formal",
+    "input": "Oye, el **viernes** no hay reunión, que el jefe está de viaje.",
+    "keep": ["viernes"],
+    "maxRatio": 2.5,
+    "keepMarks": true
   }
 ]

@@ -13,6 +13,8 @@ export interface WritingAction {
   placement: ResultPlacement
   /** Sin selección, ¿se aplica al documento entero? Solo tiene sentido para resumir. */
   allowsWholeDocument: boolean
+  /** Reescribe la selección y debe conservar su negrita, cursiva... (ver inlineMarks.ts). */
+  preservesFormat: boolean
   instruction: string
   /** Corregir debe ser casi determinista; reescribir admite algo de variedad. */
   temperature: number
@@ -31,6 +33,7 @@ export const WRITING_ACTIONS: readonly WritingAction[] = [
     progressLabel: 'Corrigiendo…',
     placement: 'replace',
     allowsWholeDocument: false,
+    preservesFormat: true,
     instruction:
       'Corrige la ortografía, la gramática y la puntuación del texto. No cambies el estilo, el tono ni el vocabulario si no es para corregir un error.',
     temperature: 0
@@ -41,6 +44,7 @@ export const WRITING_ACTIONS: readonly WritingAction[] = [
     progressLabel: 'Mejorando la redacción…',
     placement: 'replace',
     allowsWholeDocument: false,
+    preservesFormat: true,
     instruction:
       'Mejora la redacción del texto para que sea más claro y fluido. Conserva el significado, el tono y la extensión aproximada.',
     temperature: 0.4
@@ -51,6 +55,7 @@ export const WRITING_ACTIONS: readonly WritingAction[] = [
     progressLabel: 'Reescribiendo en tono formal…',
     placement: 'replace',
     allowsWholeDocument: false,
+    preservesFormat: true,
     instruction: 'Reescribe el texto con un tono formal y profesional. Conserva el significado y los datos.',
     temperature: 0.4
   },
@@ -60,6 +65,7 @@ export const WRITING_ACTIONS: readonly WritingAction[] = [
     progressLabel: 'Acortando…',
     placement: 'replace',
     allowsWholeDocument: false,
+    preservesFormat: true,
     instruction:
       'Reescribe el texto de forma más concisa, en aproximadamente la mitad de palabras, sin perder ideas clave.',
     temperature: 0.3
@@ -70,6 +76,7 @@ export const WRITING_ACTIONS: readonly WritingAction[] = [
     progressLabel: 'Resumiendo…',
     placement: 'insertBelow',
     allowsWholeDocument: true,
+    preservesFormat: false,
     instruction: 'Resume el texto en un párrafo breve (de 3 a 5 frases) con las ideas principales.',
     temperature: 0.2
   }
@@ -95,11 +102,16 @@ const SYSTEM_PROMPT = [
   'Escribe en el mismo idioma que el texto original. Separa los párrafos con una línea en blanco.'
 ].join('\n')
 
+/** Solo cuando el texto lleva marcas: a un texto sin formato no le hace falta (y gasta tokens). */
+const FORMAT_RULE =
+  'El texto puede llevar marcas de formato: **negrita**, *cursiva*, ~~tachado~~, <u>subrayado</u> y `código`. Conserva cada marca alrededor de las palabras equivalentes del resultado y no añadas marcas nuevas.'
+
 export function buildWritingRequest(action: WritingAction, text: string): AiGenerateRequest {
+  const hasMarks = action.preservesFormat && /\*\*|\*\S|~~|<u>|`/.test(text)
   return {
     temperature: action.temperature,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: hasMarks ? `${SYSTEM_PROMPT}\n${FORMAT_RULE}` : SYSTEM_PROMPT },
       { role: 'user', content: `Tarea: ${action.instruction}\n\n<texto>\n${text}\n</texto>` }
     ]
   }

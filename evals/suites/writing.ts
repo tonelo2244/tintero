@@ -15,6 +15,8 @@ import {
   containsAll,
   containsNone,
   inLanguage,
+  keepsMarks,
+  keepsMarkTypes,
   lengthRatio,
   noPreamble,
   similarTo,
@@ -37,6 +39,8 @@ interface ProofreadCase extends EvalCase {
   minSimilarity?: number
   paragraphs?: number
   language?: Language
+  /** La entrada lleva marcas de formato que deben volver en las mismas palabras. */
+  keepMarks?: boolean
 }
 
 export const proofreadSuite = defineSuite<ProofreadCase>({
@@ -54,6 +58,7 @@ export const proofreadSuite = defineSuite<ProofreadCase>({
     if (testCase.mustContain) checks.push(containsAll(output, testCase.mustContain))
     if (testCase.mustNotContain) checks.push(containsNone(output, testCase.mustNotContain))
     if (testCase.language) checks.push(inLanguage(output, testCase.language))
+    if (testCase.keepMarks) checks.push(keepsMarks(output, testCase.input))
     if (testCase.paragraphs) {
       const count = splitParagraphs(output).length
       checks.push(check(`${testCase.paragraphs} párrafos`, count === testCase.paragraphs, `salieron ${count}`))
@@ -68,6 +73,7 @@ interface RewriteCase extends EvalCase {
   /** Datos que deben sobrevivir a la reescritura (nombres, cifras, fechas). */
   keep: string[]
   maxRatio: number
+  keepMarks?: boolean
 }
 
 const REWRITE_RUBRICS: Record<RewriteCase['action'], RubricCriterion[]> = {
@@ -104,7 +110,8 @@ export const rewriteSuite = defineSuite<RewriteCase>({
       noPreamble(output),
       containsAll(output, testCase.keep, 'conserva los datos'),
       lengthRatio(output, testCase.input, 0.2, testCase.maxRatio),
-      inLanguage(output, 'es')
+      inLanguage(output, 'es'),
+      ...(testCase.keepMarks ? [keepsMarkTypes(output, testCase.input)] : [])
     ]
     const judge = await context.judge({
       task: writingAction(testCase.action).instruction,

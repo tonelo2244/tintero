@@ -38,13 +38,13 @@ export function useWritingAssistant(editor: Editor | null) {
         return
       }
       setJob({ action, target: captured.target, message: null })
-      void generation.start(buildWritingRequest(action, captured.target.text))
+      void generation.start(buildWritingRequest(action, captured.target.modelText))
     },
     [editor, generation]
   )
 
   const retry = useCallback(() => {
-    if (job?.target) void generation.start(buildWritingRequest(job.action, job.target.text))
+    if (job?.target) void generation.start(buildWritingRequest(job.action, job.target.modelText))
   }, [generation, job])
 
   const result = generation.state.phase === 'done' ? cleanModelText(generation.state.text) : ''

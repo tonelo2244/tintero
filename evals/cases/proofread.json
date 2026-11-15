@@ -45,5 +45,13 @@
     "expected": "This sentence has an error.",
     "mustContain": ["has an error"],
     "language": "en"
+  },
+  {
+    "id": "conserva-formato",
+    "why": "Fase 8: la negrita y la cursiva viajan como marcas y deben volver en las mismas palabras.",
+    "input": "El **proyecto** se ha *terminado* a tienpo y el ~~cliente~~ esta contento.",
+    "expected": "El **proyecto** se ha *terminado* a tiempo y el ~~cliente~~ está contento.",
+    "mustContain": ["tiempo", "está"],
+    "keepMarks": true
   }
 ]

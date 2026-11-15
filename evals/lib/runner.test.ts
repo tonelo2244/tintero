@@ -93,3 +93,12 @@ describe('runEvals', () => {
     expect(renderMarkdown(report)).toContain('modelo caído')
   })
 })
+
+describe('comprobaciones de formato', () => {
+  it('detecta una negrita perdida', async () => {
+    const { keepsMarks, keepsMarkTypes } = await import('./checks')
+    expect(keepsMarks('El **proyecto** acabó', 'El **proyecto** acabo').passed).toBe(true)
+    expect(keepsMarks('El proyecto acabó', 'El **proyecto** acabo')).toMatchObject({ passed: false })
+    expect(keepsMarkTypes('El **viernes** no habrá reunión', 'el **viernes** no hay').passed).toBe(true)
+  })
+})
