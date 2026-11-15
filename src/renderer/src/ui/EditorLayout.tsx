@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { Home, Printer, Redo2, Save, Undo2 } from 'lucide-react'
+import { FileDown, Home, Printer, Redo2, Save, Undo2 } from 'lucide-react'
 
 export interface RibbonTab {
   id: string
@@ -17,6 +17,7 @@ interface EditorLayoutProps {
   canUndo: boolean
   canRedo: boolean
   onPrint(): void
+  onExportPdf(): void
   tabs: RibbonTab[]
   activeTab: string
   onTabChange(id: string): void
@@ -51,6 +52,9 @@ export function EditorLayout(props: EditorLayoutProps) {
           </QuickButton>
           <QuickButton label="Imprimir (Ctrl/Cmd+P)" onClick={props.onPrint}>
             <Printer size={16} />
+          </QuickButton>
+          <QuickButton label="Exportar a PDF (Ctrl/Cmd+Shift+E)" onClick={props.onExportPdf}>
+            <FileDown size={16} />
           </QuickButton>
         </div>
         <div className="titlebar__title">

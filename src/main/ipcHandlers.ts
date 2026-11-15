@@ -8,6 +8,7 @@ import {
   type UnsavedDocument
 } from '@shared/ipc'
 import { ensureExtension, readTextFile, writeFileAtomic } from './fileService'
+import { PDF_OPTIONS } from './pdfExport'
 import type { OpenRequestQueue } from './openRequests'
 import type { RecentsStore } from './recentsStore'
 import type { RecoveryStore } from './recoveryStore'
@@ -96,5 +97,18 @@ export function registerIpcHandlers({ recents, recovery, openRequests }: MainSer
     return new Promise<void>((resolve) => {
       event.sender.print({ printBackground: true }, () => resolve())
     })
+  })
+
+  // Mismo resultado que "Imprimir > Guardar como PDF", pero sin pasar por el diálogo del sistema.
+  // Chromium pinta la página con los estilos @media print que ya usa la impresión.
+  ipcMain.handle(IpcChannel.WindowExportPdf, async (event, suggestedName: string): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    const options = { defaultPath: suggestedName, filters: [{ name: 'PDF', extensions: ['pdf'] }] }
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    const targetPath = ensureExtension(result.filePath, ['pdf'])
+    const pdf = await event.sender.printToPDF(PDF_OPTIONS)
+    await writeFileAtomic(targetPath, pdf)
+    return targetPath
   })
 }

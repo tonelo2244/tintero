@@ -48,6 +48,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       canUndo={toolbar?.canUndo ?? false}
       canRedo={toolbar?.canRedo ?? false}
       onPrint={() => void platform.window.print()}
+      onExportPdf={session.exportPdf}
       tabs={TABS}
       activeTab={activeTab}
       onTabChange={setActiveTab}
@@ -95,6 +96,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             <EditorContent editor={editor} />
           </div>
         </div>
+        {/* Impresión y PDF: hoja A4 con los mismos márgenes que la hoja en pantalla. */}
+        <style>{'@page { size: A4; margin: 2.5cm; }'}</style>
       </div>
     </EditorLayout>
   )

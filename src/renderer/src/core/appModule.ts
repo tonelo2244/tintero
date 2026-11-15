@@ -42,6 +42,8 @@ export interface EditorSession {
   isDirty: boolean
   save(): void
   saveAs(): void
+  /** Exporta a PDF lo que se vería al imprimir (sin diálogo de impresión). */
+  exportPdf(): void
   goHome(): void
 }
 

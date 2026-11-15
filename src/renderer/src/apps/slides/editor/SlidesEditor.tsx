@@ -157,6 +157,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         onPrint={() => void platform.window.print()}
+        onExportPdf={session.exportPdf}
         tabs={SLIDES_TABS}
         activeTab={tab}
         onTabChange={(id) => setTab(id as SlidesTabId)}

@@ -18,6 +18,14 @@ describe('fileService', () => {
     expect(await readFile(target, 'utf8')).toBe('hola')
     expect(await readdir(join(dir, 'sub'))).toEqual(['doc.tdoc'])
   })
+
+  it('escribe binarios byte a byte (PDF, docx...)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'tintero-'))
+    const target = join(dir, 'doc.pdf')
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00, 0xff])
+    await writeFileAtomic(target, bytes)
+    expect(new Uint8Array(await readFile(target))).toEqual(bytes)
+  })
 })
 
 describe('RecentsStore', () => {

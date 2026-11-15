@@ -160,6 +160,17 @@ export function useDocumentSession(registry: AppRegistry) {
     [document]
   )
 
+  /** Exporta a PDF. No cambia la ruta del documento: un PDF es una copia, no el original. */
+  const exportPdf = useCallback(async () => {
+    if (!document) return
+    try {
+      const path = await platform.window.exportPdf(`${document.name}.pdf`)
+      if (path) setNotice(`PDF guardado en ${path}`)
+    } catch (error) {
+      setNotice(`No se pudo exportar a PDF. ${errorMessage(error)}`)
+    }
+  }, [document])
+
   const close = useCallback((): boolean => {
     if (!confirmDiscard()) return false
     if (currentRecoveryId.current) forgetRecovery(currentRecoveryId.current)
@@ -223,6 +234,7 @@ export function useDocumentSession(registry: AppRegistry) {
     openPath,
     save: () => save(false),
     saveAs: () => save(true),
+    exportPdf,
     close,
     handleContentChange,
     openRecovered,

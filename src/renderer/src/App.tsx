@@ -107,6 +107,9 @@ export function App() {
         case 'print':
           if (document) void platform.window.print()
           break
+        case 'export-pdf':
+          void session.exportPdf()
+          break
       }
     })
   }, [document, launcherApp, session])
@@ -134,6 +137,7 @@ export function App() {
             isDirty,
             save: () => void session.save(),
             saveAs: () => void session.saveAs(),
+            exportPdf: () => void session.exportPdf(),
             goHome: () => {
               if (session.close()) selectLauncherApp(document.app.id)
             }
