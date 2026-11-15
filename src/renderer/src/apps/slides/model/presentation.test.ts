@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createShapeElement, createSlide } from './factories'
+import { migrateSlideV1toV2, parsePresentation } from './content'
+import { createShapeElement, createSlide, createTextElement } from './factories'
 import { resizeBox, snapToCenter } from './geometry'
 import { presentationReducer } from './presentationReducer'
 import type { Presentation } from './types'
@@ -31,14 +32,42 @@ describe('presentationReducer', () => {
     const state = deck(1)
     const slide = state.slides[0]
     const title = slide.elements[0]
+    const paragraphs = [{ runs: [{ text: 'Hola' }] }]
     const next = presentationReducer(state, {
-      type: 'element/setText',
+      type: 'element/setParagraphs',
       slideId: slide.id,
       elementId: title.id,
-      text: 'Hola'
+      paragraphs
     })
-    expect(next.slides[0].elements[0]).toMatchObject({ text: 'Hola' })
-    expect(state.slides[0].elements[0]).toMatchObject({ text: '' })
+    expect(next.slides[0].elements[0]).toMatchObject({ paragraphs })
+    expect(state.slides[0].elements[0]).toMatchObject({ paragraphs: [] })
+  })
+
+  it('el formato aplicado al cuadro entero anula ese formato en las palabras', () => {
+    const slide = createSlide('blank')
+    const box = createTextElement(
+      'free',
+      { x: 0, y: 0, width: 100, height: 100 },
+      {
+        paragraphs: [
+          {
+            runs: [
+              { text: 'a', bold: false, italic: true },
+              { text: 'b', bold: true }
+            ]
+          }
+        ]
+      }
+    )
+    slide.elements = [box]
+    const next = presentationReducer(
+      { themeId: 'blank', slides: [slide] },
+      { type: 'element/setTextStyle', slideId: slide.id, elementId: box.id, style: { bold: true } }
+    )
+    expect(next.slides[0].elements[0]).toMatchObject({
+      style: { bold: true },
+      paragraphs: [{ runs: [{ text: 'a', italic: true }, { text: 'b' }] }]
+    })
   })
 
   it('trae al frente y envía al fondo', () => {
@@ -76,5 +105,30 @@ describe('geometry', () => {
     const result = snapToCenter({ x: 535, y: 10, width: 200, height: 100 })
     expect(result.box.x).toBe(540)
     expect(result.guides).toEqual({ vertical: true, horizontal: false })
+  })
+})
+
+describe('migración de archivos antiguos', () => {
+  it('versión 1 -> 2: el texto plano pasa a párrafos', () => {
+    const slide = createSlide('title')
+    const legacy = {
+      ...slide,
+      elements: slide.elements.map((element, index) => {
+        const { paragraphs: _ignored, ...rest } = element as typeof element & { paragraphs: unknown }
+        return { ...rest, text: index === 0 ? 'Título\nen dos líneas' : '' }
+      })
+    }
+    const migrated = migrateSlideV1toV2(legacy as unknown as typeof slide)
+    expect(migrated.elements[0]).not.toHaveProperty('text')
+    expect(migrated.elements[0]).toMatchObject({
+      paragraphs: [{ runs: [{ text: 'Título' }] }, { runs: [{ text: 'en dos líneas' }] }]
+    })
+    expect(migrated.elements[1]).toMatchObject({ paragraphs: [] })
+  })
+
+  it('solo migra si el archivo viene de una versión anterior', () => {
+    const slide = createSlide('title')
+    const current = parsePresentation({ themeId: 'blank', slides: [slide] }, 2)
+    expect(current.slides[0]).toBe(slide)
   })
 })

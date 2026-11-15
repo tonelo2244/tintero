@@ -1,4 +1,14 @@
-import type { Box, Presentation, ShapeStyle, Slide, SlideElement, TextStyle } from './types'
+import { clearRunFormat } from './richText'
+import {
+  RUN_FORMAT_KEYS,
+  type Box,
+  type Presentation,
+  type ShapeStyle,
+  type Slide,
+  type SlideElement,
+  type TextParagraph,
+  type TextStyle
+} from './types'
 
 /**
  * Toda la lógica de edición de presentaciones como funciones puras:
@@ -13,7 +23,7 @@ export type PresentationAction =
   | { type: 'element/add'; slideId: string; element: SlideElement }
   | { type: 'element/delete'; slideId: string; elementId: string }
   | { type: 'element/setBox'; slideId: string; elementId: string; box: Box }
-  | { type: 'element/setText'; slideId: string; elementId: string; text: string }
+  | { type: 'element/setParagraphs'; slideId: string; elementId: string; paragraphs: TextParagraph[] }
   | { type: 'element/setTextStyle'; slideId: string; elementId: string; style: Partial<TextStyle> }
   | { type: 'element/setShapeStyle'; slideId: string; elementId: string; style: Partial<ShapeStyle> }
   | { type: 'element/reorder'; slideId: string; elementId: string; direction: 'front' | 'back' }
@@ -52,14 +62,22 @@ export function presentationReducer(state: Presentation, action: PresentationAct
       }))
     case 'element/setBox':
       return updateElement(state, action.slideId, action.elementId, (element) => ({ ...element, ...action.box }))
-    case 'element/setText':
+    case 'element/setParagraphs':
       return updateElement(state, action.slideId, action.elementId, (element) =>
-        element.type === 'text' ? { ...element, text: action.text } : element
+        element.type === 'text' ? { ...element, paragraphs: action.paragraphs } : element
       )
     case 'element/setTextStyle':
-      return updateElement(state, action.slideId, action.elementId, (element) =>
-        element.type === 'text' ? { ...element, style: { ...element.style, ...action.style } } : element
-      )
+      return updateElement(state, action.slideId, action.elementId, (element) => {
+        if (element.type !== 'text') return element
+        // Formato al cuadro entero: las palabras con ese formato propio dejan de tenerlo,
+        // si no, "negrita" en el cuadro no se vería en una palabra marcada como "sin negrita".
+        const changedKeys = RUN_FORMAT_KEYS.filter((key) => key in action.style)
+        return {
+          ...element,
+          style: { ...element.style, ...action.style },
+          paragraphs: clearRunFormat(element.paragraphs, changedKeys)
+        }
+      })
     case 'element/setShapeStyle':
       return updateElement(state, action.slideId, action.elementId, (element) =>
         element.type === 'shape' ? { ...element, style: { ...element.style, ...action.style } } : element

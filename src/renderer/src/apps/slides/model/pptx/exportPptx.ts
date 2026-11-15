@@ -1,16 +1,20 @@
 import PptxGenJS from 'pptxgenjs'
 import { cssColorToHex, cssFontToName } from '@/core/office/cssValues'
+import { hasText, resolveRunFormat } from '../richText'
 import { getTheme, type SlideTheme } from '../themes'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
   type ImageElement,
+  type RunFormat,
   type Presentation,
   type ShapeElement,
   type ShapeKind,
-  type TextElement
+  type TextElement,
+  type TextStyle
 } from '../types'
 import { parseBackground } from './background'
+import { fixSlideParagraphs } from './fixParagraphXml'
 
 /**
  * Convierte una presentación de Tintero en un .pptx.
@@ -66,8 +70,8 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
     if (slide.notes.trim()) pptxSlide.addNotes(slide.notes)
   }
 
-  const output = await pptx.write({ outputType: 'uint8array' })
-  return output as Uint8Array
+  const output = (await pptx.write({ outputType: 'uint8array' })) as Uint8Array
+  return fixSlideParagraphs(output)
 }
 
 function masterBackground(theme: SlideTheme): Pick<PptxGenJS.SlideMasterProps, 'background' | 'objects'> {
@@ -102,39 +106,58 @@ function position(element: { x: number; y: number; width: number; height: number
 
 function addText(slide: PptxGenJS.Slide, element: TextElement, theme: SlideTheme): void {
   // Un cuadro vacío solo muestra su texto de ayuda en el editor; en PowerPoint sería ruido.
-  if (!element.text) return
+  if (!hasText(element.paragraphs)) return
   const { style } = element
   const isTitle = element.role === 'title'
-  const fontSize = points(style.fontSize)
+  const defaults = {
+    fontFamily: style.fontFamily ?? (isTitle ? theme.titleFontFamily : theme.fontFamily),
+    color: style.color ?? (isTitle ? theme.titleColor : theme.textColor)
+  }
 
   const options: PptxGenJS.TextPropsOptions = {
     ...position(element),
-    fontFace: cssFontToName(style.fontFamily ?? (isTitle ? theme.titleFontFamily : theme.fontFamily)) ?? undefined,
-    fontSize,
-    bold: style.bold,
-    italic: style.italic,
-    underline: style.underline ? { style: 'sng' } : undefined,
-    strike: style.strike ? 'sngStrike' : undefined,
-    color: cssColorToHex(style.color ?? (isTitle ? theme.titleColor : theme.textColor)) ?? undefined,
+    ...runOptions(style, {}, defaults),
     align: style.align,
     valign: style.verticalAlign,
     margin: TEXT_MARGIN_PT,
     fit: 'none'
   }
 
-  if (!style.bullets) {
-    slide.addText(element.text, options)
-    return
+  // Cada trozo lleva su formato completo (no solo lo que cambia): así no dependemos de cómo
+  // combina pptxgenjs las opciones del cuadro con las de cada trozo.
+  const paragraphs = element.paragraphs
+  const runs = paragraphs.flatMap((paragraph, paragraphIndex) => {
+    const isLastParagraph = paragraphIndex === paragraphs.length - 1
+    const pieces = paragraph.runs.length > 0 ? paragraph.runs : [{ text: '' }]
+    return pieces.map((run, runIndex) => ({
+      text: run.text,
+      options: {
+        ...runOptions(style, run, defaults),
+        // El último trozo de cada párrafo cierra la línea (salvo el del último párrafo).
+        breakLine: runIndex === pieces.length - 1 && !isLastParagraph,
+        ...(style.bullets ? { bullet: true, paraSpaceAfter: points(style.fontSize) * 0.35 } : {})
+      }
+    }))
+  })
+  slide.addText(runs, options)
+}
+
+/** Formato final de un trozo (el suyo o, si no lo tiene, el del cuadro y el tema) en unidades de pptxgenjs. */
+function runOptions(
+  style: TextStyle,
+  run: RunFormat,
+  defaults: { fontFamily: string; color: string }
+): PptxGenJS.TextPropsOptions {
+  const format = resolveRunFormat(style, run)
+  return {
+    fontFace: cssFontToName(format.fontFamily ?? defaults.fontFamily) ?? undefined,
+    fontSize: points(format.fontSize),
+    bold: format.bold,
+    italic: format.italic,
+    underline: format.underline ? { style: 'sng' } : undefined,
+    strike: format.strike ? 'sngStrike' : undefined,
+    color: cssColorToHex(format.color ?? defaults.color) ?? undefined
   }
-  // Con viñetas, cada línea es un párrafo propio (como los <li> del editor).
-  const lines = element.text.split('\n')
-  slide.addText(
-    lines.map((line, index) => ({
-      text: line,
-      options: { bullet: true, breakLine: index < lines.length - 1, paraSpaceAfter: fontSize * 0.35 }
-    })),
-    options
-  )
 }
 
 function addImage(slide: PptxGenJS.Slide, element: ImageElement): void {

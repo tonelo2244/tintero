@@ -1,9 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { RESIZE_HANDLES, resizeBox, snapToCenter, type ResizeHandle } from '../model/geometry'
 import type { PresentationAction } from '../model/presentationReducer'
+import { fromEditorDoc, hasText, toEditorDoc } from '../model/richText'
 import { getTheme, type SlideTheme } from '../model/themes'
-import { SLIDE_HEIGHT, SLIDE_WIDTH, type Box, type Slide, type SlideElement, type TextElement } from '../model/types'
-import { boxCss, ElementContent, textCss } from './ElementContent'
+import {
+  SLIDE_HEIGHT,
+  SLIDE_WIDTH,
+  type Box,
+  type Slide,
+  type SlideElement,
+  type TextElement,
+  type TextParagraph
+} from '../model/types'
+import { boxCss, ElementContent, textClassName, textCss } from './ElementContent'
+import { createSlideTextExtensions } from './slideTextExtensions'
 
 export type ApplyAction = (action: PresentationAction, coalesceKey?: string) => void
 
@@ -14,6 +25,8 @@ interface SlideCanvasProps {
   editingElementId: string | null
   onSelectElement(id: string | null): void
   onEditElement(id: string | null): void
+  /** Avisa del editor de texto activo (o null al dejar de escribir), para que la cinta lo use. */
+  onTextEditorChange(editor: Editor | null): void
   apply: ApplyAction
 }
 
@@ -23,7 +36,8 @@ let gestureCounter = 0
 
 /** Lienzo editable: selección, mover, redimensionar y editar texto. */
 export function SlideCanvas(props: SlideCanvasProps) {
-  const { slide, selectedElementId, editingElementId, onSelectElement, onEditElement, apply } = props
+  const { slide, selectedElementId, editingElementId, onSelectElement, onEditElement, onTextEditorChange, apply } =
+    props
   const theme = getTheme(props.themeId)
   const containerRef = useRef<HTMLDivElement>(null)
   const scale = useFitScale(containerRef)
@@ -56,9 +70,13 @@ export function SlideCanvas(props: SlideCanvasProps) {
               onBoxChange={(box, gestureKey) =>
                 apply({ type: 'element/setBox', slideId: slide.id, elementId: element.id, box }, gestureKey)
               }
-              onTextChange={(text, sessionKey) =>
-                apply({ type: 'element/setText', slideId: slide.id, elementId: element.id, text }, sessionKey)
+              onParagraphsChange={(paragraphs, sessionKey) =>
+                apply(
+                  { type: 'element/setParagraphs', slideId: slide.id, elementId: element.id, paragraphs },
+                  sessionKey
+                )
               }
+              onTextEditorChange={onTextEditorChange}
               onGuides={setGuides}
             />
           ))}
@@ -98,7 +116,8 @@ interface EditableElementProps {
   onSelect(): void
   onEdit(editing: boolean): void
   onBoxChange(box: Box, gestureKey: string): void
-  onTextChange(text: string, sessionKey: string): void
+  onParagraphsChange(paragraphs: TextParagraph[], sessionKey: string): void
+  onTextEditorChange(editor: Editor | null): void
   onGuides(guides: { vertical: boolean; horizontal: boolean }): void
 }
 
@@ -145,7 +164,7 @@ function EditableElement(props: EditableElementProps) {
       target.removeEventListener('pointercancel', onUp)
       props.onGuides({ vertical: false, horizontal: false })
       // Clic (sin arrastrar) sobre un texto ya seleccionado o vacío -> entrar a escribir.
-      if (!moved && !handle && isText && (wasSelected || !element.text)) props.onEdit(true)
+      if (!moved && !handle && isText && (wasSelected || !hasText(element.paragraphs))) props.onEdit(true)
     }
 
     target.addEventListener('pointermove', onMove)
@@ -155,7 +174,7 @@ function EditableElement(props: EditableElementProps) {
 
   const classes = ['slide-element', 'is-interactive', isSelected && 'is-selected', isEditing && 'is-editing']
   // Los cuadros de texto vacíos llevan borde punteado para que se vean, como en las suites clásicas.
-  if (isText && !element.text) classes.push('is-empty-text')
+  if (isText && !hasText(element.paragraphs)) classes.push('is-empty-text')
 
   return (
     <div
@@ -168,8 +187,9 @@ function EditableElement(props: EditableElementProps) {
         <EditableText
           element={element}
           theme={theme}
-          onChange={props.onTextChange}
+          onChange={props.onParagraphsChange}
           onDone={() => props.onEdit(false)}
+          onEditorChange={props.onTextEditorChange}
         />
       ) : (
         <ElementContent element={element} theme={theme} showPlaceholder />
@@ -191,45 +211,61 @@ function EditableElement(props: EditableElementProps) {
 interface EditableTextProps {
   element: TextElement
   theme: SlideTheme
-  onChange(text: string, sessionKey: string): void
+  onChange(paragraphs: TextParagraph[], sessionKey: string): void
   onDone(): void
+  onEditorChange(editor: Editor | null): void
 }
 
 /**
- * Edición de texto con contentEditable en modo "plaintext-only": el navegador gestiona
- * cursor, selección y corrector, y nosotros solo guardamos texto plano en el modelo.
- * Es no controlado a propósito: si React reescribiera el DOM en cada tecla, el cursor saltaría.
+ * Edición de un cuadro con Tiptap, para poder dar formato a palabras sueltas.
+ * El editor se crea al entrar a escribir con el contenido del modelo y, en cada cambio, devuelve
+ * párrafos del modelo (model/richText.ts). Fuera de este modo, el cuadro se pinta sin Tiptap
+ * (ElementContent), así las miniaturas y la presentación no cargan un editor por cuadro.
  */
-function EditableText({ element, theme, onChange, onDone }: EditableTextProps) {
-  const ref = useRef<HTMLDivElement>(null)
+function EditableText({ element, theme, onChange, onDone, onEditorChange }: EditableTextProps) {
   const sessionKey = useRef(`text:${element.id}:${++gestureCounter}`)
+  // El estilo del cuadro puede cambiar mientras se escribe (alinear, viñetas): siempre el último.
+  const styleRef = useRef(element.style)
+  styleRef.current = element.style
+  const callbacks = useRef({ onChange, onDone })
+  callbacks.current = { onChange, onDone }
+
+  const extensions = useMemo(createSlideTextExtensions, [])
+  const editor = useEditor({
+    extensions,
+    // Solo al montar: después el editor es la fuente de verdad mientras se escribe.
+    content: toEditorDoc(element.paragraphs, element.style),
+    autofocus: 'end',
+    editorProps: {
+      attributes: { class: 'slide-text__content', spellcheck: 'true', lang: 'es' },
+      handleKeyDown: (_view, event) => {
+        if (event.key !== 'Escape') return false
+        callbacks.current.onDone()
+        return true
+      }
+    },
+    onUpdate: ({ editor: current }) =>
+      callbacks.current.onChange(fromEditorDoc(current.getJSON(), styleRef.current), sessionKey.current)
+  })
 
   useEffect(() => {
-    const node = ref.current
-    if (!node) return
-    node.innerText = element.text
-    node.focus()
-    const selection = window.getSelection()
-    selection?.selectAllChildren(node)
-    selection?.collapseToEnd()
-    // Solo al montar: después el DOM es la fuente de verdad mientras se escribe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    onEditorChange(editor)
+    return () => onEditorChange(null)
+  }, [editor, onEditorChange])
 
   return (
     <div
-      ref={ref}
-      className="slide-text is-editing"
-      style={{ ...textCss(element, theme), justifyContent: 'flex-start' }}
-      contentEditable="plaintext-only"
-      suppressContentEditableWarning
-      spellCheck
-      lang="es"
-      onInput={(event) => onChange(event.currentTarget.innerText.replace(/\n$/, ''), sessionKey.current)}
-      onBlur={onDone}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') event.currentTarget.blur()
+      className={textClassName(element, 'is-editing')}
+      // Negrita, cursiva y subrayado van como marcas en cada trozo: el contenedor no las aplica.
+      style={{
+        ...textCss(element, theme),
+        justifyContent: 'flex-start',
+        fontWeight: 400,
+        fontStyle: 'normal',
+        textDecoration: 'none'
       }}
-    />
+    >
+      <EditorContent editor={editor} />
+    </div>
   )
 }

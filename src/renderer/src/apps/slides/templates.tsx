@@ -1,6 +1,7 @@
 import type { AppTemplate } from '@/core/appModule'
 import { createSlide, createShapeElement, createTextElement } from './model/factories'
 import { SLIDE_THEMES } from './model/themes'
+import { paragraphsFromText } from './model/richText'
 import type { Presentation, Slide, TextElement } from './model/types'
 import { SlideView } from './editor/SlideView'
 
@@ -9,7 +10,9 @@ const PREVIEW_WIDTH = 150
 function withTexts(slide: Slide, texts: string[], notes = ''): Slide {
   let index = 0
   const elements = slide.elements.map((element) =>
-    element.type === 'text' && index < texts.length ? ({ ...element, text: texts[index++] } as TextElement) : element
+    element.type === 'text' && index < texts.length
+      ? ({ ...element, paragraphs: paragraphsFromText(texts[index++]) } as TextElement)
+      : element
   )
   return { ...slide, elements, notes }
 }

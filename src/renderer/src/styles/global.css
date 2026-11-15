@@ -1156,12 +1156,20 @@ button {
 .slide-text.is-placeholder {
   opacity: 0.55;
 }
-.slide-text__bullets {
-  margin: 0;
-  padding-left: 1.1em;
+/* Párrafos de un cuadro, iguales al pintarlo (ElementContent) y al editarlo (Tiptap). */
+.slide-text__content {
+  outline: none;
 }
-.slide-text__bullets li {
-  margin-bottom: 0.35em;
+.slide-text__content p {
+  margin: 0;
+}
+.slide-text--bullets .slide-text__content p {
+  display: list-item;
+  list-style: disc;
+  margin: 0 0 0.35em 1.1em;
+}
+.slides-notes-slot {
+  display: contents;
 }
 .slide-image {
   width: 100%;

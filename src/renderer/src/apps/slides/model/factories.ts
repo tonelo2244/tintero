@@ -1,4 +1,5 @@
 import { createId } from '@/core/ids'
+import { paragraphsFromText } from './richText'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
@@ -10,6 +11,7 @@ import {
   type SlideElement,
   type SlideLayoutId,
   type TextElement,
+  type TextParagraph,
   type TextRole,
   type TextStyle
 } from './types'
@@ -40,14 +42,20 @@ function textStyle(overrides: Partial<TextStyle>): TextStyle {
 export function createTextElement(
   role: TextRole,
   box: Box,
-  options: { text?: string; placeholder?: string | null; style?: Partial<TextStyle> } = {}
+  options: {
+    /** Texto sin formato propio (atajo para plantillas); `paragraphs` permite formato por palabra. */
+    text?: string
+    paragraphs?: TextParagraph[]
+    placeholder?: string | null
+    style?: Partial<TextStyle>
+  } = {}
 ): TextElement {
   return {
     id: createId('el'),
     type: 'text',
     role,
     ...box,
-    text: options.text ?? '',
+    paragraphs: options.paragraphs ?? paragraphsFromText(options.text ?? ''),
     placeholder: options.placeholder ?? null,
     style: { ...DEFAULT_TEXT_STYLE[role], ...options.style }
   }

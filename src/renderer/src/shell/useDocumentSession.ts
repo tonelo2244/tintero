@@ -92,7 +92,7 @@ export function useDocumentSession(registry: AppRegistry) {
       const app = registry.get(envelope.appId)
       if (!app) throw new Error(`No hay ninguna app instalada que sepa abrir archivos de tipo "${envelope.appId}".`)
       const name = displayNameFromPath(path)
-      show({ app, path, name, initialContent: app.parseContent(envelope.content) })
+      show({ app, path, name, initialContent: app.parseContent(envelope.content, envelope.version) })
       await platform.recents.touch({ path, name, appId: app.id })
     },
     [registry, show]
@@ -256,7 +256,12 @@ export function useDocumentSession(registry: AppRegistry) {
         const app = registry.get(envelope.appId)
         if (!app) throw new Error(`No hay ninguna app instalada para "${envelope.appId}".`)
         show(
-          { app, path: snapshot.path, name: snapshot.name, initialContent: app.parseContent(envelope.content) },
+          {
+            app,
+            path: snapshot.path,
+            name: snapshot.name,
+            initialContent: app.parseContent(envelope.content, envelope.version)
+          },
           { recoveryId: snapshot.id, isDirty: true }
         )
         return true

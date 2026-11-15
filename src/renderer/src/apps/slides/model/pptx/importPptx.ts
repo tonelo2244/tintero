@@ -15,6 +15,7 @@ import {
   resolveZipPath
 } from '@/core/office/xml'
 import { createShapeElement, createTextElement } from '../factories'
+import { normalizeParagraphs } from '../richText'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
@@ -24,6 +25,8 @@ import {
   type Slide,
   type SlideElement,
   type Presentation,
+  type RunFormat,
+  type TextParagraph,
   type TextRole,
   type TextStyle,
   type VerticalAlign
@@ -65,7 +68,6 @@ const ANCHOR: Record<string, VerticalAlign> = { t: 'top', ctr: 'middle', b: 'bot
 /** Lo que no se puede representar en Tintero; se cuenta para el aviso final. */
 interface Losses {
   background: boolean
-  mixedFormatting: number
   rotated: number
   unsupportedShapes: number
   tablesAndCharts: number
@@ -97,7 +99,6 @@ class PptxReader {
   private readonly xmlCache = new Map<string, Promise<Element | null>>()
   private readonly losses: Losses = {
     background: false,
-    mixedFormatting: 0,
     rotated: 0,
     unsupportedShapes: 0,
     tablesAndCharts: 0,
@@ -238,18 +239,14 @@ class PptxReader {
   ): SlideElement | null {
     const body = child(shape, 'txBody')
     const paragraphs = childElements(body, 'p')
-    const text = paragraphs.map(paragraphText).join('\n')
-    if (!text.trim()) return null
+    if (!paragraphs.map(paragraphText).join('').trim()) return null
 
     const role = roleOf(placeholder)
     const levelOneSources = styleSources(shape, inherited, context.master, role)
     const firstParagraph = paragraphs.find((paragraph) => paragraphText(paragraph).trim()) ?? paragraphs[0]
     // Propiedades de cada trozo de texto (a:r > a:rPr); un trozo sin a:rPr usa las heredadas.
     const runs = descendants(body, 'r').filter((run) => child(run, 't')?.textContent)
-    const runProperties = runs.map((run) => child(run, 'rPr'))
-    if (hasMixedFormatting(runProperties)) this.losses.mixedFormatting++
-
-    const firstRun = runProperties[0] ?? null
+    const firstRun = runs.map((run) => child(run, 'rPr'))[0] ?? null
     const runProp = (name: string) =>
       attr(firstRun, name) ?? levelOneSources.map((source) => attr(child(source, 'defRPr'), name)).find(isSet) ?? null
 
@@ -263,7 +260,7 @@ class PptxReader {
     const style: Partial<TextStyle> = {
       fontFamily: fontOf(firstRun),
       // Tamaño en centésimas de punto -> px de Tintero, con la misma escala que las posiciones.
-      fontSize: Math.max(6, Math.round((sizeInHundredths / 100 / 0.75) * this.scale * EMU_PER_PX)),
+      fontSize: this.fontSizePx(sizeInHundredths),
       bold: runProp('b') === '1',
       italic: runProp('i') === '1',
       underline: Boolean(runProp('u')) && runProp('u') !== 'none',
@@ -276,7 +273,59 @@ class PptxReader {
       verticalAlign: ANCHOR[anchor ?? ''] ?? (role === 'title' || insideShape ? 'middle' : 'top'),
       bullets: hasBullets(firstParagraph, levelOneSources)
     }
-    return createTextElement(role, box, { text, style })
+    const element = createTextElement(role, box, { style })
+    // El formato del primer trozo es el del cuadro; cada trozo guarda solo lo que cambia respecto a él.
+    element.paragraphs = normalizeParagraphs(
+      paragraphs.flatMap((paragraph) => this.readParagraph(paragraph, element.style, insideShape))
+    )
+    return element
+  }
+
+  /** Tamaño en centésimas de punto -> px de Tintero, con la misma escala que las posiciones. */
+  private fontSizePx(hundredthsOfPoint: number): number {
+    return Math.max(6, Math.round((hundredthsOfPoint / 100 / 0.75) * this.scale * EMU_PER_PX))
+  }
+
+  /** Un a:p con sus trozos (a:r). Un salto de línea (a:br) abre un párrafo nuevo, como en el editor. */
+  private readParagraph(paragraph: Element, style: TextStyle, insideShape: boolean): TextParagraph[] {
+    const result: TextParagraph[] = [{ runs: [] }]
+    for (const node of childElements(paragraph)) {
+      if (node.localName === 'br') {
+        result.push({ runs: [] })
+      } else if (node.localName === 'r' || node.localName === 'fld') {
+        const text = child(node, 't')?.textContent ?? ''
+        if (text) result.at(-1)!.runs.push({ text, ...this.readRunFormat(child(node, 'rPr'), style, insideShape) })
+      }
+    }
+    return result
+  }
+
+  /** Formato propio de un trozo: solo lo que el a:rPr dice explícitamente y es distinto del cuadro. */
+  private readRunFormat(rPr: Element | null, style: TextStyle, insideShape: boolean): RunFormat {
+    const format: RunFormat = {}
+    const toggle = (name: string, offValue: string) => {
+      const value = attr(rPr, name)
+      return value === null ? undefined : value !== '0' && value !== 'false' && value !== offValue
+    }
+    const flags = {
+      bold: toggle('b', '0'),
+      italic: toggle('i', '0'),
+      underline: toggle('u', 'none'),
+      strike: toggle('strike', 'noStrike')
+    }
+    for (const [key, value] of Object.entries(flags) as [keyof typeof flags, boolean | undefined][]) {
+      if (value !== undefined && value !== style[key]) format[key] = value
+    }
+    const size = numberAttr(rPr, 'sz')
+    if (size) {
+      const px = this.fontSizePx(size)
+      if (px !== style.fontSize) format.fontSize = px
+    }
+    const font = fontOf(rPr)
+    if (font && font !== style.fontFamily) format.fontFamily = font
+    const color = colorOf(child(rPr, 'solidFill'))
+    if (color && (insideShape || !isNearWhite(color)) && `#${color}` !== style.color) format.color = `#${color}`
+    return format
   }
 
   private async readPicture(picture: Element, context: SlideContext, transform: Transform) {
@@ -434,15 +483,6 @@ function paragraphText(paragraph: Element): string {
     .join('')
 }
 
-/** Si los trozos de texto no comparten formato: en Tintero el formato es por cuadro, se unifica. */
-function hasMixedFormatting(runs: (Element | null)[]): boolean {
-  const signature = (run: Element | null) =>
-    ['b', 'i', 'u', 'sz'].map((name) => attr(run, name) ?? '').join('|') +
-    '|' +
-    (colorOf(child(run, 'solidFill')) ?? '')
-  return new Set(runs.map(signature)).size > 1
-}
-
 /** Solo colores RGB explícitos; los del tema de PowerPoint pasan a ser los del tema de Tintero. */
 function colorOf(fill: Element | null): string | null {
   const value = attr(child(fill, 'srgbClr'), 'val')
@@ -490,11 +530,6 @@ function notesText(notes: Element | null): string {
 export function describeLosses(losses: Losses): string[] {
   const warnings: string[] = []
   if (losses.background) warnings.push('el fondo y los colores del tema (se aplica el tema Blanco)')
-  if (losses.mixedFormatting > 0) {
-    warnings.push(
-      `el formato por palabra en ${plural(losses.mixedFormatting, 'cuadro')} (cada cuadro toma el formato de su primer texto)`
-    )
-  }
   if (losses.tablesAndCharts > 0) {
     warnings.push(`${plural(losses.tablesAndCharts, 'tabla, gráfico o SmartArt', 'tablas, gráficos o SmartArt')}`)
   }

@@ -24,8 +24,12 @@ export interface AppModule<TContent = unknown> {
   /** Título de la galería en la pantalla de inicio ("Plantillas", "Temas"). */
   galleryTitle: string
   templates: AppTemplate<TContent>[]
-  /** Valida/normaliza contenido leído de disco. Lanza un Error si no es válido. */
-  parseContent(raw: unknown): TContent
+  /**
+   * Valida/normaliza contenido leído de disco. Lanza un Error si no es válido.
+   * `fileVersion` es la versión del sobre con la que se guardó: si es antigua, la app migra
+   * el contenido a su forma actual (los archivos viejos siguen abriéndose).
+   */
+  parseContent(raw: unknown, fileVersion: number): TContent
   Editor: ComponentType<EditorProps<TContent>>
   /**
    * Formatos externos a los que la app sabe exportar (.docx, .pptx...). Opcional: el shell
