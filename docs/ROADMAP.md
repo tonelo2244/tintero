@@ -67,9 +67,9 @@ Lo que no está tan bien:
 | Fórmulas en lenguaje natural sin hacer (estaban bloqueadas por el parser de la fase 5)                       | Falta la función de IA más vistosa de Hojas                | Resuelto (fase 8)        |
 | El asistente trabaja en texto plano: al reemplazar se pierde la negrita, colores, etc.                       | Molesto en documentos con formato                          | Resuelto (fase 8)        |
 | Documentos de más de 12.000 caracteres se recortan para el modelo                                            | Resumir un documento largo resume solo el principio        | Resuelto (fase 8)        |
-| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel   | Fase 9                   |
-| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                 | Fase 9                   |
-| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                           | Fase 9                   |
+| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel   | Resuelto (fase 9)        |
+| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                 | Resuelto (fase 9)        |
+| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                           | Resuelto (fase 9)        |
 | Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                       | Fase 10                  |
 | Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                | Fase 10                  |
 | Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                              | Fase 9 y 10              |
@@ -118,7 +118,9 @@ Esfuerzo estimado: 4–6 semanas; se puede hacer por piezas, pero el banco de ev
 
 Diseño clave: cada función nueva de IA sigue la regla de la fase 6. **main no tiene prompts**: los prompts, esquemas y validaciones viven en la app, y main solo habla con el modelo. Y **el modelo propone, el código decide**: una fórmula pasa por el parser, una presentación por las fábricas y una acción por el reducer.
 
-### Fase 9 · Hojas de cálculo v2
+### Fase 9 · Hojas de cálculo v2 · hecha
+
+Hecha entera. Lo que queda fuera a propósito: matrices dinámicas (BUSCARX devuelve la primera celda si el resultado es una fila), autoajuste del alto al ajustar texto, y exportar a .xlsx gráficos, formato condicional, filtros, altos de fila y paneles (va en la fase 10, que es donde se trabaja la fidelidad con Office).
 
 Objetivo: que una hoja normal de Excel se pueda abrir y trabajar sin echar nada en falta.
 
