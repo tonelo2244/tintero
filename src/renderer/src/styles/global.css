@@ -462,6 +462,46 @@ button {
   cursor: default;
 }
 
+.export-menu {
+  position: relative;
+  display: inline-flex;
+}
+.export-menu__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 220px;
+  padding: 4px;
+  background: #fff;
+  color: #222;
+  border: 1px solid #d6d6d6;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+.export-menu__title {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: #6b6b6b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.export-menu__item {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.export-menu__item:hover,
+.export-menu__item:focus-visible {
+  background: #f0f0f0;
+}
+
 .ribbon-tab {
   border: 0;
   background: transparent;

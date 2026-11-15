@@ -48,7 +48,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       canUndo={toolbar?.canUndo ?? false}
       canRedo={toolbar?.canRedo ?? false}
       onPrint={() => void platform.window.print()}
-      onExportPdf={session.exportPdf}
+      exportOptions={session.exportOptions}
       tabs={TABS}
       activeTab={activeTab}
       onTabChange={setActiveTab}

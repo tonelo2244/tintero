@@ -7,10 +7,13 @@ import { IpcChannel, type MenuCommand, type TinteroApi } from '@shared/ipc'
  */
 const api: TinteroApi = {
   files: {
-    showOpenDialog: (filters) => ipcRenderer.invoke(IpcChannel.FilesOpenDialog, filters),
+    chooseFile: (filters) => ipcRenderer.invoke(IpcChannel.FilesChooseFile, filters),
     read: (path) => ipcRenderer.invoke(IpcChannel.FilesRead, path),
+    readBinary: (path) => ipcRenderer.invoke(IpcChannel.FilesReadBinary, path),
     save: (path, contents, suggestedName, filters) =>
       ipcRenderer.invoke(IpcChannel.FilesSave, path, contents, suggestedName, filters),
+    saveBinary: (contents, suggestedName, filters) =>
+      ipcRenderer.invoke(IpcChannel.FilesSaveBinary, contents, suggestedName, filters),
     takePendingOpenRequests: () => ipcRenderer.invoke(IpcChannel.FilesTakePendingOpen),
     onOpenRequested: (handler) => {
       const listener = (_event: Electron.IpcRendererEvent, path: string) => handler(path)
