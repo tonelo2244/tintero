@@ -10,8 +10,12 @@ export const FILE_FORMAT_ID = 'tintero'
  *   1. Primera versión.
  *   2. Diapositivas: los cuadros de texto guardan párrafos con formato por palabra en vez de
  *      texto plano. Cada app migra su contenido en `parseContent` (ver apps/slides/model/content.ts).
+ *   3. Diapositivas: grupos de elementos, alineación y viñeta por párrafo y transiciones. Son campos
+ *      nuevos y opcionales, así que un archivo de la versión 2 se lee tal cual (no hay migración);
+ *      subir la versión sirve para lo contrario: que un Tintero anterior, que no sabría pintar un
+ *      grupo, diga "versión más nueva" en lugar de abrir la presentación a medias.
  */
-export const FILE_FORMAT_VERSION = 2
+export const FILE_FORMAT_VERSION = 3
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

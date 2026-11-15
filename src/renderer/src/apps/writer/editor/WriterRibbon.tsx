@@ -21,6 +21,7 @@ import {
   ListOrdered,
   MessageSquarePlus,
   MessagesSquare,
+  PanelTop,
   Minus,
   Pilcrow,
   Quote,
@@ -269,6 +270,8 @@ interface WriterInsertTabProps {
   commentsOpen: boolean
   onAddComment(): void
   onToggleComments(): void
+  headerFooterOpen: boolean
+  onToggleHeaderFooter(): void
 }
 
 export function WriterInsertTab({
@@ -277,7 +280,9 @@ export function WriterInsertTab({
   commentCount,
   commentsOpen,
   onAddComment,
-  onToggleComments
+  onToggleComments,
+  headerFooterOpen,
+  onToggleHeaderFooter
 }: WriterInsertTabProps) {
   const chain = () => editor.chain().focus()
 
@@ -330,6 +335,11 @@ export function WriterInsertTab({
           onClick={onToggleComments}
         >
           <MessagesSquare size={22} />
+        </ToolButton>
+      </RibbonGroup>
+      <RibbonGroup label="Encabezado y pie">
+        <ToolButton label="Encabezado y pie de página" large active={headerFooterOpen} onClick={onToggleHeaderFooter}>
+          <PanelTop size={22} />
         </ToolButton>
       </RibbonGroup>
     </>

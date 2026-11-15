@@ -791,27 +791,106 @@ button {
 .writer-page {
   position: relative;
   width: 21cm;
-  min-height: 29.7cm;
   padding: 2.5cm 2.5cm;
+  cursor: text;
+}
+/* Hojas A4 detrás del texto (la paginación baja cada bloque a la suya; ver editor/Pagination.ts). */
+.writer-sheets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.writer-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
   background: #fff;
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.18),
     0 0 0 1px rgba(0, 0, 0, 0.04);
-  cursor: text;
 }
-.writer-page__break {
+.writer-sheet__header,
+.writer-sheet__footer {
   position: absolute;
-  left: 0;
-  right: 0;
-  border-top: 1px dashed #c8c8c8;
-  pointer-events: none;
+  left: 2.5cm;
+  right: 2.5cm;
+  height: 2.5cm;
+  display: flex;
+  align-items: center;
+  font:
+    10pt Calibri,
+    Carlito,
+    'Segoe UI',
+    Arial,
+    sans-serif;
+  color: #555;
+  white-space: pre-wrap;
 }
-.writer-page__break span {
-  position: absolute;
-  right: 8px;
-  top: 2px;
-  font-size: 10px;
-  color: #aaa;
+.writer-sheet__header {
+  top: 0;
+}
+.writer-sheet__footer {
+  bottom: 0;
+}
+.writer-sheet__part--center {
+  justify-content: center;
+  text-align: center;
+}
+.writer-sheet__part--right {
+  justify-content: flex-end;
+  text-align: right;
+}
+.writer-page .writer-content {
+  position: relative;
+}
+
+/* Panel de encabezado y pie: mismo marco que el de comentarios. */
+.writer-header-footer {
+  bottom: auto;
+}
+.writer-header-footer__body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.writer-header-footer__part label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+.writer-header-footer__part textarea {
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+.writer-header-footer__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+}
+.writer-header-footer__tools .is-active {
+  background: var(--hover);
+  color: var(--text);
+}
+.writer-header-footer__token {
+  margin-left: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.writer-header-footer__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* Comentarios: el texto comentado se subraya en amarillo; el panel va a la derecha, como en Word. */
@@ -912,6 +991,8 @@ button {
 
 .writer-content {
   outline: none;
+  /* Contiene los márgenes del primer bloque: así la medida de la paginación empieza en 0. */
+  display: flow-root;
   font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
   font-size: 12pt;
   line-height: 1.3;
@@ -1696,14 +1777,18 @@ button {
     zoom: 1 !important;
   }
   .writer-page {
-    box-shadow: none;
     padding: 0;
     width: auto;
-    min-height: 0;
+    min-height: 0 !important;
   }
-  .writer-page__break,
+  .writer-sheets,
   .writer-comments {
     display: none;
+  }
+  /* La hoja impresa corta donde la de pantalla: el margen de pantalla se cambia por un salto. */
+  .writer-page-start {
+    break-before: page;
+    margin-top: 0 !important;
   }
   .writer-comment {
     background: none;

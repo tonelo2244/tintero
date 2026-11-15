@@ -48,6 +48,16 @@ export function writerParts(content: WriterContent): WriterParts {
   return parts
 }
 
+/** Cambia el encabezado o el pie sin tocar lo demás; sin valor, lo quita. */
+export function withHeaderFooter(
+  parts: WriterParts,
+  part: 'header' | 'footer',
+  value: HeaderFooter | undefined
+): WriterParts {
+  const { [part]: _previous, ...rest } = parts
+  return value ? { ...rest, [part]: value } : rest
+}
+
 export function parseWriterContent(raw: unknown): WriterContent {
   const candidate = raw as Partial<WriterContent> | null
   if (!candidate || typeof candidate.doc !== 'object' || candidate.doc?.type !== 'doc') {
