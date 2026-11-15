@@ -40,9 +40,14 @@ export function serializeDocument<T>(appId: string, content: T, now: Date = new 
 }
 
 export function parseDocument(raw: string): DocumentEnvelope {
+  // Algunos editores de texto añaden una marca BOM al inicio y JSON.parse la rechaza.
+  const text = raw.replace(/^\uFEFF/, '')
+  if (text.trim() === '') {
+    throw new InvalidDocumentError('El archivo está vacío.')
+  }
   let data: unknown
   try {
-    data = JSON.parse(raw)
+    data = JSON.parse(text)
   } catch {
     throw new InvalidDocumentError('El archivo no es un documento válido (JSON corrupto).')
   }

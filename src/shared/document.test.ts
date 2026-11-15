@@ -14,6 +14,16 @@ describe('document envelope', () => {
     expect(() => parseDocument('{nope')).toThrow(InvalidDocumentError)
   })
 
+  it('distingue un archivo vacío de uno corrupto', () => {
+    expect(() => parseDocument('')).toThrow(/vacío/)
+    expect(() => parseDocument('  \n')).toThrow(/vacío/)
+  })
+
+  it('acepta un documento con marca BOM al inicio', () => {
+    const raw = '\uFEFF' + serializeDocument('writer', { hello: 'world' })
+    expect(parseDocument(raw).content).toEqual({ hello: 'world' })
+  })
+
   it('rechaza archivos de otro formato', () => {
     expect(() => parseDocument(JSON.stringify({ foo: 1 }))).toThrow(/no pertenece/)
   })
