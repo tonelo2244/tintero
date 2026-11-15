@@ -79,6 +79,8 @@ export interface ImportResult<TContent> {
 /** Lo que el shell ofrece a cada editor. */
 export interface EditorSession {
   documentName: string
+  /** Ruta del archivo en disco, o null si aún no se ha guardado. */
+  filePath: string | null
   isDirty: boolean
   save(): void
   saveAs(): void

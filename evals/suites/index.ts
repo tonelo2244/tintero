@@ -1,5 +1,6 @@
 import type { EvalSuite } from '../lib/types'
 import { presentationSuite } from './presentation'
+import { ragSuite } from './rag'
 import { explainSuite, formulaSuite, tableAnalysisSuite } from './sheets'
 import { sheetToolsSuite, slideToolsSuite } from './tools'
 import { longDocumentSuite, proofreadSuite, rewriteSuite, summarizeSuite } from './writing'
@@ -15,5 +16,6 @@ export const SUITES: EvalSuite[] = [
   explainSuite,
   tableAnalysisSuite,
   slideToolsSuite,
-  sheetToolsSuite
+  sheetToolsSuite,
+  ragSuite
 ]

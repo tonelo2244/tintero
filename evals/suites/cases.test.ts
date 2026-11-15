@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createFormulaParser } from '@/apps/sheets/model/ai/naturalFormula'
+import { documentChunks } from '@/apps/writer/model/ai/documentChunks'
 import formulaCases from '../cases/formulas.json'
+import ragCorpus from '../cases/rag-corpus.json'
+import ragCases from '../cases/rag.json'
 import { SUITES } from '.'
+import { corpusDocument } from './rag'
 import { fixtureBook, sameValue, type FixtureId } from './sheets'
 
 /**
@@ -23,4 +27,14 @@ describe('casos del banco de evaluación', () => {
     const proposal = parse({ formula: testCase.reference, explicacion: 'referencia' })
     expect(sameValue(proposal.preview, testCase.expected), `dio ${JSON.stringify(proposal.preview)}`).toBe(true)
   })
+
+  it.each(ragCases.filter((testCase) => !testCase.notFound))(
+    'el párrafo esperado de «$id» existe y cae entero en un trozo',
+    (testCase) => {
+      const document = ragCorpus.documents.find((candidate) => candidate.id === testCase.expectedSource)
+      expect(document, testCase.expectedSource).toBeDefined()
+      const chunks = documentChunks(corpusDocument(document!.blocks))
+      expect(chunks.some((chunk) => chunk.text.includes(testCase.expectedSnippet!))).toBe(true)
+    }
+  )
 })

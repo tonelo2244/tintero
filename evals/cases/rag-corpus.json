@@ -1,0 +1,54 @@
+{
+  "documents": [
+    {
+      "id": "acta-marzo",
+      "title": "Acta de la reunión de marzo",
+      "blocks": [
+        { "heading": "Asistentes" },
+        "Asistieron Lucía Ferrer (dirección), Marcos Gil (ventas), Ana Ruiz (marketing) y Pablo Soto (finanzas). Excusó su asistencia Irene Vidal.",
+        { "heading": "Campaña de primavera" },
+        "Se aprueba un presupuesto de 18.000 euros para la campaña de primavera, que se repartirá entre redes sociales (60 %) y prensa local (40 %).",
+        "Ana Ruiz presentará el calendario de publicaciones antes del 4 de abril. La campaña empezará el 15 de abril y durará seis semanas.",
+        { "heading": "Acuerdos" },
+        "Se acuerda cambiar de proveedor de transporte a partir de mayo, porque el actual ha acumulado once retrasos en el trimestre.",
+        "La próxima reunión será el 22 de abril a las 10:00 en la sala Olivo."
+      ]
+    },
+    {
+      "id": "manual-acogida",
+      "title": "Manual de acogida",
+      "blocks": [
+        { "heading": "Horario" },
+        "El horario general es de 8:30 a 17:30 de lunes a jueves, con una hora para comer. Los viernes se trabaja de 8:00 a 15:00.",
+        "En julio y agosto rige la jornada intensiva, de 8:00 a 15:00 todos los días.",
+        { "heading": "Vacaciones" },
+        "Cada persona tiene 23 días laborables de vacaciones al año. Se piden en el portal del empleado con al menos quince días de antelación.",
+        "Hasta 5 días no disfrutados pueden pasarse al año siguiente, siempre que se usen antes del 31 de marzo.",
+        { "heading": "Material" },
+        "El primer día se entrega un portátil y unos auriculares. Si se rompen, hay que avisar al equipo de sistemas en la extensión 214."
+      ]
+    },
+    {
+      "id": "informe-ventas",
+      "title": "Informe de ventas del primer trimestre",
+      "blocks": [
+        { "heading": "Resumen" },
+        "Las ventas del primer trimestre sumaron 412.000 euros, un 9 % más que el mismo trimestre del año pasado.",
+        { "heading": "Por región" },
+        "La región norte fue la que más creció (un 21 %), gracias al nuevo distribuidor de Bilbao. La región sur bajó un 3 % por el cierre de la tienda de Jaén.",
+        { "heading": "Productos" },
+        "El producto más vendido fue el aceite ecológico de 5 litros, con 3.400 unidades. La línea de cosmética natural no llegó al objetivo y se revisará en junio."
+      ]
+    },
+    {
+      "id": "receta-gazpacho",
+      "title": "Receta de gazpacho de la abuela",
+      "blocks": [
+        { "heading": "Ingredientes" },
+        "Un kilo de tomates maduros, medio pimiento verde, un pepino, un diente de ajo, 50 ml de aceite de oliva virgen extra, vinagre de Jerez y sal.",
+        { "heading": "Preparación" },
+        "Se tritura todo junto con un poco de agua fría y se cuela. Debe reposar en la nevera al menos dos horas antes de servirlo."
+      ]
+    }
+  ]
+}

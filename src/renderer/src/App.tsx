@@ -134,6 +134,7 @@ export function App() {
           onChange={session.handleContentChange}
           session={{
             documentName: document.name,
+            filePath: document.path,
             isDirty,
             save: () => void session.save(),
             saveAs: () => void session.saveAs(),

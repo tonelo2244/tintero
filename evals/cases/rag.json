@@ -1,0 +1,54 @@
+[
+  {
+    "id": "presupuesto-campana",
+    "why": "Pregunta directa con un dato numérico: la respuesta debe dar la cifra y citar el acta.",
+    "question": "¿Qué presupuesto se aprobó para la campaña de primavera?",
+    "expectedSource": "acta-marzo",
+    "expectedSnippet": "18.000 euros",
+    "mustContain": ["18.000"]
+  },
+  {
+    "id": "vacaciones-sinonimo",
+    "why": "La pregunta no comparte palabras clave con el texto (días libres / vacaciones): es lo que aporta buscar por significado.",
+    "question": "¿Cuántos días libres al año me corresponden?",
+    "expectedSource": "manual-acogida",
+    "expectedSnippet": "23 días laborables",
+    "mustContain": ["23"]
+  },
+  {
+    "id": "horario-verano",
+    "why": "Hay dos horarios en el mismo documento: el bueno es el de verano.",
+    "question": "¿A qué hora se sale en agosto?",
+    "expectedSource": "manual-acogida",
+    "expectedSnippet": "jornada intensiva",
+    "mustContain": ["15"]
+  },
+  {
+    "id": "region-crecimiento",
+    "why": "Dato concreto dentro de un informe con varias cifras parecidas.",
+    "question": "¿Qué región creció más en el primer trimestre?",
+    "expectedSource": "informe-ventas",
+    "expectedSnippet": "región norte",
+    "mustContain": ["norte"]
+  },
+  {
+    "id": "proveedor-transporte",
+    "why": "Pregunta por el porqué de un acuerdo: hay que recuperar el párrafo correcto, no solo el documento.",
+    "question": "¿Por qué vamos a cambiar de proveedor de transporte?",
+    "expectedSource": "acta-marzo",
+    "expectedSnippet": "once retrasos",
+    "mustContain": ["retraso"]
+  },
+  {
+    "id": "no-esta",
+    "why": "La respuesta no está en ningún documento: el modelo debe decirlo en vez de inventarse una cifra.",
+    "question": "¿Cuánto cobra de sueldo Marcos Gil?",
+    "notFound": true
+  },
+  {
+    "id": "no-esta-parecido",
+    "why": "Hay fragmentos parecidos (vacaciones, horario) pero no la respuesta: es la trampa típica de RAG.",
+    "question": "¿Cuántos días de baja por paternidad hay?",
+    "notFound": true
+  }
+]

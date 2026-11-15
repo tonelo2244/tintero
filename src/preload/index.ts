@@ -1,8 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { AiChannel, type AiApi } from '@shared/ai'
+import { AiChannel, type AiApi, type RagApi } from '@shared/ai'
 import { IpcChannel, type MenuCommand, type TinteroApi } from '@shared/ipc'
 
 let nextAiRequest = 0
+
+/** Búsqueda en documentos (RAG): vectores e índice viven en main, como el resto de la IA. */
+const rag: RagApi = {
+  status: () => ipcRenderer.invoke(AiChannel.RagStatus),
+  index: (source) => ipcRenderer.invoke(AiChannel.RagIndex, source),
+  remove: (sourceId) => ipcRenderer.invoke(AiChannel.RagRemove, sourceId),
+  search: (query, limit) => ipcRenderer.invoke(AiChannel.RagSearch, query, limit)
+}
 
 /**
  * IPC no puede pasar funciones (callbacks) entre procesos. Así que cada generación lleva un id:
@@ -63,6 +71,7 @@ const api: TinteroApi = {
     confirmClose: () => ipcRenderer.send(IpcChannel.WindowConfirmClose)
   },
   ai,
+  rag,
   onMenuCommand: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, command: MenuCommand) => handler(command)
     ipcRenderer.on(IpcChannel.MenuCommand, listener)

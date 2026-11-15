@@ -5,6 +5,8 @@ import { AiSettingsStore } from './ai/aiSettingsStore'
 import { DEFAULT_OLLAMA_ENDPOINT } from './ai/localEndpoint'
 import { OllamaClient } from './ai/ollamaClient'
 import { registerAiHandlers } from './ai/registerAiHandlers'
+import { RagService } from './ai/rag/ragService'
+import { RagStore } from './ai/rag/ragStore'
 import { registerIpcHandlers } from './ipcHandlers'
 import { buildAppMenu } from './menu'
 import { documentPathsFromArgv, OpenRequestQueue } from './openRequests'
@@ -112,7 +114,10 @@ app.whenReady().then(() => {
   registerIpcHandlers({ recents, recovery, openRequests })
   // IA local: TINTERO_OLLAMA_URL permite otro puerto, pero assertLocalEndpoint solo acepta este equipo.
   const runtime = new OllamaClient(process.env.TINTERO_OLLAMA_URL ?? DEFAULT_OLLAMA_ENDPOINT)
-  registerAiHandlers(new AiService(runtime, new AiSettingsStore(join(userData, 'ai-settings.json'))))
+  registerAiHandlers(
+    new AiService(runtime, new AiSettingsStore(join(userData, 'ai-settings.json'))),
+    new RagService(runtime, new RagStore(join(userData, 'rag-index.json')))
+  )
   Menu.setApplicationMenu(buildAppMenu())
   createMainWindow(recovery)
 

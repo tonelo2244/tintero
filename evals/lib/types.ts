@@ -1,4 +1,4 @@
-import type { AiApi } from '@shared/ai'
+import type { AiApi, RagApi } from '@shared/ai'
 import type { Judge } from './judge'
 
 /** Resultado de una comprobación determinista ("contiene «había»", "la fórmula da 150"...). */
@@ -58,6 +58,8 @@ export interface EvalContext {
   /** La misma interfaz que usa la app (platform.ai), conectada directamente al runtime. */
   ai: AiApi
   judge: Judge
+  /** El servicio RAG de main, con un índice en memoria (no toca el de la app). */
+  rag: RagApi
 }
 
 export interface EvalCase {

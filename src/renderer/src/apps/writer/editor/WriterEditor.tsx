@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
-import { Presentation } from 'lucide-react'
+import { MessagesSquare, Presentation } from 'lucide-react'
 import type { EditorProps } from '@/core/appModule'
 import { useAiStatus } from '@/core/ai/useAiStatus'
 import { platform } from '@/core/platform'
@@ -10,6 +10,7 @@ import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import type { WriterContent } from '../model/content'
 import type { WritingActionId } from '../model/ai/writingActions'
+import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
@@ -17,6 +18,7 @@ import { PresentationPanel } from './PresentationPanel'
 import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
+import { useAskDocuments } from './useAskDocuments'
 import { useWritingAssistant } from './useWritingAssistant'
 import { WriterAssistantTab } from './WriterAssistantTab'
 import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
@@ -54,8 +56,10 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const ai = useAiStatus()
   const assistant = useWritingAssistant(editor)
   const presentation = usePresentationFromDocument(editor)
-  /** Panel de IA abierto: ninguno, cómo preparar Ollama, el asistente de redacción o crear presentación. */
-  const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation'>('closed')
+  const getDoc = useCallback(() => editor?.getJSON() ?? null, [editor])
+  const askDocuments = useAskDocuments(getDoc, { documentName: session.documentName, filePath: session.filePath })
+  /** Panel de IA abierto: ninguno, cómo preparar Ollama, redacción, crear presentación o preguntar. */
+  const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation' | 'ask'>('closed')
   const pages = usePageMetrics(editor, pageRef, zoom)
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
@@ -80,12 +84,14 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const closeAiPanel = () => {
     assistant.close()
     presentation.close()
+    askDocuments.close()
     setAiPanel('closed')
   }
 
   const runWritingAction = async (id: WritingActionId) => {
     if (!(await ensureAiReady())) return
     presentation.close()
+    askDocuments.close()
     setFind(null) // los paneles flotan en la misma esquina
     setAiPanel('writing')
     assistant.run(id)
@@ -94,9 +100,20 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const createPresentation = async () => {
     if (!(await ensureAiReady())) return
     assistant.close()
+    askDocuments.close()
     setFind(null)
     setAiPanel('presentation')
     void presentation.start()
+  }
+
+  const openAskDocuments = async () => {
+    if (!(await ensureAiReady())) return
+    assistant.close()
+    presentation.close()
+    setFind(null)
+    setAiPanel('ask')
+    // Cada vez que se abre: lo que no ha cambiado se salta (huella), así que es barato.
+    void askDocuments.prepare()
   }
 
   const openPresentation = () => {
@@ -139,6 +156,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
                   onClick={() => void createPresentation()}
                 >
                   <Presentation size={22} />
+                </ToolButton>
+                <ToolButton large label="Preguntar a mis documentos" onClick={() => void openAskDocuments()}>
+                  <MessagesSquare size={22} />
                 </ToolButton>
               </RibbonGroup>
             }
@@ -206,6 +226,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           onClose={closeAiPanel}
         />
       )}
+      {aiPanel === 'ask' && <AskDocumentsPanel ask={askDocuments} model={readyModel} onClose={closeAiPanel} />}
       {editor && find && (
         <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
       )}

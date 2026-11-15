@@ -69,6 +69,51 @@ export interface AiGeneration {
   cancel(): void
 }
 
+/**
+ * Búsqueda semántica local (RAG). main guarda vectores y busca; QUÉ se indexa y cómo se trocea lo
+ * decide cada app (Texto indexa párrafos de documentos .tdoc). Así main no sabe qué es un documento.
+ */
+export interface RagChunkInput {
+  /** Único dentro de su fuente. */
+  id: string
+  text: string
+  /** Dónde está, para citarlo: "Objetivos · párrafo 3". */
+  location: string
+}
+
+export interface RagSourceInput {
+  /** La ruta del archivo, por ejemplo. */
+  id: string
+  title: string
+  /** Cambia cuando cambia el contenido: si coincide con lo indexado, no se vuelve a calcular nada. */
+  fingerprint: string
+  chunks: RagChunkInput[]
+}
+
+export interface RagSearchResult {
+  sourceId: string
+  title: string
+  chunkId: string
+  text: string
+  location: string
+  /** Similitud coseno con la pregunta, de -1 a 1. */
+  score: number
+}
+
+export type RagStatus =
+  | { state: 'unreachable'; endpoint: string }
+  /** Ollama responde pero no hay un modelo de embeddings descargado. */
+  | { state: 'no-embedding-model'; suggestedModel: string }
+  | { state: 'ready'; model: string; sources: number; chunks: number }
+
+export interface RagApi {
+  status(): Promise<RagStatus>
+  /** Indexa (o reindexa si cambió) una fuente. Devuelve false si ya estaba al día. */
+  index(source: RagSourceInput): Promise<boolean>
+  remove(sourceId: string): Promise<void>
+  search(query: string, limit: number): Promise<RagSearchResult[]>
+}
+
 export interface AiApi {
   status(): Promise<AiStatus>
   /** Elige el modelo a usar (uno de los que devuelve `status`). Se recuerda entre sesiones. */
@@ -82,5 +127,9 @@ export const AiChannel = {
   SetModel: 'ai:set-model',
   Generate: 'ai:generate',
   Cancel: 'ai:cancel',
-  Token: 'ai:token'
+  Token: 'ai:token',
+  RagStatus: 'ai:rag-status',
+  RagIndex: 'ai:rag-index',
+  RagRemove: 'ai:rag-remove',
+  RagSearch: 'ai:rag-search'
 } as const

@@ -1,8 +1,11 @@
 import { createEvalAi } from './evalAi'
 import { createJudge } from './judge'
 import { summarizeSuite, type EvalReport, type RunInfo } from './report'
-import type { CaseResult, EvalSuite } from './types'
+import type { CaseResult, EvalContext, EvalSuite } from './types'
 import type { LocalModelRuntime } from '../../src/main/ai/ollamaClient'
+import { RagService } from '../../src/main/ai/rag/ragService'
+import type { StoredIndex } from '../../src/main/ai/rag/ragStore'
+import type { RagApi } from '@shared/ai'
 
 export interface RunOptions {
   runtime: LocalModelRuntime
@@ -24,6 +27,7 @@ export interface RunOptions {
 export async function runEvals(options: RunOptions): Promise<EvalReport> {
   const measured = createEvalAi(options.runtime, options.model)
   const judge = createJudge(createEvalAi(options.runtime, options.judgeModel).ai)
+  const rag = memoryRag(options.runtime)
   const results: CaseResult[] = []
   const summaries = []
 
@@ -33,7 +37,7 @@ export async function runEvals(options: RunOptions): Promise<EvalReport> {
     for (const testCase of cases) {
       for (let run = 1; run <= options.repeat; run++) {
         measured.takeCalls()
-        const result = await runCase(suite, testCase, run, () => measured.takeCalls(), measured.ai, judge)
+        const result = await runCase(suite, testCase, run, () => measured.takeCalls(), { ai: measured.ai, judge, rag })
         suiteResults.push(result)
         options.onResult?.(result)
       }
@@ -60,12 +64,11 @@ async function runCase(
   testCase: EvalSuite['cases'][number],
   run: number,
   takeCalls: ReturnType<typeof createEvalAi>['takeCalls'],
-  ai: ReturnType<typeof createEvalAi>['ai'],
-  judge: ReturnType<typeof createJudge>
+  context: EvalContext
 ): Promise<CaseResult> {
   const base = { suite: suite.id, caseId: testCase.id, run }
   try {
-    const outcome = await suite.run(testCase, { ai, judge })
+    const outcome = await suite.run(testCase, context)
     const calls = takeCalls()
     const passedChecks = outcome.checks.filter((check) => check.passed).length
     const parts = outcome.checks.length + (outcome.judge ? 1 : 0)
@@ -92,5 +95,22 @@ async function runCase(
       firstTokenMs: calls[0]?.firstTokenMs ?? null,
       calls: calls.length
     }
+  }
+}
+
+/** RAG con el mismo código que la app pero con el índice en memoria: las evals no ensucian userData. */
+function memoryRag(runtime: LocalModelRuntime): RagApi {
+  let stored: StoredIndex = { version: 1, embeddingModel: null, sources: [] }
+  const service = new RagService(runtime, {
+    load: async () => stored,
+    save: async (index) => {
+      stored = index
+    }
+  })
+  return {
+    status: () => service.status(),
+    index: (source) => service.index(source),
+    remove: (sourceId) => service.remove(sourceId),
+    search: (query, limit) => service.search(query, limit)
   }
 }
