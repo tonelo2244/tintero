@@ -10,6 +10,7 @@ import { buildAppMenu } from './menu'
 import { documentPathsFromArgv, OpenRequestQueue } from './openRequests'
 import { RecentsStore } from './recentsStore'
 import { RecoveryStore } from './recoveryStore'
+import { attachSpellcheck } from './spellcheck'
 import { attachCloseGuard } from './windowCloseHandling'
 
 // Antes de 'ready': define el nombre de la app y, con él, la carpeta de datos (userData).
@@ -68,6 +69,7 @@ function createMainWindow(recovery: RecoveryStore): BrowserWindow {
   })
 
   window.once('ready-to-show', () => window.show())
+  attachSpellcheck(window)
 
   attachCloseGuard(window, {
     onCancel: () => {
