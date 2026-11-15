@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createAppRegistry, extensionOf, type AnyAppModule } from '@/core/appModule'
-import { importNotice, openDialogFilters } from './fileFormats'
+import { importNotice, openDialogFilters, planOpen } from './fileFormats'
 
 const app = (id: string, extension: string, importExtensions: string[] = []) =>
   ({
@@ -36,5 +36,33 @@ describe('formatos de archivo', () => {
     expect(importNotice('a.docx', 'tdoc', ['1 tabla', 'la alineación de 2 párrafos'])).toContain(
       'No se han podido conservar: 1 tabla; la alineación de 2 párrafos.'
     )
+  })
+
+  describe('planOpen: qué hacer con un archivo antes de leerlo', () => {
+    it('abre tal cual los archivos propios, sin importar mayúsculas', () => {
+      expect(planOpen(registry, '/Users/ana/Desktop/Documento1.tdoc').kind).toBe('native')
+      expect(planOpen(registry, 'C:\\docs\\Charla.TPRES').kind).toBe('native')
+    })
+
+    it('importa los formatos de otras suites', () => {
+      const plan = planOpen(registry, '/docs/informe.docx')
+      expect(plan.kind).toBe('import')
+      if (plan.kind === 'import') expect(plan.app.id).toBe('writer')
+    })
+
+    // El fallo original: un archivo ajeno se leía como .tdoc y el aviso hablaba de "JSON corrupto".
+    it('rechaza otros tipos con un mensaje claro, sin leerlos como si fueran de Tintero', () => {
+      const plan = planOpen(registry, '/Users/ana/Desktop/notas.txt')
+      expect(plan).toEqual({
+        kind: 'unsupported',
+        message: 'Tintero no sabe abrir archivos .txt. Puede abrir .tdoc, .tpres y .docx.'
+      })
+      expect(plan.kind === 'unsupported' && plan.message).not.toMatch(/JSON/)
+    })
+
+    it('explica también los archivos sin extensión', () => {
+      const plan = planOpen(registry, '/Users/ana/Desktop/Documento1')
+      expect(plan.kind === 'unsupported' && plan.message).toMatch(/^Tintero no sabe abrir archivos sin extensión\./)
+    })
   })
 })

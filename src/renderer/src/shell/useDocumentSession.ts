@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { displayNameFromPath, parseDocument, serializeDocument } from '@shared/document'
 import type { FileFilter, RecentFile, RecoverySnapshot } from '@shared/ipc'
 import {
-  extensionOf,
   type AnyAppModule,
   type AppRegistry,
   type AppTemplate,
@@ -11,7 +10,7 @@ import {
 } from '@/core/appModule'
 import { createId } from '@/core/ids'
 import { platform } from '@/core/platform'
-import { importNotice, openDialogFilters } from './fileFormats'
+import { importNotice, openDialogFilters, planOpen } from './fileFormats'
 import type { PendingSnapshot } from './useAutosave'
 
 export interface OpenDocument {
@@ -41,6 +40,12 @@ const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? path
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Siempre con el nombre del archivo: si no, el usuario no sabe cuál falló (ni nosotros, con su captura). */
+function openErrorNotice(path: string | null, error: unknown): string {
+  const subject = path ? `"${fileNameOf(path)}"` : 'el archivo'
+  return `No se pudo abrir ${subject}. ${errorMessage(error)}`
 }
 
 /**
@@ -105,30 +110,32 @@ export function useDocumentSession(registry: AppRegistry) {
    */
   const openFile = useCallback(
     async (path: string) => {
-      const imported = registry.findImporter(extensionOf(path))
-      if (!imported) {
+      const plan = planOpen(registry, path)
+      if (plan.kind === 'unsupported') throw new Error(plan.message)
+      if (plan.kind === 'native') {
         const opened = await platform.files.read(path)
         await openFromContents(opened.path, opened.contents)
         return
       }
       const bytes = await platform.files.readBinary(path)
-      const { content, warnings } = await imported.importer.import(bytes)
+      const { content, warnings } = await plan.importer.import(bytes)
       const name = displayNameFromPath(path)
-      show({ app: imported.app, path: null, name, initialContent: content }, { isDirty: true })
+      show({ app: plan.app, path: null, name, initialContent: content }, { isDirty: true })
       // Después de show(), que limpia los avisos.
-      setNotice(importNotice(fileNameOf(path), imported.app.file.extension, warnings))
-      await platform.recents.touch({ path, name, appId: imported.app.id })
+      setNotice(importNotice(fileNameOf(path), plan.app.file.extension, warnings))
+      await platform.recents.touch({ path, name, appId: plan.app.id })
     },
     [openFromContents, registry, show]
   )
 
   const openWithDialog = useCallback(async () => {
     if (!confirmDiscard()) return
+    let path: string | null = null
     try {
-      const path = await platform.files.chooseFile(openDialogFilters(registry))
+      path = await platform.files.chooseFile(openDialogFilters(registry))
       if (path) await openFile(path)
     } catch (error) {
-      setNotice(`No se pudo abrir el archivo. ${errorMessage(error)}`)
+      setNotice(openErrorNotice(path, error))
     }
   }, [confirmDiscard, openFile, registry])
 
@@ -139,7 +146,7 @@ export function useDocumentSession(registry: AppRegistry) {
       try {
         await openFile(path)
       } catch (error) {
-        setNotice(`No se pudo abrir el archivo. ${errorMessage(error)}`)
+        setNotice(openErrorNotice(path, error))
       }
     },
     [confirmDiscard, openFile]
