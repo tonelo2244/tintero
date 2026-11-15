@@ -16,6 +16,11 @@ import { attachCloseGuard } from './windowCloseHandling'
 // Antes de 'ready': define el nombre de la app y, con él, la carpeta de datos (userData).
 app.setName('Tintero')
 
+// En desarrollo usamos otra carpeta de datos. Así `npm run dev` no comparte recientes,
+// recuperación ni el bloqueo de instancia única con un Tintero instalado y abierto
+// (si lo compartiera, la versión de desarrollo le cedería el paso y se cerraría sin abrir nada).
+if (!app.isPackaged) app.setPath('userData', join(app.getPath('appData'), 'Tintero (desarrollo)'))
+
 // Una sola instancia: si la app ya está abierta y haces doble clic en un .tdoc,
 // el sistema lanza un segundo proceso; este le pasa el archivo al primero y se cierra.
 if (!app.requestSingleInstanceLock()) app.quit()

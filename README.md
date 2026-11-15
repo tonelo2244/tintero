@@ -22,6 +22,10 @@ npm run lint       # ESLint
 npm run format     # Prettier (formatea todo)
 ```
 
+`npm install` descarga el binario de Electron al terminar (script `postinstall`), porque
+Electron ya no lo hace por su cuenta. En modo desarrollo los datos van a
+`Tintero (desarrollo)`, así que puedes tener un Tintero instalado abierto a la vez.
+
 Al hacer `git commit`, un hook de pre-commit (husky + lint-staged) pasa ESLint y Prettier sobre los archivos que vas a commitear. Cada PR ejecuta en GitHub Actions lint, formato, typecheck, tests y build.
 
 ## Instaladores
