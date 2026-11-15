@@ -1,6 +1,13 @@
 import { useMemo } from 'react'
 import { readImageFile } from '@/ui/readImageFile'
-import { cloneSlide, createImageElement, createShapeElement, createSlide, createTextElement, centeredBox } from '../model/factories'
+import {
+  cloneSlide,
+  createImageElement,
+  createShapeElement,
+  createSlide,
+  createTextElement,
+  centeredBox
+} from '../model/factories'
 import type { Presentation, ShapeKind, ShapeStyle, Slide, SlideElement, SlideLayoutId, TextStyle } from '../model/types'
 import type { ApplyAction } from './SlideCanvas'
 
@@ -83,7 +90,12 @@ export function useSlideCommands(context: SlideCommandContext) {
         if (!selectedElement) return
         const { x, y, width, height } = selectedElement
         apply(
-          { type: 'element/setBox', slideId: currentSlide.id, elementId: selectedElement.id, box: { x: x + dx, y: y + dy, width, height } },
+          {
+            type: 'element/setBox',
+            slideId: currentSlide.id,
+            elementId: selectedElement.id,
+            box: { x: x + dx, y: y + dy, width, height }
+          },
           `nudge:${selectedElement.id}`
         )
       },

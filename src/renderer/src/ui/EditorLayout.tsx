@@ -55,7 +55,12 @@ export function EditorLayout(props: EditorLayoutProps) {
         </div>
         <div className="titlebar__title">
           {props.documentName}
-          {props.isDirty && <span className="titlebar__dirty" title="Cambios sin guardar"> •</span>}
+          {props.isDirty && (
+            <span className="titlebar__dirty" title="Cambios sin guardar">
+              {' '}
+              •
+            </span>
+          )}
         </div>
         <nav className="titlebar__tabs" role="tablist">
           {tabs.map((tab) => (

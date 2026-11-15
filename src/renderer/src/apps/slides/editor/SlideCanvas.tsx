@@ -31,7 +31,10 @@ export function SlideCanvas(props: SlideCanvasProps) {
 
   return (
     <div className="slide-canvas" ref={containerRef} onPointerDown={() => onSelectElement(null)}>
-      <div className="slide-view slide-view--editable" style={{ width: SLIDE_WIDTH * scale, height: SLIDE_HEIGHT * scale }}>
+      <div
+        className="slide-view slide-view--editable"
+        style={{ width: SLIDE_WIDTH * scale, height: SLIDE_HEIGHT * scale }}
+      >
         <div
           className="slide-surface"
           style={{ background: theme.background, transform: `scale(${scale})` }}
@@ -126,7 +129,11 @@ function EditableElement(props: EditableElementProps) {
       if (handle) {
         props.onBoxChange(resizeBox(startBox, handle, dx, dy, element.type === 'image'), gestureKey)
       } else {
-        const { box, guides } = snapToCenter({ ...startBox, x: Math.round(startBox.x + dx), y: Math.round(startBox.y + dy) })
+        const { box, guides } = snapToCenter({
+          ...startBox,
+          x: Math.round(startBox.x + dx),
+          y: Math.round(startBox.y + dy)
+        })
         props.onGuides(guides)
         props.onBoxChange(box, gestureKey)
       }
@@ -158,7 +165,12 @@ function EditableElement(props: EditableElementProps) {
       onDoubleClick={() => isText && props.onEdit(true)}
     >
       {isEditing && element.type === 'text' ? (
-        <EditableText element={element} theme={theme} onChange={props.onTextChange} onDone={() => props.onEdit(false)} />
+        <EditableText
+          element={element}
+          theme={theme}
+          onChange={props.onTextChange}
+          onDone={() => props.onEdit(false)}
+        />
       ) : (
         <ElementContent element={element} theme={theme} showPlaceholder />
       )}

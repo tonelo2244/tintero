@@ -13,7 +13,8 @@ export function textCss(element: TextElement, theme: SlideTheme): CSSProperties 
     fontSize: style.fontSize,
     fontWeight: style.bold ? 700 : 400,
     fontStyle: style.italic ? 'italic' : 'normal',
-    textDecoration: [style.underline && 'underline', style.strike && 'line-through'].filter(Boolean).join(' ') || 'none',
+    textDecoration:
+      [style.underline && 'underline', style.strike && 'line-through'].filter(Boolean).join(' ') || 'none',
     color: style.color ?? (isTitle ? theme.titleColor : theme.textColor),
     textAlign: style.align,
     justifyContent: VERTICAL_JUSTIFY[style.verticalAlign]
@@ -42,7 +43,15 @@ export function ElementContent({ element, theme, showPlaceholder }: ElementConte
   }
 }
 
-function TextContent({ element, theme, showPlaceholder }: { element: TextElement; theme: SlideTheme; showPlaceholder: boolean }) {
+function TextContent({
+  element,
+  theme,
+  showPlaceholder
+}: {
+  element: TextElement
+  theme: SlideTheme
+  showPlaceholder: boolean
+}) {
   const css = textCss(element, theme)
   if (!element.text) {
     return showPlaceholder && element.placeholder ? (

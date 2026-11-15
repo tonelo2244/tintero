@@ -101,10 +101,24 @@ export function WriterHomeTab({ editor, state, showMarks, onToggleMarks }: HomeT
             options={FONT_SIZES.map((size) => ({ label: String(size), value: String(size) }))}
             onChange={(value) => chain().setFontSize(`${value}pt`).run()}
           />
-          <ToolButton label="Aumentar tamaño" onClick={() => chain().setFontSize(`${nextFontSize(fontSize, 1)}pt`).run()}>
+          <ToolButton
+            label="Aumentar tamaño"
+            onClick={() =>
+              chain()
+                .setFontSize(`${nextFontSize(fontSize, 1)}pt`)
+                .run()
+            }
+          >
             <AArrowUp size={16} />
           </ToolButton>
-          <ToolButton label="Disminuir tamaño" onClick={() => chain().setFontSize(`${nextFontSize(fontSize, -1)}pt`).run()}>
+          <ToolButton
+            label="Disminuir tamaño"
+            onClick={() =>
+              chain()
+                .setFontSize(`${nextFontSize(fontSize, -1)}pt`)
+                .run()
+            }
+          >
             <AArrowDown size={16} />
           </ToolButton>
           <ToolButton label="Borrar formato" onClick={() => chain().unsetAllMarks().clearNodes().run()}>
@@ -118,16 +132,28 @@ export function WriterHomeTab({ editor, state, showMarks, onToggleMarks }: HomeT
           <ToolButton label="Cursiva (Ctrl/Cmd+I)" active={state.italic} onClick={() => chain().toggleItalic().run()}>
             <Italic size={16} />
           </ToolButton>
-          <ToolButton label="Subrayado (Ctrl/Cmd+U)" active={state.underline} onClick={() => chain().toggleUnderline().run()}>
+          <ToolButton
+            label="Subrayado (Ctrl/Cmd+U)"
+            active={state.underline}
+            onClick={() => chain().toggleUnderline().run()}
+          >
             <Underline size={16} />
           </ToolButton>
           <ToolButton label="Tachado" active={state.strike} onClick={() => chain().toggleStrike().run()}>
             <Strikethrough size={16} />
           </ToolButton>
-          <ToolButton label="Subíndice" active={state.subscript} onClick={() => chain().unsetSuperscript().toggleSubscript().run()}>
+          <ToolButton
+            label="Subíndice"
+            active={state.subscript}
+            onClick={() => chain().unsetSuperscript().toggleSubscript().run()}
+          >
             <Subscript size={16} />
           </ToolButton>
-          <ToolButton label="Superíndice" active={state.superscript} onClick={() => chain().unsetSubscript().toggleSuperscript().run()}>
+          <ToolButton
+            label="Superíndice"
+            active={state.superscript}
+            onClick={() => chain().unsetSubscript().toggleSuperscript().run()}
+          >
             <Superscript size={16} />
           </ToolButton>
           <ColorPicker

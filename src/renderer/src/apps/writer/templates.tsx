@@ -39,9 +39,11 @@ function BlankPreview() {
 function TourPreview() {
   return (
     <div className="doc-thumb doc-thumb--tour">
-      <span>Realizar
+      <span>
+        Realizar
         <br />
-        un recorrido</span>
+        un recorrido
+      </span>
       <span className="doc-thumb__arrow">→</span>
     </div>
   )

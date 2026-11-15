@@ -75,22 +75,20 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         />
       }
     >
-      <div className="writer-canvas" onMouseDown={(event) => {
-        // Clic en el fondo gris: llevar el foco al final del documento, como en un procesador de texto.
-        if (event.target === event.currentTarget) {
-          event.preventDefault()
-          editor?.commands.focus('end')
-        }
-      }}>
+      <div
+        className="writer-canvas"
+        onMouseDown={(event) => {
+          // Clic en el fondo gris: llevar el foco al final del documento, como en un procesador de texto.
+          if (event.target === event.currentTarget) {
+            event.preventDefault()
+            editor?.commands.focus('end')
+          }
+        }}
+      >
         <div className="writer-zoom" style={{ zoom }}>
           <div ref={pageRef} className={`writer-page ${showMarks ? 'show-marks' : ''}`}>
             {Array.from({ length: pages.total - 1 }, (_, index) => (
-              <div
-                key={index}
-                className="writer-page__break"
-                style={{ top: (index + 1) * PAGE_HEIGHT_PX }}
-                aria-hidden
-              >
+              <div key={index} className="writer-page__break" style={{ top: (index + 1) * PAGE_HEIGHT_PX }} aria-hidden>
                 <span>Página {index + 2}</span>
               </div>
             ))}
