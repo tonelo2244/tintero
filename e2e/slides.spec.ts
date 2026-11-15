@@ -8,8 +8,14 @@ test('Diapositivas: escribir el título, añadir una diapositiva y guardar', asy
 
   // Como en PowerPoint: doble clic en el marcador de posición para escribir en él.
   await page.getByText('Haga clic para agregar título').dblclick()
+  // El editor del cuadro (Tiptap) se monta y toma el foco un instante después del doble clic.
+  // Si escribimos antes, las teclas se pierden: hay que esperar al foco, como haría una persona.
+  const titleEditor = page.locator('.ProseMirror')
+  await expect(titleEditor).toBeFocused()
   await page.keyboard.type('Plan del trimestre')
+  await expect(titleEditor).toHaveText('Plan del trimestre')
   await page.keyboard.press('Escape')
+  await expect(page.getByText('Plan del trimestre').first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Nueva diapositiva' }).click()
   await page.getByRole('button', { name: 'Título y contenido' }).click()
