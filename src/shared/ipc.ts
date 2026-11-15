@@ -1,3 +1,5 @@
+import type { AiApi } from './ai'
+
 /**
  * Contrato entre el proceso principal (Node) y la interfaz (renderer).
  * Es el único punto en el que ambos lados se "conocen": si añades un canal,
@@ -101,6 +103,8 @@ export interface TinteroApi {
     /** Tras guardar a petición de `onSaveBeforeClose`: ya se puede cerrar la ventana. */
     confirmClose(): void
   }
+  /** IA local (Ollama en este equipo). Contrato y canales en `shared/ai.ts`. */
+  ai: AiApi
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
   /** El usuario eligió "Guardar" al cerrar la ventana. */
   onSaveBeforeClose(handler: () => void): () => void
