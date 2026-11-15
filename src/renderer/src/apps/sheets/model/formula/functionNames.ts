@@ -34,10 +34,32 @@ export const SPANISH_FUNCTION_NAMES: Record<string, string> = {
   TRIM: 'ESPACIOS',
   LEFT: 'IZQUIERDA',
   RIGHT: 'DERECHA',
-  VLOOKUP: 'BUSCARV'
+  VLOOKUP: 'BUSCARV',
+  IFS: 'SI.CONJUNTO',
+  SUMIFS: 'SUMAR.SI.CONJUNTO',
+  COUNTIFS: 'CONTAR.SI.CONJUNTO',
+  AVERAGEIF: 'PROMEDIO.SI',
+  AVERAGEIFS: 'PROMEDIO.SI.CONJUNTO',
+  XLOOKUP: 'BUSCARX',
+  INDEX: 'INDICE',
+  MATCH: 'COINCIDIR',
+  TODAY: 'HOY',
+  NOW: 'AHORA',
+  DATE: 'FECHA',
+  YEAR: 'AÑO',
+  MONTH: 'MES',
+  DAY: 'DIA',
+  TEXT: 'TEXTO',
+  ROUNDUP: 'REDONDEAR.MAS',
+  ROUNDDOWN: 'REDONDEAR.MENOS',
+  COUNTBLANK: 'CONTAR.BLANCO',
+  IFNA: 'SI.ND'
 }
 
 const CANONICAL_BY_SPANISH = new Map(Object.entries(SPANISH_FUNCTION_NAMES).map(([en, es]) => [es, en]))
+// Se escriben a menudo con tilde o sin la eñe: los aceptamos al teclear, aunque se muestre la forma de Excel.
+CANONICAL_BY_SPANISH.set('ÍNDICE', 'INDEX')
+CANONICAL_BY_SPANISH.set('DÍA', 'DAY')
 
 /** "SUMA" -> "SUM", "sum" -> "SUM". Un nombre desconocido se devuelve en mayúsculas, sin traducir. */
 export function canonicalFunctionName(name: string): string {

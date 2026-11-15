@@ -9,9 +9,20 @@ import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
 import { describeSheet } from '../model/ai/sheetContext'
 import { buildSheetAgentRequest, interpretSheetCalls } from '../model/ai/sheetTools'
 import { SHEETS_ACCENT } from '../constants'
-import { cellAddress, parseCellAddress, rangeAddress, rangeSize } from '../model/address'
+import {
+  MAX_COLUMNS,
+  MAX_ROWS,
+  cellAddress,
+  normalizeRange,
+  parseCellAddress,
+  rangeAddress,
+  rangeSize
+} from '../model/address'
+import { expandToMerges, mergeAt } from '../model/merges'
 import { getCellValue } from '../model/calc'
 import { copyRange, fillRange, pasteCopiedCells, pasteText, type CopiedCells } from '../model/clipboard'
+import type { Axis } from '../model/formula/structure'
+import { canInsert } from '../model/structureEdit'
 import { createSheet, nextSheetName } from '../model/factories'
 import { formatGeneralNumber } from '../model/format'
 import { localizedFunctionName } from '../model/formula/functionNames'
@@ -28,7 +39,7 @@ import {
   type Direction,
   type Selection
 } from '../model/selection'
-import type { Cell, CellCoord, CellRange, CellStyle, NumberFormatKind, Workbook } from '../model/types'
+import type { Cell, CellCoord, CellRange, CellStyle, NumberFormatKind, Sheet, Workbook } from '../model/types'
 import { workbookReducer, type WorkbookAction } from '../model/workbookReducer'
 import { FormulaBar } from './FormulaBar'
 import { SheetGrid } from './SheetGrid'
@@ -36,6 +47,10 @@ import { SheetPrintView } from './SheetPrintView'
 import { SHEETS_TABS, SheetsRibbon, type SheetCommands, type SheetsTabId } from './SheetsRibbon'
 import { SheetTabs } from './SheetTabs'
 import { useEvaluation } from './useEvaluation'
+import { useCharts } from './charts/useCharts'
+import { useSheetData } from './data/useSheetData'
+import { useConditionalFormats } from './format/useConditionalFormats'
+import './sheets.css'
 import { SheetAssistantPanel } from './ai/SheetAssistantPanel'
 import { SheetsAssistantTab } from './ai/SheetsAssistantTab'
 import { useSheetAssistant } from './ai/useSheetAssistant'
@@ -72,6 +87,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   const [selection, setSelection] = useState<Selection>(singleCell({ row: 0, col: 0 }))
   const [editing, setEditing] = useState<EditingState | null>(null)
   const [renamingSheetId, setRenamingSheetId] = useState<string | null>(null)
+  /** Aviso corto en la barra de estado (p. ej. "no se puede insertar"). Se borra al cambiar la selección. */
+  const [notice, setNotice] = useState<string | null>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const cellInputRef = useRef<HTMLInputElement>(null)
   const barInputRef = useRef<HTMLInputElement>(null)
@@ -79,6 +96,11 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   const pointing = useRef(false)
 
   const range = selectionRange(selection)
+  const [noticeSelection, setNoticeSelection] = useState(selection)
+  if (noticeSelection !== selection) {
+    setNoticeSelection(selection)
+    if (notice) setNotice(null)
+  }
   const anchorAddress = cellAddress(selection.anchor)
   const activeCell = sheet.cells[anchorAddress]
 
@@ -93,10 +115,13 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
   }, [workbook, onChange])
 
   // Al cambiar de hoja (pestaña, deshacer...) la selección vuelve a A1 y se abandona la edición.
+  // Salvo que se haya pedido ir a una celda concreta de esa hoja (buscar en todo el libro).
   const [shownSheetId, setShownSheetId] = useState(sheet.id)
+  const [pendingSelection, setPendingSelection] = useState<{ sheetId: string; coord: CellCoord } | null>(null)
   if (shownSheetId !== sheet.id) {
     setShownSheetId(sheet.id)
-    setSelection(singleCell({ row: 0, col: 0 }))
+    setSelection(singleCell(pendingSelection?.sheetId === sheet.id ? pendingSelection.coord : { row: 0, col: 0 }))
+    setPendingSelection(null)
     setEditing(null)
   }
 
@@ -274,6 +299,46 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
 
   const activeStyle: CellStyle = activeCell?.style ?? {}
 
+  const valueAt = useCallback((address: string) => getCellValue(evaluation, sheet.id, address), [evaluation, sheet.id])
+  const conditional = useConditionalFormats({ sheet, range, valueAt, apply, focusGrid })
+  const charts = useCharts({ sheet, range, anchor: selection.anchor, valueAt, apply, setNotice })
+
+  const data = useSheetData({
+    workbook,
+    sheet,
+    evaluation,
+    range,
+    anchor: selection.anchor,
+    apply,
+    applyBatch: (actions) => dispatch({ type: 'history/applyBatch', actions }),
+    goTo: (sheetId, coord) => {
+      if (sheetId === sheet.id) {
+        setSelection(singleCell(coord))
+        return
+      }
+      setPendingSelection({ sheetId, coord })
+      dispatch({ type: 'history/applyWithoutUndo', action: { type: 'sheet/select', sheetId } })
+    },
+    setNotice,
+    focusGrid
+  })
+
+  /** Insertar o borrar tantas filas (o columnas) como abarque la selección, desde su primera. */
+  const changeStructure = (kind: 'insert' | 'delete', axis: Axis) => {
+    const at = axis === 'rows' ? range.start.row : range.start.col
+    const { rows, cols } = rangeSize(range)
+    const change = { kind, axis, at, count: axis === 'rows' ? rows : cols }
+    if (!canInsert(sheet, change)) {
+      setNotice('No se puede insertar: empujaría datos fuera de la hoja.')
+      return
+    }
+    if (editing) commitEditing(null)
+    apply({ type: 'structure/change', sheetId: sheet.id, change })
+    // Tras borrar, la selección se queda donde estaba (ahora con lo que había debajo o a la derecha).
+    setSelection(singleCell(axis === 'rows' ? { row: at, col: range.start.col } : { row: range.start.row, col: at }))
+    focusGrid()
+  }
+
   const commands: SheetCommands = {
     toggleStyle: (key) => styleSelection({ [key]: activeStyle[key] ? undefined : true }),
     setStyle: styleSelection,
@@ -298,6 +363,65 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       startEditing('edit', formula)
     },
     insertFunction: (name) => startEditing('edit', `=${localizedFunctionName(name)}(`),
+    merge: (mode) => {
+      if (mode === 'unmerge') {
+        apply({ type: 'cells/unmerge', sheetId: sheet.id, range })
+        focusGrid()
+        return
+      }
+      const { rows, cols } = rangeSize(range)
+      if (rows * cols > MAX_STYLED_CELLS || (rows === 1 && cols === 1)) return
+      const losesData = Object.keys(sheet.cells).some((address) => {
+        const coord = parseCellAddress(address)!
+        const cell = sheet.cells[address]
+        return (
+          address !== cellAddress(range.start) &&
+          coord.row >= range.start.row &&
+          coord.row <= range.end.row &&
+          coord.col >= range.start.col &&
+          coord.col <= range.end.col &&
+          (cell.value !== undefined || cell.formula !== undefined)
+        )
+      })
+      dispatch({
+        type: 'history/applyBatch',
+        actions: [
+          { type: 'cells/merge', sheetId: sheet.id, range },
+          ...(mode === 'center'
+            ? [{ type: 'cells/style', sheetId: sheet.id, range, style: { align: 'center' } } as const]
+            : [])
+        ]
+      })
+      setSelection({ anchor: range.start, focus: range.end })
+      if (losesData)
+        setNotice('Al combinar solo se conserva el contenido de la celda superior izquierda (Ctrl+Z lo deshace).')
+      focusGrid()
+    },
+    toggleWrap: () => styleSelection({ wrap: activeStyle.wrap ? undefined : true }),
+    freeze: (mode) => {
+      const anchor = selection.anchor
+      const target =
+        mode === 'firstRow'
+          ? { rows: 1, cols: 0 }
+          : mode === 'firstColumn'
+            ? { rows: 0, cols: 1 }
+            : mode === 'none'
+              ? { rows: 0, cols: 0 }
+              : { rows: anchor.row, cols: anchor.col }
+      if (mode === 'selection' && target.rows === 0 && target.cols === 0) {
+        setNotice('Elige la celda que quedará justo debajo y a la derecha de lo inmovilizado.')
+        return
+      }
+      apply({ type: 'view/freeze', sheetId: sheet.id, ...target })
+      focusGrid()
+    },
+    ...data.commands,
+    ...conditional.commands,
+    insertChart: charts.insertChart,
+    insertRows: () => changeStructure('insert', 'rows'),
+    insertColumns: () => changeStructure('insert', 'columns'),
+    deleteRows: () => changeStructure('delete', 'rows'),
+    deleteColumns: () => changeStructure('delete', 'columns'),
     fill: (direction) => {
       const target = clipForStyling(range)
       if (target) apply({ type: 'cells/set', sheetId: sheet.id, cells: fillRange(sheet, target, direction) })
@@ -314,9 +438,9 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
     if (key in ARROWS) {
       event.preventDefault()
       const direction = ARROWS[key]
-      const from = event.shiftKey ? selection.focus : selection.anchor
+      const from = event.shiftKey ? selection.focus : edgeOfMerge(sheet, selection.anchor, direction)
       const to = mod ? jump(sheet, from, direction) : step(from, direction)
-      setSelection(event.shiftKey ? { anchor: selection.anchor, focus: to } : singleCell(to))
+      setSelection(event.shiftKey ? extendSelection(sheet, selection.anchor, to) : selectCell(sheet, to))
       return
     }
     if (mod) {
@@ -333,7 +457,12 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           const used = usedRange(sheet)
           if (used) setSelection({ anchor: used.start, focus: used.end })
         },
-        home: () => setSelection(singleCell({ row: 0, col: 0 }))
+        home: () => setSelection(singleCell({ row: 0, col: 0 })),
+        f: () => data.commands.openFind('find'),
+        h: () => data.commands.openFind('replace'),
+        // Ctrl+"+" y Ctrl+"-" de Excel: con columnas enteras seleccionadas, columnas; si no, filas.
+        '+': () => changeStructure('insert', isWholeColumns(range) ? 'columns' : 'rows'),
+        '-': () => changeStructure('delete', isWholeColumns(range) ? 'columns' : 'rows')
       }
       if (shortcuts[lower]) {
         event.preventDefault()
@@ -348,7 +477,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
         event.preventDefault()
         const direction: Direction =
           key === 'Enter' ? (event.shiftKey ? 'up' : 'down') : event.shiftKey ? 'left' : 'right'
-        setSelection(singleCell(step(selection.anchor, direction)))
+        setSelection(selectCell(sheet, step(edgeOfMerge(sheet, selection.anchor, direction), direction)))
         return
       }
       case 'F2':
@@ -358,7 +487,11 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       case 'Delete':
       case 'Backspace':
         event.preventDefault()
-        apply({ type: 'cells/clear', sheetId: sheet.id, range })
+        // Con un gráfico seleccionado, Supr borra el gráfico y no las celdas.
+        if (!charts.deleteSelected()) apply({ type: 'cells/clear', sheetId: sheet.id, range })
+        return
+      case 'Escape':
+        charts.deselect()
         return
       case 'Home':
         event.preventDefault()
@@ -401,9 +534,13 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       const fromTintero = internal !== null && internal.copied.text === text
       let cells: Record<string, Cell | null>
       if (fromTintero && internal.cut && internal.sheetId === sheet.id) {
-        // Cortar y pegar MUEVE: se vacía el origen y las fórmulas movidas no cambian sus referencias.
-        cells = { ...emptyCells(internal.copied), ...movedCells(internal.copied, target) }
+        // Cortar y pegar MUEVE: las fórmulas de todo el libro que apuntaban a lo movido lo siguen.
+        const source = copiedRange(internal.copied)
+        apply({ type: 'range/move', sheetId: sheet.id, source, target })
         clipboard.current = null
+        const size = rangeSize(source)
+        setSelection({ anchor: target, focus: { row: target.row + size.rows - 1, col: target.col + size.cols - 1 } })
+        return
       } else if (fromTintero) {
         cells = pasteCopiedCells(internal.copied, target)
       } else {
@@ -488,6 +625,9 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             tab={tab}
             activeStyle={activeStyle}
             canDeleteSheet={workbook.sheets.length > 1}
+            inMerge={mergeAt(sheet, selection.anchor) !== null}
+            frozen={sheet.frozen !== undefined}
+            hasFilter={sheet.filter !== undefined}
             commands={commands}
           />
         )
@@ -497,6 +637,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           <span>
             {sheet.name} · {rangeAddress(range)}
           </span>
+          {notice && <span role="status">{notice}</span>}
           <span className="statusbar__spacer" />
           {stats.count > 1 && (
             <>
@@ -541,6 +682,8 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           onClose={closeAssistant}
         />
       )}
+      {data.overlays}
+      {conditional.overlay}
       <div className="sheets-workspace">
         <FormulaBar
           location={rangeAddress(range)}
@@ -561,9 +704,15 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             editing?.reference ? { anchor: editing.reference.anchor, focus: editing.reference.focus } : selection
           }
           editor={cellEditor || null}
+          hiddenRows={data.hiddenRows}
+          conditionalStyle={conditional.styler}
+          overlay={charts.layer}
+          filterButtons={data.filterButtons}
+          onOpenFilter={data.openFilterMenu}
           viewportRef={viewportRef}
           onKeyDown={onGridKeyDown}
           onCellPointerDown={(coord, extend) => {
+            charts.deselect()
             if (editing && isPointable()) {
               pointing.current = true
               pointAt(extend && editing.reference ? editing.reference.anchor : coord, coord)
@@ -571,7 +720,7 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
             }
             pointing.current = false
             if (editing) commitEditing(null)
-            setSelection(extend ? { anchor: selection.anchor, focus: coord } : singleCell(coord))
+            setSelection(extend ? extendSelection(sheet, selection.anchor, coord) : selectCell(sheet, coord))
             focusGrid()
             return false
           }}
@@ -604,6 +753,14 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
           onColumnResize={(col, width) =>
             apply({ type: 'column/resize', sheetId: sheet.id, col, width }, `resize-${sheet.id}-${col}`)
           }
+          onRowResize={(row, height) => {
+            // Si la fila forma parte de una selección de filas enteras, se cambian todas (como Excel).
+            const rows =
+              isWholeRows(range) && row >= range.start.row && row <= range.end.row
+                ? Array.from({ length: range.end.row - range.start.row + 1 }, (_, i) => range.start.row + i)
+                : [row]
+            apply({ type: 'rows/resize', sheetId: sheet.id, rows, height }, `row-resize-${sheet.id}-${row}`)
+          }}
         />
         <SheetTabs
           workbook={workbook}
@@ -627,7 +784,12 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       </div>
 
       {/* Solo visible al imprimir (y al exportar a PDF): la zona con datos de la hoja activa. */}
-      <SheetPrintView sheet={sheet} evaluation={evaluation} />
+      <SheetPrintView
+        sheet={sheet}
+        evaluation={evaluation}
+        hiddenRows={data.hiddenRows}
+        conditionalStyle={conditional.styler}
+      />
     </EditorLayout>
   )
 }
@@ -642,26 +804,51 @@ function defaultDecimals(kind: NumberFormatKind): number | undefined {
   return undefined
 }
 
-/** Celdas que se vacían en el origen al mover. */
-function emptyCells(copied: CopiedCells): Record<string, Cell | null> {
-  const cells: Record<string, Cell | null> = {}
-  copied.cells.forEach((row, rowIndex) =>
-    row.forEach((_, colIndex) => {
-      cells[cellAddress({ row: copied.origin.row + rowIndex, col: copied.origin.col + colIndex })] = null
-    })
-  )
-  return cells
+/** Rango del que salió lo copiado. */
+function copiedRange(copied: CopiedCells): CellRange {
+  const rows = copied.cells.length
+  const cols = copied.cells[0]?.length ?? 1
+  return {
+    start: copied.origin,
+    end: { row: copied.origin.row + rows - 1, col: copied.origin.col + cols - 1 }
+  }
 }
 
-/** Al mover, las celdas llegan tal cual (sin desplazar sus referencias). */
-function movedCells(copied: CopiedCells, target: CellCoord): Record<string, Cell | null> {
-  const cells: Record<string, Cell | null> = {}
-  copied.cells.forEach((row, rowIndex) =>
-    row.forEach((cell, colIndex) => {
-      cells[cellAddress({ row: target.row + rowIndex, col: target.col + colIndex })] = cell ?? null
-    })
-  )
-  return cells
+function isWholeRows(range: CellRange): boolean {
+  return range.start.col === 0 && range.end.col === MAX_COLUMNS - 1
+}
+
+/** Seleccionar una celda; si está combinada, se selecciona la combinada entera. */
+function selectCell(sheet: Sheet, coord: CellCoord): Selection {
+  const merge = mergeAt(sheet, coord)
+  return merge ? { anchor: merge.start, focus: merge.end } : singleCell(coord)
+}
+
+/** Mayús+clic o Mayús+flecha: el rango nunca corta una combinada por la mitad. */
+function extendSelection(sheet: Sheet, anchor: CellCoord, focus: CellCoord): Selection {
+  if (!sheet.merges?.length) return { anchor, focus }
+  const expanded = expandToMerges(normalizeRange(anchor, focus), sheet)
+  const corner = (start: number, end: number, value: number) => (value === start ? end : start)
+  return {
+    anchor,
+    focus: {
+      row: corner(expanded.start.row, expanded.end.row, anchor.row),
+      col: corner(expanded.start.col, expanded.end.col, anchor.col)
+    }
+  }
+}
+
+/** Al salir de una combinada con las flechas, se sale por su borde, no desde la esquina. */
+function edgeOfMerge(sheet: Sheet, coord: CellCoord, direction: Direction): CellCoord {
+  const merge = mergeAt(sheet, coord)
+  if (!merge) return coord
+  if (direction === 'down') return { row: merge.end.row, col: coord.col }
+  if (direction === 'right') return { row: coord.row, col: merge.end.col }
+  return coord
+}
+
+function isWholeColumns(range: CellRange): boolean {
+  return range.start.row === 0 && range.end.row === MAX_ROWS - 1
 }
 
 /** Esquina inferior derecha de lo pegado, para dejarlo seleccionado. */

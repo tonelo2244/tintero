@@ -1,7 +1,20 @@
 import { cellAddress, parseCellAddress, rangeContains, rangeCoords } from './address'
 import { validateSheetName } from './factories'
+import type { StructureChange } from './formula/structure'
 import { renameSheetInFormula } from './formula/transform'
-import type { Cell, CellBorders, CellRange, CellStyle, Sheet, Workbook } from './types'
+import { applyStructureChange, moveRange } from './structureEdit'
+import type {
+  Cell,
+  CellBorders,
+  CellCoord,
+  CellRange,
+  CellStyle,
+  ConditionalFormat,
+  Sheet,
+  SheetChart,
+  SheetFilter,
+  Workbook
+} from './types'
 
 /**
  * Toda la edición del libro como funciones puras (estado, acción) -> estado nuevo,
@@ -20,6 +33,27 @@ export type WorkbookAction =
   /** Borra el contenido de un rango (Supr). Con `includeStyle`, también el formato. */
   | { type: 'cells/clear'; sheetId: string; range: CellRange; includeStyle?: boolean }
   | { type: 'column/resize'; sheetId: string; col: number; width: number }
+  /** Alto de una o varias filas. null vuelve al alto por defecto. */
+  | { type: 'rows/resize'; sheetId: string; rows: number[]; height: number | null }
+  /** Inmovilizar las primeras filas y columnas. 0 y 0 quita la inmovilización. */
+  | { type: 'view/freeze'; sheetId: string; rows: number; cols: number }
+  /** Combinar un rango: solo se conserva el contenido de la esquina superior izquierda, como en Excel. */
+  | { type: 'cells/merge'; sheetId: string; range: CellRange }
+  /** Poner, cambiar o quitar (null) el autofiltro de la hoja. */
+  | { type: 'filter/set'; sheetId: string; filter: SheetFilter | null }
+  | { type: 'chart/add'; sheetId: string; chart: SheetChart }
+  | { type: 'chart/update'; sheetId: string; chartId: string; patch: Partial<Omit<SheetChart, 'id'>> }
+  | { type: 'chart/delete'; sheetId: string; chartId: string }
+  /** Añade una regla de formato condicional (al principio: la última creada gana, como en Excel). */
+  | { type: 'conditional/add'; sheetId: string; format: ConditionalFormat }
+  /** Quita las reglas que toquen el rango. */
+  | { type: 'conditional/clear'; sheetId: string; range: CellRange }
+  /** Separar las combinadas que toquen el rango. */
+  | { type: 'cells/unmerge'; sheetId: string; range: CellRange }
+  /** Insertar o borrar filas o columnas. Las fórmulas de todo el libro se reescriben. */
+  | { type: 'structure/change'; sheetId: string; change: StructureChange }
+  /** Cortar y pegar: mueve el rango y las fórmulas que apuntaban a él lo siguen. */
+  | { type: 'range/move'; sheetId: string; source: CellRange; target: CellCoord }
   | { type: 'sheet/add'; sheet: Sheet }
   | { type: 'sheet/rename'; sheetId: string; name: string }
   | { type: 'sheet/delete'; sheetId: string }
@@ -82,6 +116,71 @@ export function workbookReducer(state: Workbook, action: WorkbookAction): Workbo
         ...sheet,
         columnWidths: { ...sheet.columnWidths, [action.col]: Math.max(MIN_COLUMN_WIDTH, Math.round(action.width)) }
       }))
+    case 'rows/resize':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const rowHeights = { ...sheet.rowHeights }
+        for (const row of action.rows) {
+          if (action.height === null) delete rowHeights[row]
+          else rowHeights[row] = Math.max(0, Math.round(action.height))
+        }
+        const { rowHeights: _old, ...rest } = sheet
+        return Object.keys(rowHeights).length > 0 ? { ...rest, rowHeights } : rest
+      })
+    case 'view/freeze':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const { frozen: _old, ...rest } = sheet
+        if (action.rows <= 0 && action.cols <= 0) return sheet.frozen ? rest : sheet
+        return { ...rest, frozen: { rows: Math.max(0, action.rows), cols: Math.max(0, action.cols) } }
+      })
+    case 'filter/set':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const { filter: _old, ...rest } = sheet
+        return action.filter ? { ...rest, filter: action.filter } : rest
+      })
+    case 'chart/add':
+      return updateSheet(state, action.sheetId, (sheet) => ({
+        ...sheet,
+        charts: [...(sheet.charts ?? []), action.chart]
+      }))
+    case 'chart/update':
+      return updateSheet(state, action.sheetId, (sheet) => ({
+        ...sheet,
+        charts: (sheet.charts ?? []).map((chart) =>
+          chart.id === action.chartId ? { ...chart, ...action.patch } : chart
+        )
+      }))
+    case 'chart/delete':
+      return updateSheet(state, action.sheetId, (sheet) =>
+        withOptionalList(
+          sheet,
+          'charts',
+          (sheet.charts ?? []).filter((chart) => chart.id !== action.chartId)
+        )
+      )
+    case 'conditional/add':
+      return updateSheet(state, action.sheetId, (sheet) => ({
+        ...sheet,
+        conditionalFormats: [action.format, ...(sheet.conditionalFormats ?? [])]
+      }))
+    case 'conditional/clear':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const formats = sheet.conditionalFormats ?? []
+        const kept = formats.filter((format) => !rangesOverlap(format.range, action.range))
+        return kept.length === formats.length ? sheet : withOptionalList(sheet, 'conditionalFormats', kept)
+      })
+    case 'cells/merge':
+      return mergeCells(state, action.sheetId, action.range)
+    case 'cells/unmerge':
+      return updateSheet(state, action.sheetId, (sheet) => {
+        const merges = (sheet.merges ?? []).filter((merge) => !rangesOverlap(merge, action.range))
+        if (merges.length === (sheet.merges?.length ?? 0)) return sheet
+        const { merges: _old, ...rest } = sheet
+        return merges.length > 0 ? { ...rest, merges } : rest
+      })
+    case 'structure/change':
+      return applyStructureChange(state, action.sheetId, action.change)
+    case 'range/move':
+      return moveRange(state, action.sheetId, action.source, action.target)
     case 'sheet/add':
       return { sheets: [...state.sheets, action.sheet], activeSheetId: action.sheet.id }
     case 'sheet/rename':
@@ -154,12 +253,20 @@ function updateSheet(state: Workbook, sheetId: string, update: (sheet: Sheet) =>
   return changed ? { ...state, sheets } : state
 }
 
-/** Copia el mapa de celdas una vez, deja que `mutate` lo modifique y lo vuelve a congelar en el estado. */
-function updateCells(state: Workbook, sheetId: string, mutate: (cells: Record<string, Cell>) => void): Workbook {
+/**
+ * Copia el mapa de celdas una vez, deja que `mutate` lo modifique y lo vuelve a congelar en el estado.
+ * `alsoUpdate` permite cambiar a la vez otras partes de la hoja (p. ej. las combinadas).
+ */
+function updateCells(
+  state: Workbook,
+  sheetId: string,
+  mutate: (cells: Record<string, Cell>) => void,
+  alsoUpdate: (sheet: Sheet) => Sheet = (sheet) => sheet
+): Workbook {
   return updateSheet(state, sheetId, (sheet) => {
     const cells = { ...sheet.cells }
     mutate(cells)
-    return { ...sheet, cells }
+    return alsoUpdate({ ...sheet, cells })
   })
 }
 
@@ -181,4 +288,43 @@ function renameSheet(state: Workbook, sheetId: string, name: string): Workbook {
     return cells === current.cells ? renamed : { ...renamed, cells }
   })
   return { ...state, sheets }
+}
+
+export function rangesOverlap(a: CellRange, b: CellRange): boolean {
+  return a.start.row <= b.end.row && b.start.row <= a.end.row && a.start.col <= b.end.col && b.start.col <= a.end.col
+}
+
+function mergeCells(state: Workbook, sheetId: string, range: CellRange): Workbook {
+  if (range.start.row === range.end.row && range.start.col === range.end.col) return state
+  return updateCells(
+    state,
+    sheetId,
+    (cells) => {
+      // El contenido de las demás celdas se pierde (Excel avisa antes; el editor también).
+      const anchor = cellAddress(range.start)
+      for (const address of Object.keys(cells)) {
+        const coord = parseCellAddress(address)
+        if (!coord || address === anchor || !rangeContains(range, coord)) continue
+        const { style } = cells[address]
+        if (style) cells[address] = { style }
+        else delete cells[address]
+      }
+    },
+    (sheet) => ({
+      ...sheet,
+      merges: [...(sheet.merges ?? []).filter((merge) => !rangesOverlap(merge, range)), range]
+    })
+  )
+}
+
+/** Las listas opcionales de la hoja no se guardan vacías: una lista vacía desaparece del archivo. */
+function withOptionalList<K extends 'charts' | 'conditionalFormats' | 'merges'>(
+  sheet: Sheet,
+  key: K,
+  list: NonNullable<Sheet[K]>
+): Sheet {
+  const next = { ...sheet }
+  if (list.length > 0) next[key] = list
+  else delete next[key]
+  return next
 }

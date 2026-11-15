@@ -31,8 +31,16 @@ export function isMatrix(value: EvalValue): value is Matrix {
   return typeof value === 'object' && value !== null && 'kind' in value
 }
 
+/** Trata un valor suelto como un rango de 1x1, para las funciones que aceptan ambos. */
+export function asMatrix(value: EvalValue): Matrix {
+  if (isMatrix(value)) return value
+  return { kind: 'matrix', rows: 1, cols: 1, get: () => value }
+}
+
 /** Un rango donde se esperaba un valor suelto (=A1:A3 en una celda) no tiene sentido: #¡VALOR!. */
 export function toScalar(value: EvalValue): CellValue {
+  // undefined = argumento omitido (ver evaluate.ts); en una posición obligatoria vale como vacío.
+  if (value === undefined) return null
   if (!isMatrix(value)) return value
   if (value.rows === 1 && value.cols === 1) return value.get(0, 0)
   return err('#VALUE!')

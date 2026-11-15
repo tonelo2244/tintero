@@ -10,7 +10,8 @@ import type { CellRange, CellValue, Sheet } from '../types'
  * Tres razones: (1) a un modelo de 4-9B le sobra con ver la forma de los datos para escribir
  * =SUMAR.SI(A2:A48;">10";B2:B48); (2) una hoja de 10.000 filas no cabe en su contexto; y
  * (3) cuanto menos texto, antes responde. Lo que sí necesita saber es dónde acaban los datos
- * (la última fila), porque el motor no admite columnas enteras (B:B) y los rangos deben ser concretos.
+ * (la última fila): aunque el motor ya admite columnas enteras (B:B), los rangos concretos dan
+ * fórmulas más fáciles de revisar y el banco de evals se escribió con ellos.
  */
 export const CONTEXT_LIMITS = { sampleRows: 5, maxColumns: 12, maxCellChars: 40 } as const
 

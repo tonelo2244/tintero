@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs'
+import { rangeAddress } from '../address'
 import { evaluateWorkbook, getCellValue } from '../calc'
 import { parseFormula } from '../formula/parser'
 import { printFormula } from '../formula/printer'
@@ -8,7 +9,7 @@ import type { Cell, CellValue, Workbook } from '../types'
 import { hexToArgb, pixelsToExcelWidth, toExcelNumberFormat } from './xlsxFormats'
 
 /** Funciones posteriores a Excel 2007: en el archivo van con el prefijo "_xlfn." o Excel no las reconoce. */
-const XLFN_FUNCTIONS = new Set(['CONCAT'])
+const XLFN_FUNCTIONS = new Set(['CONCAT', 'IFS', 'IFNA', 'XLOOKUP'])
 
 /**
  * Libro de Tintero -> .xlsx con ExcelJS.
@@ -32,6 +33,7 @@ export async function exportXlsx(workbook: Workbook): Promise<Uint8Array> {
       if (value !== undefined) target.value = value
       applyStyle(target, cell)
     }
+    for (const merge of sheet.merges ?? []) worksheet.mergeCells(rangeAddress(merge))
   }
   if (workbook.sheets.length > 1) {
     const active = workbook.sheets.findIndex((sheet) => sheet.id === workbook.activeSheetId)

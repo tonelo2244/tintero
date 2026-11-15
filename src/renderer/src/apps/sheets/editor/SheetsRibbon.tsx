@@ -5,33 +5,51 @@ import {
   ArrowDownToLine,
   ArrowRightToLine,
   Baseline,
+  BetweenHorizontalStart,
+  BetweenVerticalStart,
   Bold,
+  ChevronDown,
+  Columns3,
   DecimalsArrowLeft,
   DecimalsArrowRight,
   Grid2x2,
   Grid2x2X,
+  Highlighter,
   Italic,
   PaintBucket,
   PanelBottom,
   Pencil,
   Plus,
+  Rows3,
+  Search,
   Sigma,
   Square,
   SquareFunction,
+  TableCellsMerge,
+  TableCellsSplit,
+  TableRowsSplit,
   Trash2,
-  Underline
+  Underline,
+  WrapText
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
 import { localizedFunctionName } from '../model/formula/functionNames'
-import type { CellStyle, HorizontalAlign, NumberFormatKind } from '../model/types'
+import type { CellStyle, ChartKind, HorizontalAlign, NumberFormatKind } from '../model/types'
+import type { ConditionalKind } from './format/useConditionalFormats'
 import type { BorderMode } from '../model/workbookReducer'
+import { DataTab } from './SheetsDataTab'
+import { InsertTab } from './SheetsInsertTab'
+import { ViewTab } from './SheetsViewTab'
 
-export type SheetsTabId = 'home' | 'formulas' | 'assistant'
+export type SheetsTabId = 'home' | 'insert' | 'formulas' | 'data' | 'view' | 'assistant'
 
 export const SHEETS_TABS: { id: SheetsTabId; label: string }[] = [
   { id: 'home', label: 'Inicio' },
+  { id: 'insert', label: 'Insertar' },
   { id: 'formulas', label: 'Fórmulas' },
+  { id: 'data', label: 'Datos' },
+  { id: 'view', label: 'Vista' },
   { id: 'assistant', label: 'Asistente' }
 ]
 
@@ -48,7 +66,24 @@ export interface SheetCommands {
   autoSum(): void
   insertFunction(canonicalName: string): void
   fill(direction: 'down' | 'right'): void
+  insertRows(): void
+  insertColumns(): void
+  deleteRows(): void
+  deleteColumns(): void
+  merge(mode: 'center' | 'merge' | 'unmerge'): void
+  toggleWrap(): void
+  freeze(mode: FreezeMode): void
+  sort(descending: boolean): void
+  openSortDialog(): void
+  toggleFilter(): void
+  clearFilters(): void
+  openFind(mode: 'find' | 'replace'): void
+  insertChart(kind: ChartKind): void
+  openConditional(kind: ConditionalKind): void
+  clearConditional(): void
 }
+
+export type FreezeMode = 'selection' | 'firstRow' | 'firstColumn' | 'none'
 
 const NUMBER_FORMATS: { label: string; value: NumberFormatKind }[] = [
   { label: 'General', value: 'general' },
@@ -57,6 +92,14 @@ const NUMBER_FORMATS: { label: string; value: NumberFormatKind }[] = [
   { label: 'Porcentaje', value: 'percent' },
   { label: 'Fecha', value: 'date' },
   { label: 'Texto', value: 'text' }
+]
+
+const CONDITIONAL_OPTIONS: { kind: ConditionalKind; label: string }[] = [
+  { kind: 'greaterThan', label: 'Es mayor que…' },
+  { kind: 'lessThan', label: 'Es menor que…' },
+  { kind: 'between', label: 'Entre…' },
+  { kind: 'textContains', label: 'Texto que contiene…' },
+  { kind: 'colorScale', label: 'Escala de color…' }
 ]
 
 /** Funciones del menú "Insertar función", agrupadas como en la pestaña Fórmulas de Excel. */
@@ -69,7 +112,11 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
       { name: 'MIN', description: 'El menor valor' },
       { name: 'MAX', description: 'El mayor valor' },
       { name: 'ROUND', description: 'Redondea a N decimales' },
-      { name: 'SUMIF', description: 'Suma las celdas que cumplen un criterio' }
+      { name: 'ROUNDUP', description: 'Redondea alejándose del cero' },
+      { name: 'ROUNDDOWN', description: 'Redondea hacia el cero' },
+      { name: 'SUMIF', description: 'Suma las celdas que cumplen un criterio' },
+      { name: 'SUMIFS', description: 'Suma las celdas que cumplen varios criterios' },
+      { name: 'AVERAGEIF', description: 'Media de las celdas que cumplen un criterio' }
     ]
   },
   {
@@ -77,14 +124,18 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
     functions: [
       { name: 'COUNT', description: 'Cuenta las celdas con números' },
       { name: 'COUNTA', description: 'Cuenta las celdas no vacías' },
-      { name: 'COUNTIF', description: 'Cuenta las celdas que cumplen un criterio' }
+      { name: 'COUNTIF', description: 'Cuenta las celdas que cumplen un criterio' },
+      { name: 'COUNTIFS', description: 'Cuenta las que cumplen varios criterios' },
+      { name: 'COUNTBLANK', description: 'Cuenta las celdas vacías' }
     ]
   },
   {
     label: 'Lógicas',
     functions: [
       { name: 'IF', description: 'Un valor u otro según una condición' },
+      { name: 'IFS', description: 'El valor de la primera condición que se cumple' },
       { name: 'IFERROR', description: 'Un valor alternativo si hay error' },
+      { name: 'IFNA', description: 'Un valor alternativo si da #N/D' },
       { name: 'AND', description: 'VERDADERO si todo se cumple' },
       { name: 'OR', description: 'VERDADERO si algo se cumple' }
     ]
@@ -95,7 +146,22 @@ const FUNCTION_GROUPS: { label: string; functions: { name: string; description: 
       { name: 'CONCAT', description: 'Une textos' },
       { name: 'LEN', description: 'Número de caracteres' },
       { name: 'UPPER', description: 'Pasa a mayúsculas' },
-      { name: 'VLOOKUP', description: 'Busca un valor en la primera columna de una tabla' }
+      { name: 'TEXT', description: 'Da formato a un número o una fecha' },
+      { name: 'XLOOKUP', description: 'Busca un valor y devuelve el de otro rango' },
+      { name: 'VLOOKUP', description: 'Busca un valor en la primera columna de una tabla' },
+      { name: 'INDEX', description: 'El valor de una fila y columna de un rango' },
+      { name: 'MATCH', description: 'La posición de un valor en un rango' }
+    ]
+  },
+  {
+    label: 'Fecha',
+    functions: [
+      { name: 'TODAY', description: 'La fecha de hoy' },
+      { name: 'NOW', description: 'La fecha y hora actuales' },
+      { name: 'DATE', description: 'Una fecha a partir de año, mes y día' },
+      { name: 'YEAR', description: 'El año de una fecha' },
+      { name: 'MONTH', description: 'El mes de una fecha' },
+      { name: 'DAY', description: 'El día de una fecha' }
     ]
   }
 ]
@@ -105,11 +171,19 @@ interface SheetsRibbonProps {
   /** Formato de la celda activa: decide qué botones aparecen pulsados. */
   activeStyle: CellStyle
   canDeleteSheet: boolean
+  /** La celda activa está dentro de una combinada. */
+  inMerge: boolean
+  frozen: boolean
+  hasFilter: boolean
   commands: SheetCommands
 }
 
-export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: SheetsRibbonProps) {
+export function SheetsRibbon(props: SheetsRibbonProps) {
+  const { tab, activeStyle, canDeleteSheet, inMerge, frozen, hasFilter, commands } = props
   if (tab === 'formulas') return <FormulasTab commands={commands} />
+  if (tab === 'view') return <ViewTab commands={commands} frozen={frozen} />
+  if (tab === 'insert') return <InsertTab commands={commands} />
+  if (tab === 'data') return <DataTab commands={commands} hasFilter={hasFilter} />
 
   const align = activeStyle.align
   const setAlign = (value: HorizontalAlign) => commands.setStyle({ align: align === value ? undefined : value })
@@ -174,6 +248,48 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: She
             <AlignRight size={16} />
           </ToolButton>
         </RibbonRow>
+        <RibbonRow>
+          <ToolButton label="Ajustar texto" active={activeStyle.wrap} onClick={commands.toggleWrap}>
+            <WrapText size={16} />
+          </ToolButton>
+          <ToolButton
+            label={inMerge ? 'Separar celdas' : 'Combinar y centrar'}
+            active={inMerge}
+            onClick={() => commands.merge(inMerge ? 'unmerge' : 'center')}
+          >
+            <TableCellsMerge size={16} />
+          </ToolButton>
+          <Dropdown label="Más opciones de combinar" trigger={<ChevronDown size={12} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('center')
+                    close()
+                  }}
+                >
+                  <TableCellsMerge size={14} /> Combinar y centrar
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('merge')
+                    close()
+                  }}
+                >
+                  <TableCellsMerge size={14} /> Combinar celdas
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.merge('unmerge')
+                    close()
+                  }}
+                >
+                  <TableCellsSplit size={14} /> Separar celdas
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
+        </RibbonRow>
       </RibbonGroup>
 
       <RibbonGroup label="Número">
@@ -196,6 +312,83 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: She
         </RibbonRow>
       </RibbonGroup>
 
+      <RibbonGroup label="Estilos">
+        <Dropdown label="Formato condicional" large trigger={<Highlighter size={22} />}>
+          {(close) => (
+            <>
+              {CONDITIONAL_OPTIONS.map((option) => (
+                <MenuItem
+                  key={option.kind}
+                  onSelect={() => {
+                    commands.openConditional(option.kind)
+                    close()
+                  }}
+                >
+                  {option.label}
+                </MenuItem>
+              ))}
+              <MenuItem
+                onSelect={() => {
+                  commands.clearConditional()
+                  close()
+                }}
+              >
+                Borrar reglas de la selección
+              </MenuItem>
+            </>
+          )}
+        </Dropdown>
+      </RibbonGroup>
+
+      <RibbonGroup label="Celdas">
+        <div className="ribbon-stack">
+          <Dropdown label="Insertar" showLabel trigger={<BetweenHorizontalStart size={14} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.insertRows()
+                    close()
+                  }}
+                >
+                  <BetweenHorizontalStart size={14} /> Insertar filas encima
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.insertColumns()
+                    close()
+                  }}
+                >
+                  <BetweenVerticalStart size={14} /> Insertar columnas a la izquierda
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
+          <Dropdown label="Eliminar" showLabel trigger={<TableRowsSplit size={14} />}>
+            {(close) => (
+              <>
+                <MenuItem
+                  onSelect={() => {
+                    commands.deleteRows()
+                    close()
+                  }}
+                >
+                  <Rows3 size={14} /> Eliminar filas
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    commands.deleteColumns()
+                    close()
+                  }}
+                >
+                  <Columns3 size={14} /> Eliminar columnas
+                </MenuItem>
+              </>
+            )}
+          </Dropdown>
+        </div>
+      </RibbonGroup>
+
       <RibbonGroup label="Edición">
         <ToolButton label="Autosuma" large onClick={commands.autoSum}>
           <Sigma size={22} />
@@ -206,6 +399,9 @@ export function SheetsRibbon({ tab, activeStyle, canDeleteSheet, commands }: She
           </ToolButton>
           <ToolButton label="Rellenar derecha" showLabel onClick={() => commands.fill('right')}>
             <ArrowRightToLine size={14} />
+          </ToolButton>
+          <ToolButton label="Buscar" showLabel onClick={() => commands.openFind('find')}>
+            <Search size={14} />
           </ToolButton>
         </div>
       </RibbonGroup>

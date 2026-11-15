@@ -20,6 +20,13 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 - **Diapositivas y Hojas**: pedir cambios en lenguaje natural con herramientas (tool calling);
   se revisan antes de aplicar y se deshacen en un paso.
 - Segundo runtime local: llama.cpp (`llama-server`), sobre todo para comparar en las evals.
+- **Hojas v2** (fase 9): insertar y borrar filas o columnas reescribiendo las fórmulas de todo el
+  libro; cortar y pegar que actualiza las fórmulas; 19 funciones nuevas (SI.CONJUNTO,
+  SUMAR.SI.CONJUNTO, CONTAR.SI.CONJUNTO, PROMEDIO.SI(.CONJUNTO), BUSCARX, INDICE, COINCIDIR, HOY,
+  AHORA, FECHA, AÑO, MES, DIA, TEXTO, REDONDEAR.MAS/MENOS, CONTAR.BLANCO, SI.ND) y columnas o
+  filas enteras (`A:A`, `2:5`); ordenar por varias columnas; autofiltro; buscar y reemplazar;
+  inmovilizar paneles; alto de fila; ajustar texto; celdas combinadas (también en .xlsx); formato
+  condicional; gráficos de columnas, líneas y circular; imprimir ajustando al ancho.
 
 ### Cambiado
 
