@@ -10,11 +10,13 @@ import {
   parseOutline,
   type PresentationOutline
 } from '@/apps/slides/model/outline'
+import { chunkDocument, summarizeParts } from '../model/ai/longDocument'
 import { documentToPlainText } from '../model/ai/plainText'
 
+/** `condensed`: el documento era largo y se resumió por partes antes de pedir el esquema. */
 export type PresentationJob =
-  | { phase: 'running'; slidesSeen: number; truncated: boolean }
-  | { phase: 'done'; outline: PresentationOutline; truncated: boolean }
+  | { phase: 'running'; slidesSeen: number; condensed: boolean; reading: string | null }
+  | { phase: 'done'; outline: PresentationOutline; condensed: boolean }
   | { phase: 'error'; message: string }
 
 /**
@@ -37,21 +39,30 @@ export function usePresentationFromDocument(editor: Editor | null) {
       setJob({ phase: 'error', message: 'El documento está vacío: escribe algo antes de crear la presentación.' })
       return
     }
-    // Un documento largo se recorta: es preferible una presentación de lo principal a un modelo saturado.
-    const truncated = fullText.length > OUTLINE_LIMITS.maxSourceChars
-    const source = truncated ? fullText.slice(0, OUTLINE_LIMITS.maxSourceChars) : fullText
+    // Un documento largo no se recorta: primero se resume por partes (el paso "map" de resumir)
+    // y el esquema se pide sobre esos resúmenes, que sí caben y conservan el documento entero.
+    const condensed = fullText.length > OUTLINE_LIMITS.maxSourceChars
 
     let streamed = ''
-    setJob({ phase: 'running', slidesSeen: 0, truncated })
+    setJob({ phase: 'running', slidesSeen: 0, condensed, reading: null })
     try {
+      let source = fullText
+      if (condensed) {
+        const parts = await summarizeParts(platform.ai, chunkDocument(fullText), {
+          signal: controller.signal,
+          onProgress: (step) => setJob({ phase: 'running', slidesSeen: 0, condensed, reading: step.label })
+        })
+        source = parts.join('\n\n').slice(0, OUTLINE_LIMITS.maxSourceChars)
+        setJob({ phase: 'running', slidesSeen: 0, condensed, reading: null })
+      }
       const outline = await generateStructured(platform.ai, buildOutlineRequest(source), parseOutline, {
         signal: controller.signal,
         onToken: (chunk) => {
           streamed += chunk
-          setJob({ phase: 'running', slidesSeen: countStreamedSlides(streamed), truncated })
+          setJob({ phase: 'running', slidesSeen: countStreamedSlides(streamed), condensed, reading: null })
         }
       })
-      if (!controller.signal.aborted) setJob({ phase: 'done', outline, truncated })
+      if (!controller.signal.aborted) setJob({ phase: 'done', outline, condensed })
     } catch (error) {
       if (error instanceof AiCancelledError) setJob(null)
       else setJob({ phase: 'error', message: errorMessage(error) })

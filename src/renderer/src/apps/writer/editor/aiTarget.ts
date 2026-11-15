@@ -3,6 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { ResultPlacement, WritingAction } from '../model/ai/writingActions'
 import { MAX_INPUT_CHARS, splitParagraphs } from '../model/ai/writingActions'
 import { documentToPlainText } from '../model/ai/plainText'
+import { MAX_LONG_DOCUMENT_CHARS } from '../model/ai/longDocument'
 import { blocksToMarked, commonUnmarkedMarks, hasPartialUnmarkedFormat, markedToInline } from '../model/ai/inlineMarks'
 
 /** El trozo de documento sobre el que trabaja el asistente, capturado al pulsar el botón. */
@@ -57,10 +58,13 @@ export function captureTarget(editor: Editor, action: WritingAction): CaptureRes
     return { ok: false, message: `Selecciona el texto que quieres ${verbFor(action)}.` }
   }
   if (!target.text) return { ok: false, message: 'No hay texto que procesar.' }
-  if (target.text.length > MAX_INPUT_CHARS) {
+  // Resumir trocea los textos largos (map-reduce); reescribir no, porque el resultado tendría que
+  // sustituir al original de una vez y un modelo local reescribe mal (y despacio) textos tan largos.
+  const limit = action.id === 'summarize' ? MAX_LONG_DOCUMENT_CHARS : MAX_INPUT_CHARS
+  if (target.text.length > limit) {
     return {
       ok: false,
-      message: `El texto es demasiado largo para el modelo local (${target.text.length.toLocaleString('es')} caracteres; máximo ${MAX_INPUT_CHARS.toLocaleString('es')}). Selecciona un fragmento.`
+      message: `El texto es demasiado largo para el modelo local (${target.text.length.toLocaleString('es')} caracteres; máximo ${limit.toLocaleString('es')}). Selecciona un fragmento.`
     }
   }
   return { ok: true, target }

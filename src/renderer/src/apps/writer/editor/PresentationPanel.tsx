@@ -52,9 +52,11 @@ export function PresentationPanel({ job, isDirty, model, onOpen, onRetry, onCanc
     >
       {job.phase === 'running' && (
         <p className="ai-panel__message">
-          {job.slidesSeen === 0
-            ? 'Leyendo el documento… (la primera vez tarda más: el modelo se carga en memoria)'
-            : `Escribiendo la diapositiva ${job.slidesSeen}…`}
+          {job.reading
+            ? `${job.reading} (el documento es largo: primero se resume por partes)`
+            : job.slidesSeen === 0
+              ? 'Leyendo el documento… (la primera vez tarda más: el modelo se carga en memoria)'
+              : `Escribiendo la diapositiva ${job.slidesSeen}…`}
         </p>
       )}
       {job.phase === 'error' && <p className="ai-panel__message is-error">{job.message}</p>}
@@ -70,8 +72,10 @@ export function PresentationPanel({ job, isDirty, model, onOpen, onRetry, onCanc
           </ol>
         </>
       )}
-      {job.phase !== 'error' && job.truncated && (
-        <p className="ai-panel__message">El documento es largo: solo se ha usado su primera parte.</p>
+      {job.phase === 'done' && job.condensed && (
+        <p className="ai-panel__message">
+          El documento es largo: se ha resumido por partes antes de crear la presentación.
+        </p>
       )}
     </AiPanel>
   )

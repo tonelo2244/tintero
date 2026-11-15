@@ -9,6 +9,7 @@ import {
   type WritingAction,
   type WritingActionId
 } from '../model/ai/writingActions'
+import { summarizeText } from '../model/ai/longDocument'
 import { applyResult, captureTarget, type AiTarget } from './aiTarget'
 
 export interface WritingJob {
@@ -38,13 +39,13 @@ export function useWritingAssistant(editor: Editor | null) {
         return
       }
       setJob({ action, target: captured.target, message: null })
-      void generation.start(buildWritingRequest(action, captured.target.modelText))
+      startJob(generation, action, captured.target)
     },
     [editor, generation]
   )
 
   const retry = useCallback(() => {
-    if (job?.target) void generation.start(buildWritingRequest(job.action, job.target.modelText))
+    if (job?.target) startJob(generation, job.action, job.target)
   }, [generation, job])
 
   const result = generation.state.phase === 'done' ? cleanModelText(generation.state.text) : ''
@@ -69,4 +70,15 @@ export function useWritingAssistant(editor: Editor | null) {
   }, [editor, generation])
 
   return { job, generation: generation.state, result, run, retry, apply, cancel: generation.cancel, close }
+}
+
+/** Resumir admite documentos largos (map-reduce); el resto de acciones es una sola llamada. */
+function startJob(generation: ReturnType<typeof useAiGeneration>, action: WritingAction, target: AiTarget) {
+  if (action.id === 'summarize') {
+    void generation.run(({ ai, signal, onToken, onProgress }) =>
+      summarizeText(ai, target.modelText, { signal, onToken, onProgress })
+    )
+  } else {
+    void generation.start(buildWritingRequest(action, target.modelText))
+  }
 }

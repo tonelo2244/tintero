@@ -54,6 +54,7 @@ export function AssistantPanel({ assistant, setupStatus, model, onRetrySetup, on
           {cleanModelText(generation.text) ? (
             <MarkedPreview text={cleanModelText(generation.text)} />
           ) : running ? (
+            (generation.phase === 'running' && generation.progress) ||
             'Pensando… (la primera vez tarda más: el modelo se carga en memoria)'
           ) : (
             ''

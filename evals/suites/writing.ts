@@ -10,6 +10,8 @@ import { ungroundedNumbers, extractNumbers } from '@/core/ai/grounding'
 import proofreadCases from '../cases/proofread.json'
 import rewriteCases from '../cases/rewrite.json'
 import summarizeCases from '../cases/summarize.json'
+import longDocumentCases from '../cases/long-document.json'
+import { summarizeText } from '@/apps/writer/model/ai/longDocument'
 import {
   check,
   containsAll,
@@ -163,3 +165,44 @@ export const SUMMARY_RUBRIC: RubricCriterion[] = [
   { id: 'cobertura', description: 'Recoge las ideas y decisiones principales del documento.' },
   { id: 'concision', description: 'Es breve y va al grano, sin repetir el documento.' }
 ]
+
+interface LongDocumentCase extends SummarizeCase {
+  /** Lo esencial de cada sección. El juez recibe esto y no el documento (no le cabría en su contexto). */
+  keyFacts: string[]
+}
+
+/**
+ * Documentos largos (map-reduce). La pregunta clave: ¿llega al resumen lo del FINAL del documento?
+ * Con el recorte antiguo a 12.000 caracteres, nunca llegaba.
+ */
+export const longDocumentSuite = defineSuite<LongDocumentCase>({
+  id: 'resumir-largo',
+  description: 'Resumir un documento largo por partes (map-reduce)',
+  structured: false,
+  cases: longDocumentCases as LongDocumentCase[],
+  async run(testCase, context) {
+    const output = cleanModelText(await summarizeText(context.ai, testCase.input))
+    const invented = ungroundedNumbers(output, extractNumbers(testCase.input))
+    const checks = [
+      noPreamble(output),
+      inLanguage(output, testCase.language),
+      lengthRatio(output, testCase.input, 0.005, 0.15),
+      check(
+        'sin cifras inventadas',
+        invented.length === 0,
+        invented.length ? `inventa: ${invented.join(', ')}` : undefined
+      ),
+      ...(testCase.mustContain ? [containsAll(output, testCase.mustContain, 'llega el final del documento')] : [])
+    ]
+    const judge = await context.judge({
+      task: 'Resumir un documento largo en un párrafo breve con las ideas principales.',
+      input: `(Documento de ${testCase.input.length.toLocaleString('es')} caracteres.) Puntos clave de cada sección:\n- ${testCase.keyFacts.join('\n- ')}`,
+      output,
+      rubric: [
+        { id: 'cobertura', description: 'Recoge puntos clave del principio, del medio y del final del documento.' },
+        { id: 'concision', description: 'Es un párrafo breve, sin repeticiones ni relleno.' }
+      ]
+    })
+    return { output, checks, judge }
+  }
+})
