@@ -11,26 +11,34 @@ import {
   parseXml,
   path,
   relationAttr,
+  readRelationships,
   relsPathFor,
-  resolveZipPath
+  type Relationship
 } from '@/core/office/xml'
+import { cssFontFamilyFor } from '@/ui/fonts'
 import { createShapeElement, createTextElement } from '../factories'
+import { normalizeRotation } from '../presentationReducer'
 import { normalizeParagraphs } from '../richText'
+import { IMPORTED_THEME_ID, type SlideTheme } from '../themes'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
   type Box,
   type HorizontalAlign,
+  type ImageElement,
   type ShapeKind,
   type Slide,
   type SlideElement,
   type Presentation,
   type RunFormat,
+  type TableCell,
+  type TableElement,
   type TextParagraph,
   type TextRole,
   type TextStyle,
   type VerticalAlign
 } from '../types'
+import { backgroundCss, createColorResolver, readColorMap, readThemeInfo, type ColorResolver } from './pptxTheme'
 
 /**
  * Importación de .pptx leyendo directamente su XML.
@@ -48,9 +56,12 @@ const REL_TYPE = {
   slide: '/slide',
   layout: '/slideLayout',
   master: '/slideMaster',
+  theme: '/theme',
   notes: '/notesSlide',
   image: '/image'
 } as const
+
+const TABLE_URI = 'http://schemas.openxmlformats.org/drawingml/2006/table'
 
 const SHAPES_BY_PRESET: Record<string, ShapeKind> = {
   rect: 'rect',
@@ -68,16 +79,12 @@ const ANCHOR: Record<string, VerticalAlign> = { t: 'top', ctr: 'middle', b: 'bot
 /** Lo que no se puede representar en Tintero; se cuenta para el aviso final. */
 interface Losses {
   background: boolean
-  rotated: number
+  flipped: number
   unsupportedShapes: number
-  tablesAndCharts: number
+  charts: number
+  mergedTableCells: number
   unsupportedImages: number
   aspectRatio: string | null
-}
-
-interface Relationship {
-  type: string
-  target: string
 }
 
 /** Cambio de coordenadas de los grupos: punto hijo (EMU) -> punto de la diapositiva (EMU). */
@@ -99,9 +106,10 @@ class PptxReader {
   private readonly xmlCache = new Map<string, Promise<Element | null>>()
   private readonly losses: Losses = {
     background: false,
-    rotated: 0,
+    flipped: 0,
     unsupportedShapes: 0,
-    tablesAndCharts: 0,
+    charts: 0,
+    mergedTableCells: 0,
     unsupportedImages: 0,
     aspectRatio: null
   }
@@ -109,6 +117,10 @@ class PptxReader {
   private scale = 1 / EMU_PER_PX
   private offsetX = 0
   private offsetY = 0
+  /** Colores del tema de PowerPoint. Sin tema (archivo mínimo), solo se entienden los RGB fijos. */
+  private resolveColor: ColorResolver = createColorResolver(readThemeInfo(null), readColorMap(null))
+  private importedTheme: SlideTheme | null = null
+  private firstMasterPath: string | null = null
 
   constructor(private readonly zip: JSZip) {}
 
@@ -123,11 +135,70 @@ class PptxReader {
       .map((slideId) => rels.get(relationAttr(slideId, 'id') ?? '')?.target)
       .filter((target): target is string => Boolean(target))
 
+    this.firstMasterPath = findRelation(rels, REL_TYPE.master)
+    if (this.firstMasterPath) await this.readTheme(this.firstMasterPath)
+
     const slides: Slide[] = []
     for (const slidePath of slidePaths) slides.push(await this.readSlide(slidePath))
     if (slides.length === 0) throw new Error('La presentación no tiene diapositivas.')
 
-    return { content: { themeId: 'blank', slides }, warnings: describeLosses(this.losses) }
+    const content: Presentation = this.importedTheme
+      ? {
+          themeId: this.importedTheme.id,
+          slides: liftSharedBackground(slides, this.importedTheme),
+          importedTheme: this.importedTheme
+        }
+      : { themeId: 'blank', slides }
+    return { content, warnings: describeLosses(this.losses) }
+  }
+
+  /**
+   * Tema "importado" a partir del patrón y su tema: colores, fuentes y fondo. Así la presentación
+   * se ve como en PowerPoint y se puede cambiar a un tema de Tintero con un clic.
+   */
+  private async readTheme(masterPath: string): Promise<void> {
+    const master = await this.xml(masterPath)
+    const themePath = findRelation(await this.relationships(masterPath), REL_TYPE.theme)
+    const theme = themePath ? await this.xml(themePath) : null
+    if (!master || !theme) return
+    const info = readThemeInfo(theme)
+    const colorMap = readColorMap(master)
+    this.resolveColor = createColorResolver(info, colorMap)
+
+    const schemeColor = (name: string) => info.scheme[colorMap[name] ?? name]
+    const levelOneColor = (style: string) =>
+      this.resolveColor(path(master, 'txStyles', style, 'lvl1pPr', 'defRPr', 'solidFill'))
+    const hex = (value: string | null | undefined, fallback: string) => `#${(value ?? fallback).toLowerCase()}`
+    const background = (await this.background(master, masterPath)) ?? hex(schemeColor('bg1'), 'FFFFFF')
+    const font = (typeface: string | null) => cssFontFamilyFor(typeface ?? 'Calibri')
+
+    this.importedTheme = {
+      id: IMPORTED_THEME_ID,
+      name: info.name ? `Importado (${info.name})` : 'Importado',
+      background,
+      titleColor: hex(levelOneColor('titleStyle') ?? schemeColor('tx1'), '111111'),
+      textColor: hex(levelOneColor('bodyStyle') ?? schemeColor('tx1'), '222222'),
+      accentColor: hex(info.scheme.accent1, 'C2410C'),
+      fontFamily: font(info.minorFont),
+      titleFontFamily: font(info.majorFont ?? info.minorFont)
+    }
+  }
+
+  /** Fondo de una parte (diapositiva, diseño o patrón) como CSS, cargando la imagen si la hay. */
+  private async background(root: Element | null, partPath: string): Promise<string | null> {
+    if (!path(root, 'cSld', 'bg')) return null
+    const embedId = relationAttr(path(root, 'cSld', 'bg', 'bgPr', 'blipFill', 'blip'), 'embed')
+    let imageUrl: string | null = null
+    if (embedId) {
+      const target = (await this.relationships(partPath)).get(embedId)?.target
+      const file = target ? this.zip.file(target) : null
+      const bytes = file ? await file.async('uint8array') : null
+      const kind = bytes ? detectImageKind(bytes) : null
+      if (bytes && kind) imageUrl = bytesToDataUrl(bytes, mimeForKind(kind))
+    }
+    const css = backgroundCss(root, this.resolveColor, () => imageUrl)
+    if (css === null) this.losses.background = true
+    return css
   }
 
   private setSlideSize(size: Element | null): void {
@@ -149,14 +220,20 @@ class PptxReader {
     const masterPath = layoutPath ? findRelation(await this.relationships(layoutPath), REL_TYPE.master) : null
     const master = masterPath ? await this.xml(masterPath) : null
 
-    if ([slide, layout, master].some(hasCustomBackground)) this.losses.background = true
+    // Fondo propio: el de la diapositiva o el de su diseño. El del primer patrón ya es el del tema.
+    const background =
+      (await this.background(slide, slidePath)) ??
+      (layoutPath ? await this.background(layout, layoutPath) : null) ??
+      (masterPath && masterPath !== this.firstMasterPath ? await this.background(master, masterPath) : null)
 
     const context: SlideContext = { slidePath, rels, layout, master }
     const elements = await this.readShapeTree(path(slide, 'cSld', 'spTree'), context, IDENTITY)
 
     const notesPath = findRelation(rels, REL_TYPE.notes)
     const notes = notesPath ? notesText(await this.xml(notesPath)) : ''
-    return { id: createId('slide'), layout: 'blank', elements, notes }
+    const result: Slide = { id: createId('slide'), layout: 'blank', elements, notes }
+    if (background) result.background = background
+    return result
   }
 
   private async readShapeTree(tree: Element | null, context: SlideContext, transform: Transform) {
@@ -174,9 +251,13 @@ class PptxReader {
         case 'grpSp':
           elements.push(...(await this.readShapeTree(node, context, groupTransform(node, transform))))
           break
-        case 'graphicFrame': // tablas, gráficos y SmartArt
-          this.losses.tablesAndCharts++
+        case 'graphicFrame': {
+          // Marco de "contenido gráfico": tablas (las leemos), gráficos y SmartArt (no).
+          const table = this.readTable(node, transform)
+          if (table) elements.push(table)
+          else this.losses.charts++
           break
+        }
         case 'cxnSp': // conectores (líneas entre formas)
           this.losses.unsupportedShapes++
           break
@@ -190,7 +271,6 @@ class PptxReader {
     const inherited = placeholder ? findInheritedPlaceholders(placeholder, context) : []
     const xfrm = path(shape, 'spPr', 'xfrm') ?? inherited.map((source) => path(source, 'spPr', 'xfrm')).find(Boolean)
     if (!xfrm) return []
-    if (numberAttr(xfrm, 'rot')) this.losses.rotated++
     const box = this.box(xfrm, transform)
 
     const elements: SlideElement[] = []
@@ -199,18 +279,21 @@ class PptxReader {
 
     const text = this.readText(shape, placeholder, inherited, context, box, shapeElement !== null)
     if (text) elements.push(text)
-    return elements
+    // La forma y su texto giran juntos, como en PowerPoint.
+    const rotation = this.rotation(xfrm)
+    return rotation ? elements.map((element) => ({ ...element, rotation })) : elements
   }
 
   /** Forma visible (con relleno o borde). Un cuadro de texto transparente no genera forma. */
   private readGeometry(shape: Element, box: Box): SlideElement | null {
     const spPr = child(shape, 'spPr')
     const preset = attr(child(spPr, 'prstGeom'), 'prst')
-    const solidFill = colorOf(child(spPr, 'solidFill'))
-    const themeFill = Number(attr(path(shape, 'style', 'fillRef'), 'idx') ?? 0) > 0
+    const solidFill = this.resolveColor(child(spPr, 'solidFill'))
+    const fillRef = path(shape, 'style', 'fillRef')
+    const themeFill = Number(attr(fillRef, 'idx') ?? 0) > 0
     const hasFill = !child(spPr, 'noFill') && (solidFill !== null || themeFill || Boolean(child(spPr, 'gradFill')))
     const line = child(spPr, 'ln')
-    const lineColor = child(line, 'noFill') ? null : colorOf(child(line, 'solidFill'))
+    const lineColor = child(line, 'noFill') ? null : this.resolveColor(child(line, 'solidFill'))
     if (!hasFill && !lineColor) return null
 
     let kind = preset ? SHAPES_BY_PRESET[preset] : undefined
@@ -219,9 +302,13 @@ class PptxReader {
       kind = 'rect'
     }
     const element = createShapeElement(kind, box)
+    // El relleno del estilo de la forma (fillRef) suele ser accent1: si coincide con el acento del tema,
+    // se deja sin color propio para que siga al tema si el usuario lo cambia.
+    const styleFill = themeFill && !solidFill ? this.resolveColor(fillRef) : null
+    const ownFill =
+      solidFill ?? (styleFill && `#${styleFill.toLowerCase()}` !== this.importedTheme?.accentColor ? styleFill : null)
     element.style = {
-      // Sin color propio = color del tema de PowerPoint -> color de acento del tema de Tintero.
-      fill: hasFill ? solidFill && `#${solidFill}` : null,
+      fill: hasFill && ownFill ? `#${ownFill}` : null,
       stroke: lineColor && `#${lineColor}`,
       strokeWidth: lineColor ? Math.max(1, Math.round((numberAttr(line, 'w') ?? 12700) / EMU_PER_PX)) : 0
     }
@@ -251,7 +338,9 @@ class PptxReader {
       attr(firstRun, name) ?? levelOneSources.map((source) => attr(child(source, 'defRPr'), name)).find(isSet) ?? null
 
     const sizeInHundredths = Number(runProp('sz') ?? 1800)
-    const color = colorOf(child(firstRun, 'solidFill')) ?? (insideShape ? themeTextColor(shape) : null)
+    const color =
+      this.resolveColor(child(firstRun, 'solidFill')) ??
+      (insideShape ? this.resolveColor(path(shape, 'style', 'fontRef')) : null)
     const align = attr(child(firstParagraph, 'pPr'), 'algn') ?? levelOneSources.map((s) => attr(s, 'algn')).find(isSet)
     const anchor = [child(shape, 'txBody'), ...inherited.map((source) => child(source, 'txBody'))]
       .map((txBody) => attr(child(txBody, 'bodyPr'), 'anchor'))
@@ -265,9 +354,7 @@ class PptxReader {
       italic: runProp('i') === '1',
       underline: Boolean(runProp('u')) && runProp('u') !== 'none',
       strike: Boolean(runProp('strike')) && runProp('strike') !== 'noStrike',
-      // Sin el fondo de PowerPoint, un texto casi blanco sería invisible sobre el tema Blanco
-      // (salvo dentro de una forma con relleno, que sí se importa).
-      color: color && (insideShape || !isNearWhite(color)) ? `#${color}` : null,
+      color: color && this.isVisible(color, insideShape) ? `#${color}` : null,
       align: ALIGN[align ?? ''] ?? 'left',
       // Por defecto PowerPoint centra en vertical el texto de títulos y formas.
       verticalAlign: ANCHOR[anchor ?? ''] ?? (role === 'title' || insideShape ? 'middle' : 'top'),
@@ -323,8 +410,8 @@ class PptxReader {
     }
     const font = fontOf(rPr)
     if (font && font !== style.fontFamily) format.fontFamily = font
-    const color = colorOf(child(rPr, 'solidFill'))
-    if (color && (insideShape || !isNearWhite(color)) && `#${color}` !== style.color) format.color = `#${color}`
+    const color = this.resolveColor(child(rPr, 'solidFill'))
+    if (color && this.isVisible(color, insideShape) && `#${color}` !== style.color) format.color = `#${color}`
     return format
   }
 
@@ -341,14 +428,85 @@ class PptxReader {
       this.losses.unsupportedImages++ // EMF/WMF, típicos de PowerPoint antiguo
       return null
     }
-    if (numberAttr(xfrm, 'rot')) this.losses.rotated++
-    return {
+    const image: ImageElement = {
       id: createId('el'),
-      type: 'image' as const,
+      type: 'image',
       src: bytesToDataUrl(bytes, mimeForKind(kind)),
       alt: attr(path(picture, 'nvPicPr', 'cNvPr'), 'descr') ?? '',
       ...this.box(xfrm, transform)
     }
+    const rotation = this.rotation(xfrm)
+    return rotation ? { ...image, rotation } : image
+  }
+
+  /**
+   * Tabla de PowerPoint (a:tbl) -> tabla de Tintero: texto, negrita, color y relleno por celda.
+   * El estilo de tabla de PowerPoint (bandas, bordes) no se lee: la tabla usa el acento del tema.
+   */
+  private readTable(frame: Element, transform: Transform): TableElement | null {
+    const graphicData = path(frame, 'graphic', 'graphicData')
+    if (attr(graphicData, 'uri') !== TABLE_URI) return null
+    const table = child(graphicData, 'tbl')
+    const xfrm = child(frame, 'xfrm')
+    if (!table || !xfrm) return null
+
+    const gridWidths = childElements(child(table, 'tblGrid'), 'gridCol').map((column) => numberAttr(column, 'w') ?? 1)
+    const total = gridWidths.reduce((sum, width) => sum + width, 0) || 1
+    let fontSize: number | null = null
+    const rows = childElements(table, 'tr').map((row) =>
+      childElements(row, 'tc').map((cell): TableCell => {
+        // Celdas tapadas por una combinada: quedan vacías (Tintero aún no combina celdas en tablas).
+        if (attr(cell, 'hMerge') === '1' || attr(cell, 'vMerge') === '1') return { text: '' }
+        if (Number(attr(cell, 'gridSpan') ?? 1) > 1 || Number(attr(cell, 'rowSpan') ?? 1) > 1) {
+          this.losses.mergedTableCells++
+        }
+        const paragraphs = childElements(child(cell, 'txBody'), 'p')
+        const firstRun = descendants(child(cell, 'txBody'), 'rPr')[0] ?? null
+        const size = numberAttr(firstRun, 'sz')
+        if (size && fontSize === null) fontSize = this.fontSizePx(size)
+        const result: TableCell = { text: paragraphs.map(paragraphText).join('\n') }
+        if (attr(firstRun, 'b') === '1') result.bold = true
+        const color = this.resolveColor(child(firstRun, 'solidFill'))
+        if (color) result.color = `#${color.toLowerCase()}`
+        const fill = this.resolveColor(child(child(cell, 'tcPr'), 'solidFill'))
+        if (fill) result.fill = `#${fill.toLowerCase()}`
+        return result
+      })
+    )
+    const columnCount = Math.max(gridWidths.length, ...rows.map((cells) => cells.length))
+    if (rows.length === 0 || columnCount === 0) return null
+    const paddedRows = rows.map((cells) => [
+      ...cells,
+      ...Array.from({ length: columnCount - cells.length }, () => ({ text: '' }))
+    ])
+    const element: TableElement = {
+      id: createId('el'),
+      type: 'table',
+      ...this.box(xfrm, transform),
+      rows: paddedRows,
+      columnWidths: Array.from(
+        { length: columnCount },
+        (_, index) => (gridWidths[index] ?? total / columnCount) / total
+      ),
+      headerRow: attr(child(table, 'tblPr'), 'firstRow') === '1',
+      fontSize: fontSize ?? this.fontSizePx(1800)
+    }
+    const rotation = this.rotation(xfrm)
+    return rotation ? { ...element, rotation } : element
+  }
+
+  /** Giro en grados (PowerPoint lo guarda en 60000 de grado). El volteo no existe en Tintero. */
+  private rotation(xfrm: Element): number {
+    if (attr(xfrm, 'flipH') === '1' || attr(xfrm, 'flipV') === '1') this.losses.flipped++
+    return normalizeRotation((numberAttr(xfrm, 'rot') ?? 0) / 60000)
+  }
+
+  /**
+   * Sin tema importado (archivo mínimo), el fondo es el del tema Blanco: un texto casi blanco no se
+   * vería, salvo dentro de una forma con relleno. Con el tema importado, el fondo es el real.
+   */
+  private isVisible(color: string, insideShape: boolean): boolean {
+    return insideShape || this.importedTheme !== null || !isNearWhite(color)
   }
 
   private box(xfrm: Element, transform: Transform): Box {
@@ -377,16 +535,7 @@ class PptxReader {
   }
 
   private async relationships(filePath: string): Promise<Map<string, Relationship>> {
-    const rels = await this.xml(relsPathFor(filePath))
-    const map = new Map<string, Relationship>()
-    for (const rel of childElements(rels, 'Relationship')) {
-      const id = attr(rel, 'Id')
-      const target = attr(rel, 'Target')
-      if (id && target && attr(rel, 'TargetMode') !== 'External') {
-        map.set(id, { type: attr(rel, 'Type') ?? '', target: resolveZipPath(filePath, target) })
-      }
-    }
-    return map
+    return readRelationships(await this.xml(relsPathFor(filePath)), filePath)
   }
 }
 
@@ -395,6 +544,20 @@ interface SlideContext {
   rels: Map<string, Relationship>
   layout: Element | null
   master: Element | null
+}
+
+/**
+ * Si todas las diapositivas tienen el mismo fondo propio (lo normal cuando el fondo está en el
+ * diseño y no en el patrón, como hace pptxgenjs), ese fondo pasa a ser el del tema importado.
+ * Así cambiar de tema y volver al importado no pierde nada.
+ */
+function liftSharedBackground(slides: Slide[], theme: SlideTheme): Slide[] {
+  const shared = slides[0]?.background
+  if (shared && slides.every((slide) => slide.background === shared)) theme.background = shared
+  // Un fondo propio igual al del tema no aporta nada (LibreOffice lo escribe en cada diapositiva).
+  return slides.map(({ background, ...slide }) =>
+    background === undefined || background === theme.background ? slide : { ...slide, background }
+  )
 }
 
 function findRelation(rels: Map<string, Relationship>, typeSuffix: string): string | null {
@@ -483,18 +646,6 @@ function paragraphText(paragraph: Element): string {
     .join('')
 }
 
-/** Solo colores RGB explícitos; los del tema de PowerPoint pasan a ser los del tema de Tintero. */
-function colorOf(fill: Element | null): string | null {
-  const value = attr(child(fill, 'srgbClr'), 'val')
-  return value && /^[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : null
-}
-
-/** Las formas de PowerPoint suelen llevar texto en el color claro del tema (lt1) sobre su relleno. */
-function themeTextColor(shape: Element): string | null {
-  const scheme = attr(child(path(shape, 'style', 'fontRef'), 'schemeClr'), 'val')
-  return scheme === 'lt1' || scheme === 'bg1' ? 'FFFFFF' : null
-}
-
 function fontOf(runProperties: Element | null): string | null {
   const typeface = attr(child(runProperties, 'latin'), 'typeface')
   // "+mj-lt"/"+mn-lt" son las fuentes del tema de PowerPoint: dejamos la del tema de Tintero.
@@ -508,18 +659,6 @@ function isNearWhite(hex: string): boolean {
 
 const isSet = (value: string | null | undefined): value is string => value !== null && value !== undefined
 
-/** Un fondo que no sea blanco liso (color, degradado, imagen). */
-function hasCustomBackground(root: Element | null): boolean {
-  const background = path(root, 'cSld', 'bg')
-  if (!background) return false
-  if (descendants(background, 'gradFill').length || descendants(background, 'blipFill').length) return true
-  if (descendants(background, 'pattFill').length) return true
-  const rgb = attr(descendants(background, 'srgbClr')[0], 'val')
-  if (rgb) return rgb.toUpperCase() !== 'FFFFFF'
-  const scheme = attr(descendants(background, 'schemeClr')[0], 'val')
-  return scheme !== null && scheme !== 'bg1' && scheme !== 'lt1'
-}
-
 function notesText(notes: Element | null): string {
   const body = childElements(path(notes, 'cSld', 'spTree'), 'sp').find(
     (shape) => attr(path(shape, 'nvSpPr', 'nvPr', 'ph'), 'type') === 'body'
@@ -529,16 +668,17 @@ function notesText(notes: Element | null): string {
 
 export function describeLosses(losses: Losses): string[] {
   const warnings: string[] = []
-  if (losses.background) warnings.push('el fondo y los colores del tema (se aplica el tema Blanco)')
-  if (losses.tablesAndCharts > 0) {
-    warnings.push(`${plural(losses.tablesAndCharts, 'tabla, gráfico o SmartArt', 'tablas, gráficos o SmartArt')}`)
+  if (losses.background) warnings.push('algunos fondos (se usa el del tema)')
+  if (losses.charts > 0) warnings.push(plural(losses.charts, 'gráfico o SmartArt', 'gráficos o SmartArt'))
+  if (losses.mergedTableCells > 0) {
+    warnings.push(`${plural(losses.mergedTableCells, 'celda combinada', 'celdas combinadas')} de tablas (se separan)`)
   }
   if (losses.unsupportedShapes > 0) {
     warnings.push(
       `${plural(losses.unsupportedShapes, 'forma o línea', 'formas o líneas')} sin equivalente (se omiten o pasan a rectángulo)`
     )
   }
-  if (losses.rotated > 0) warnings.push(`el giro de ${plural(losses.rotated, 'elemento')}`)
+  if (losses.flipped > 0) warnings.push(`el volteo de ${plural(losses.flipped, 'elemento')}`)
   if (losses.unsupportedImages > 0) {
     warnings.push(`${plural(losses.unsupportedImages, 'imagen', 'imágenes')} en formatos antiguos (EMF/WMF)`)
   }

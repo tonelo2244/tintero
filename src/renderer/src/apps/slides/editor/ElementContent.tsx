@@ -1,7 +1,16 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { hasText, resolveRunFormat } from '../model/richText'
 import type { SlideTheme } from '../model/themes'
-import type { ShapeElement, ShapeKind, SlideElement, TextElement, TextRun, TextStyle } from '../model/types'
+import type {
+  ShapeElement,
+  ShapeKind,
+  Slide,
+  SlideElement,
+  TableElement,
+  TextElement,
+  TextRun,
+  TextStyle
+} from '../model/types'
 
 const VERTICAL_JUSTIFY = { top: 'flex-start', middle: 'center', bottom: 'flex-end' } as const
 
@@ -46,7 +55,15 @@ export function textClassName(element: TextElement, ...extra: string[]): string 
 }
 
 export function boxCss(element: SlideElement): CSSProperties {
-  return { left: element.x, top: element.y, width: element.width, height: element.height }
+  const css: CSSProperties = { left: element.x, top: element.y, width: element.width, height: element.height }
+  // CSS gira alrededor del centro de la caja, igual que PowerPoint.
+  if (element.rotation) css.transform = `rotate(${element.rotation}deg)`
+  return css
+}
+
+/** Fondo con el que se pinta una diapositiva: el suyo propio o el del tema. */
+export function slideBackground(slide: Slide, theme: SlideTheme): string {
+  return slide.background ?? theme.background
 }
 
 interface ElementContentProps {
@@ -64,7 +81,57 @@ export function ElementContent({ element, theme, showPlaceholder }: ElementConte
       return <img className="slide-image" src={element.src} alt={element.alt} draggable={false} />
     case 'shape':
       return <ShapeContent element={element} theme={theme} />
+    case 'table':
+      return <TableContent element={element} theme={theme} />
   }
+}
+
+/**
+ * Tabla: HTML de verdad, con columnas en porcentaje y filas que se reparten el alto de la caja.
+ * `onCellPointerDown`/`renderCell` permiten al lienzo editar una celda sin duplicar el pintado.
+ */
+export function TableContent({
+  element,
+  theme,
+  renderCell
+}: {
+  element: TableElement
+  theme: SlideTheme
+  renderCell?: (row: number, col: number, text: string) => ReactNode
+}) {
+  return (
+    <table
+      className="slide-table"
+      style={{ fontFamily: theme.fontFamily, fontSize: element.fontSize, color: theme.textColor }}
+    >
+      <colgroup>
+        {element.columnWidths.map((width, index) => (
+          <col key={index} style={{ width: `${width * 100}%` }} />
+        ))}
+      </colgroup>
+      <tbody>
+        {element.rows.map((cells, rowIndex) => {
+          const isHeader = element.headerRow && rowIndex === 0
+          return (
+            <tr key={rowIndex} className={isHeader ? 'is-header' : undefined}>
+              {cells.map((cell, colIndex) => (
+                <td
+                  key={colIndex}
+                  style={{
+                    background: cell.fill ?? (isHeader ? theme.accentColor : undefined),
+                    color: cell.color ?? (isHeader ? '#ffffff' : undefined),
+                    fontWeight: cell.bold || isHeader ? 700 : 400
+                  }}
+                >
+                  {renderCell ? renderCell(rowIndex, colIndex, cell.text) : cell.text}
+                </td>
+              ))}
+            </tr>
+          )
+        })}
+      </tbody>
+    </table>
+  )
 }
 
 function TextContent({

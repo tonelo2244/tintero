@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
+import { cssColorToHex } from '@/core/office/cssValues'
 import { createWriterExtensions } from '../../editor/extensions'
 import { exportDocx } from './exportDocx'
 import { describeLosses, importDocx } from './importDocx'
@@ -60,12 +61,60 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     expect(numbers.type).toBe('orderedList')
   })
 
-  it('avisa del formato directo que no puede conservar', async () => {
-    const { warnings } = await roundTrip([
+  it('conserva fuente, tamaño, color, resaltado y alineación aplicados a mano', async () => {
+    const { content, warnings } = await roundTrip([
       paragraph([text('centrado')], { textAlign: 'center' }),
-      paragraph([text('grande', [{ type: 'textStyle', attrs: { fontSize: '20pt' } }])])
+      paragraph([text('a la derecha')], { textAlign: 'right' }),
+      paragraph([
+        text('normal '),
+        text('grande', [
+          { type: 'textStyle', attrs: { fontSize: '20pt', fontFamily: 'Georgia, serif', color: '#c0392b' } }
+        ]),
+        text(' y '),
+        text('resaltado', [{ type: 'highlight', attrs: { color: '#fff176' } }])
+      ])
     ])
-    expect(warnings).toEqual(['fuentes, tamaños, colores y resaltados aplicados a mano', 'la alineación de 1 párrafo'])
+    expect(warnings).toEqual([])
+    const [centered, right, mixed] = blocks(content.doc)
+    expect(centered.attrs?.textAlign).toBe('center')
+    expect(right.attrs?.textAlign).toBe('right')
+    expect(mixed.content?.map((node) => node.text)).toEqual(['normal ', 'grande', ' y ', 'resaltado'])
+    expect(mixed.content?.[0].marks ?? []).toEqual([])
+    const style = mixed.content?.[1].marks?.find((mark) => mark.type === 'textStyle')?.attrs
+    expect(style).toMatchObject({ fontSize: '20pt', fontFamily: 'Georgia, serif' })
+    expect(cssColorToHex(style?.color)).toBe('C0392B')
+    const highlight = mixed.content?.[3].marks?.find((mark) => mark.type === 'highlight')?.attrs
+    expect(cssColorToHex(highlight?.color)).toBe('FFF176')
+  })
+
+  it('conserva encabezado, pie con número de página y comentarios', async () => {
+    const bytes = await exportDocx({
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph([
+            text('Antes '),
+            text('comentado', [{ type: 'comment', attrs: { commentId: 'c1' } }]),
+            text(' después')
+          ])
+        ]
+      },
+      header: { text: 'Informe anual', align: 'center' },
+      footer: { text: 'Página {página} de {páginas}', align: 'right' },
+      comments: [{ id: 'c1', author: 'Ana', date: '2026-11-15T10:00:00.000Z', text: 'Revisar esta cifra' }]
+    })
+    const { content, warnings } = await importDocx(bytes, createWriterExtensions())
+    expect(warnings).toEqual([])
+    expect(content.header).toEqual({ text: 'Informe anual', align: 'center' })
+    expect(content.footer).toEqual({ text: 'Página {página} de {páginas}', align: 'right' })
+    expect(content.comments).toHaveLength(1)
+    const [comment] = content.comments ?? []
+    expect(comment).toMatchObject({ author: 'Ana', text: 'Revisar esta cifra' })
+    const [first] = blocks(content.doc)
+    const commented = first.content?.find((node) => node.marks?.some((mark) => mark.type === 'comment'))
+    expect(commented?.text).toBe('comentado')
+    expect(commented?.marks?.find((mark) => mark.type === 'comment')?.attrs?.commentId).toBe(comment.id)
+    expect(first.content?.map((node) => node.text).join('')).toBe('Antes comentado después')
   })
 
   it('un documento sin formato directo no genera avisos', async () => {
@@ -74,8 +123,8 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
   })
 
   it('redacta los avisos en plural cuando toca', () => {
-    expect(describeLosses({ alignedParagraphs: 3, formattedRuns: 0, unsupportedImages: 2 })).toEqual([
-      'la alineación de 3 párrafos',
+    expect(describeLosses({ alignedParagraphs: 3, unsupportedImages: 2 })).toEqual([
+      'la alineación de 3 párrafos dentro de listas',
       '2 imágenes en formatos que no se pueden mostrar'
     ])
   })

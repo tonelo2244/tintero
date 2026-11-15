@@ -19,6 +19,8 @@ import {
   Italic,
   List,
   ListOrdered,
+  MessageSquarePlus,
+  MessagesSquare,
   Minus,
   Pilcrow,
   Quote,
@@ -40,7 +42,7 @@ import { readImageFile } from '@/ui/readImageFile'
 import { DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE_PT } from '../constants'
 import { PARAGRAPH_STYLES } from '../model/paragraphStyles'
 import type { FindMode } from './FindReplaceBar'
-import { TableGridPicker } from './TableGridPicker'
+import { TableGridPicker } from '@/ui/TableGridPicker'
 import type { TextAlignment, WriterToolbarState } from './useWriterToolbarState'
 
 const LINE_HEIGHTS = ['1', '1.15', '1.5', '2', '2.5', '3']
@@ -260,7 +262,23 @@ export function WriterHomeTab({ editor, state, showMarks, onToggleMarks, onFind 
   )
 }
 
-export function WriterInsertTab({ editor }: { editor: Editor }) {
+interface WriterInsertTabProps {
+  editor: Editor
+  hasSelection: boolean
+  commentCount: number
+  commentsOpen: boolean
+  onAddComment(): void
+  onToggleComments(): void
+}
+
+export function WriterInsertTab({
+  editor,
+  hasSelection,
+  commentCount,
+  commentsOpen,
+  onAddComment,
+  onToggleComments
+}: WriterInsertTabProps) {
   const chain = () => editor.chain().focus()
 
   const insertImage = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -299,6 +317,19 @@ export function WriterInsertTab({ editor }: { editor: Editor }) {
         </ToolButton>
         <ToolButton label="Bloque de código" large onClick={() => chain().toggleCodeBlock().run()}>
           <Code2 size={22} />
+        </ToolButton>
+      </RibbonGroup>
+      <RibbonGroup label="Comentarios">
+        <ToolButton label="Comentario" large disabled={!hasSelection} onClick={onAddComment}>
+          <MessageSquarePlus size={22} />
+        </ToolButton>
+        <ToolButton
+          label={commentCount > 0 ? `Ver comentarios (${commentCount})` : 'Ver comentarios'}
+          large
+          active={commentsOpen}
+          onClick={onToggleComments}
+        >
+          <MessagesSquare size={22} />
         </ToolButton>
       </RibbonGroup>
     </>

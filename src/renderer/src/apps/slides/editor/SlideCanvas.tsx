@@ -3,24 +3,25 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { RESIZE_HANDLES, resizeBox, snapToCenter, type ResizeHandle } from '../model/geometry'
 import type { PresentationAction } from '../model/presentationReducer'
 import { fromEditorDoc, hasText, toEditorDoc } from '../model/richText'
-import { getTheme, type SlideTheme } from '../model/themes'
+import type { SlideTheme } from '../model/themes'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
   type Box,
   type Slide,
   type SlideElement,
+  type TableElement,
   type TextElement,
   type TextParagraph
 } from '../model/types'
-import { boxCss, ElementContent, textClassName, textCss } from './ElementContent'
+import { boxCss, ElementContent, slideBackground, TableContent, textClassName, textCss } from './ElementContent'
 import { createSlideTextExtensions } from './slideTextExtensions'
 
 export type ApplyAction = (action: PresentationAction, coalesceKey?: string) => void
 
 interface SlideCanvasProps {
   slide: Slide
-  themeId: string
+  theme: SlideTheme
   selectedElementId: string | null
   editingElementId: string | null
   onSelectElement(id: string | null): void
@@ -38,7 +39,7 @@ let gestureCounter = 0
 export function SlideCanvas(props: SlideCanvasProps) {
   const { slide, selectedElementId, editingElementId, onSelectElement, onEditElement, onTextEditorChange, apply } =
     props
-  const theme = getTheme(props.themeId)
+  const theme = props.theme
   const containerRef = useRef<HTMLDivElement>(null)
   const scale = useFitScale(containerRef)
   const [guides, setGuides] = useState({ vertical: false, horizontal: false })
@@ -51,7 +52,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
       >
         <div
           className="slide-surface"
-          style={{ background: theme.background, transform: `scale(${scale})` }}
+          style={{ background: slideBackground(slide, theme), transform: `scale(${scale})` }}
           onPointerDown={(event) => {
             event.stopPropagation()
             onSelectElement(null)
@@ -73,6 +74,19 @@ export function SlideCanvas(props: SlideCanvasProps) {
               onParagraphsChange={(paragraphs, sessionKey) =>
                 apply(
                   { type: 'element/setParagraphs', slideId: slide.id, elementId: element.id, paragraphs },
+                  sessionKey
+                )
+              }
+              onTableCellChange={(row, col, text, sessionKey) =>
+                apply(
+                  {
+                    type: 'table/setCell',
+                    slideId: slide.id,
+                    elementId: element.id,
+                    row,
+                    col,
+                    cell: { text }
+                  },
                   sessionKey
                 )
               }
@@ -117,6 +131,7 @@ interface EditableElementProps {
   onEdit(editing: boolean): void
   onBoxChange(box: Box, gestureKey: string): void
   onParagraphsChange(paragraphs: TextParagraph[], sessionKey: string): void
+  onTableCellChange(row: number, col: number, text: string, sessionKey: string): void
   onTextEditorChange(editor: Editor | null): void
   onGuides(guides: { vertical: boolean; horizontal: boolean }): void
 }
@@ -124,6 +139,8 @@ interface EditableElementProps {
 function EditableElement(props: EditableElementProps) {
   const { element, theme, scale, isSelected, isEditing } = props
   const isText = element.type === 'text'
+  /** Elementos con contenido que se escribe dentro: texto y tablas. */
+  const isWritable = isText || element.type === 'table'
 
   /** Arrastre genérico: mueve (handle = null) o redimensiona (handle = 'se', 'n', ...). */
   const startGesture = (event: ReactPointerEvent, handle: ResizeHandle | null) => {
@@ -164,7 +181,9 @@ function EditableElement(props: EditableElementProps) {
       target.removeEventListener('pointercancel', onUp)
       props.onGuides({ vertical: false, horizontal: false })
       // Clic (sin arrastrar) sobre un texto ya seleccionado o vacío -> entrar a escribir.
-      if (!moved && !handle && isText && (wasSelected || !hasText(element.paragraphs))) props.onEdit(true)
+      if (!moved && !handle && isWritable && (wasSelected || (isText && !hasText(element.paragraphs)))) {
+        props.onEdit(true)
+      }
     }
 
     target.addEventListener('pointermove', onMove)
@@ -181,7 +200,7 @@ function EditableElement(props: EditableElementProps) {
       className={classes.filter(Boolean).join(' ')}
       style={boxCss(element)}
       onPointerDown={isEditing ? (event) => event.stopPropagation() : (event) => startGesture(event, null)}
-      onDoubleClick={() => isText && props.onEdit(true)}
+      onDoubleClick={() => isWritable && props.onEdit(true)}
     >
       {isEditing && element.type === 'text' ? (
         <EditableText
@@ -190,6 +209,13 @@ function EditableElement(props: EditableElementProps) {
           onChange={props.onParagraphsChange}
           onDone={() => props.onEdit(false)}
           onEditorChange={props.onTextEditorChange}
+        />
+      ) : isEditing && element.type === 'table' ? (
+        <EditableTable
+          element={element}
+          theme={theme}
+          onChange={props.onTableCellChange}
+          onDone={() => props.onEdit(false)}
         />
       ) : (
         <ElementContent element={element} theme={theme} showPlaceholder />
@@ -205,6 +231,51 @@ function EditableElement(props: EditableElementProps) {
           />
         ))}
     </div>
+  )
+}
+
+/**
+ * Edición de una tabla: cada celda pasa a ser un área de texto. Es texto plano a propósito
+ * (las tablas de diapositiva rara vez llevan más), y Tab salta a la celda siguiente como en PowerPoint.
+ */
+function EditableTable({
+  element,
+  theme,
+  onChange,
+  onDone
+}: {
+  element: TableElement
+  theme: SlideTheme
+  onChange(row: number, col: number, text: string, sessionKey: string): void
+  onDone(): void
+}) {
+  const sessionKey = useRef(`table:${element.id}:${++gestureCounter}`)
+  const columns = element.rows[0]?.length ?? 0
+  return (
+    <TableContent
+      element={element}
+      theme={theme}
+      renderCell={(row, col, text) => (
+        <textarea
+          className="slide-table__input"
+          aria-label={`Fila ${row + 1}, columna ${col + 1}`}
+          value={text}
+          autoFocus={row === 0 && col === 0}
+          data-cell={row * columns + col}
+          onChange={(event) => onChange(row, col, event.target.value, sessionKey.current)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') onDone()
+            if (event.key !== 'Tab') return
+            event.preventDefault()
+            const table = event.currentTarget.closest('table')
+            const next =
+              (row * columns + col + (event.shiftKey ? -1 : 1) + columns * element.rows.length) %
+              (columns * element.rows.length)
+            table?.querySelector<HTMLTextAreaElement>(`[data-cell="${next}"]`)?.focus()
+          }}
+        />
+      )}
+    />
   )
 }
 

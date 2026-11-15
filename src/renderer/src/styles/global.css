@@ -787,6 +787,102 @@ button {
   color: #aaa;
 }
 
+/* Comentarios: el texto comentado se subraya en amarillo; el panel va a la derecha, como en Word. */
+.writer-comment {
+  background: rgba(255, 213, 79, 0.28);
+  border-bottom: 2px solid #f2b705;
+}
+.writer-comments {
+  position: absolute;
+  top: 10px;
+  right: 24px;
+  bottom: 10px;
+  z-index: 15;
+  width: min(300px, calc(100% - 48px));
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+}
+.writer-comments__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.writer-comments__header span {
+  flex: 1;
+}
+.writer-comments__icon {
+  border: none;
+  background: none;
+  border-radius: 4px;
+  padding: 3px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+}
+.writer-comments__icon:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.writer-comments__empty {
+  padding: 12px;
+  color: var(--text-muted);
+}
+.writer-comments__list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.writer-comments__item {
+  border: 1px solid var(--border);
+  border-left: 3px solid #f2b705;
+  border-radius: 6px;
+  padding: 8px;
+  cursor: pointer;
+}
+.writer-comments__item.is-active {
+  border-color: #f2b705;
+  background: #fffbea;
+}
+.writer-comments__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.writer-comments__meta span {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.writer-comments__item textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: var(--surface);
+}
+.writer-comments__orphan {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .writer-content {
   outline: none;
   font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
@@ -1185,6 +1281,44 @@ button {
   overflow: visible;
 }
 
+/* Tablas de Diapositivas: las filas se reparten el alto de la caja. */
+.slide-table {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  line-height: 1.2;
+}
+.slide-table td {
+  border: 1px solid rgba(0, 0, 0, 0.28);
+  padding: 4px 10px;
+  vertical-align: middle;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.slide-table tr:not(.is-header):nth-child(even) td {
+  background-color: rgba(0, 0, 0, 0.035);
+}
+.slide-table__input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 1.2em;
+  box-sizing: border-box;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: none;
+  outline: none;
+}
+.slide-table__input:focus {
+  box-shadow: 0 0 0 2px rgba(47, 90, 168, 0.5);
+}
+
 .slides-workspace {
   flex: 1;
   display: flex;
@@ -1499,8 +1633,13 @@ button {
     width: auto;
     min-height: 0;
   }
-  .writer-page__break {
+  .writer-page__break,
+  .writer-comments {
     display: none;
+  }
+  .writer-comment {
+    background: none;
+    border-bottom: none;
   }
   .print-only {
     display: block;
@@ -1771,7 +1910,8 @@ button {
   z-index: 3;
   box-shadow: 1px 0 0 #8a8a8a;
 }
-.sheet-cell--wrap {
+/* Más específico que .sheet-cell (que va después y fija nowrap). */
+.sheet-cell.sheet-cell--wrap {
   white-space: normal;
   line-height: 16px;
   padding-top: 2px;

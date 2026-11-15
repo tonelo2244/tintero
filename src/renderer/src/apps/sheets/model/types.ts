@@ -52,6 +52,10 @@ export interface CellStyle {
   borders?: CellBorders
   /** Ajustar texto: el contenido se parte en varias líneas dentro del ancho de la celda. */
   wrap?: boolean
+  /** Nombre de la fuente como en Office ("Georgia"). Ausente = la fuente de la cuadrícula. */
+  fontFamily?: string
+  /** Tamaño en puntos. Ausente = el de la cuadrícula. */
+  fontSize?: number
 }
 
 export interface Cell {

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Copy, Trash2 } from 'lucide-react'
+import type { SlideTheme } from '../model/themes'
 import type { Slide } from '../model/types'
 import { SlideView } from './SlideView'
 
 interface SlidePanelProps {
   slides: Slide[]
-  themeId: string
+  theme: SlideTheme
   selectedSlideId: string
   onSelect(id: string): void
   onMove(from: number, to: number): void
@@ -18,7 +19,7 @@ const THUMB_WIDTH = 176
 /** Columna de miniaturas. Se pueden reordenar arrastrando. */
 export function SlidePanel({
   slides,
-  themeId,
+  theme,
   selectedSlideId,
   onSelect,
   onMove,
@@ -54,7 +55,7 @@ export function SlidePanel({
         >
           <span className="slide-thumb__number">{index + 1}</span>
           <div className="slide-thumb__frame">
-            <SlideView slide={slide} themeId={themeId} width={THUMB_WIDTH} />
+            <SlideView slide={slide} theme={theme} width={THUMB_WIDTH} />
           </div>
           <div className="slide-thumb__actions">
             <button

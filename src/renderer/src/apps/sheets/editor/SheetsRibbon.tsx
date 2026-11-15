@@ -33,6 +33,7 @@ import {
   WrapText
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
+import { FONT_FAMILIES, FONT_SIZES } from '@/ui/fonts'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
 import { localizedFunctionName } from '../model/formula/functionNames'
 import type { CellStyle, ChartKind, HorizontalAlign, NumberFormatKind } from '../model/types'
@@ -41,6 +42,19 @@ import type { BorderMode } from '../model/workbookReducer'
 import { DataTab } from './SheetsDataTab'
 import { InsertTab } from './SheetsInsertTab'
 import { ViewTab } from './SheetsViewTab'
+
+/*
+ * En Hojas la fuente se guarda con su nombre de Office ("Georgia"), como en el .xlsx; el selector usa
+ * ese nombre como valor. "Normal" es la fuente de la cuadrícula (sin fuente guardada en la celda).
+ */
+const FONT_OPTIONS = [
+  { label: 'Normal', value: '' },
+  ...FONT_FAMILIES.map((font) => ({ label: font.label, value: font.label }))
+]
+const SIZE_OPTIONS = [
+  { label: 'Normal', value: '' },
+  ...FONT_SIZES.map((size) => ({ label: String(size), value: String(size) }))
+]
 
 export type SheetsTabId = 'home' | 'insert' | 'formulas' | 'data' | 'view' | 'assistant'
 
@@ -192,6 +206,22 @@ export function SheetsRibbon(props: SheetsRibbonProps) {
   return (
     <>
       <RibbonGroup label="Fuente">
+        <RibbonRow>
+          <SelectField
+            label="Fuente"
+            width={120}
+            value={activeStyle.fontFamily ?? ''}
+            options={FONT_OPTIONS}
+            onChange={(value) => commands.setStyle({ fontFamily: value || undefined })}
+          />
+          <SelectField
+            label="Tamaño de fuente"
+            width={64}
+            value={activeStyle.fontSize ? String(activeStyle.fontSize) : ''}
+            options={SIZE_OPTIONS}
+            onChange={(value) => commands.setStyle({ fontSize: value ? Number(value) : undefined })}
+          />
+        </RibbonRow>
         <RibbonRow>
           <ToolButton
             label="Negrita (Ctrl/Cmd+B)"

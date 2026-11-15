@@ -1,7 +1,12 @@
 import { generateJSON, type Extensions } from '@tiptap/core'
+import JSZip from 'jszip'
 import mammoth from 'mammoth'
 import type { ImportResult } from '@/core/appModule'
-import type { WriterContent } from '../content'
+import { createId } from '@/core/ids'
+import { parseXml, readRelationships, relsPathFor } from '@/core/office/xml'
+import type { HeaderFooter, WriterContent } from '../content'
+import { annotateDocumentXml, applyAnnotations, type DocxAnnotations } from './directFormatting'
+import { defaultHeaderFooterIds, readComments, readHeaderFooter, type DocxComment } from './docxParts'
 
 /**
  * Importación de .docx en dos pasos:
@@ -10,8 +15,9 @@ import type { WriterContent } from '../content'
  *
  * Las tablas llegan como <table> (con colspan/rowspan) y las reconoce la extensión de tablas del editor.
  *
- * mammoth ignora a propósito el formato "directo" (fuente, tamaño, color, alineación) y se queda
- * con la estructura. Es una pérdida real; en vez de esconderla, la medimos y avisamos al usuario.
+ * mammoth ignora a propósito el formato "directo" (fuente, tamaño, color, alineación), los
+ * encabezados, los pies y el contenido de los comentarios. Esas partes las leemos nosotros del XML
+ * (directFormatting.ts y docxParts.ts) en paralelo a mammoth. Lo que aún se pierde, se avisa.
  */
 
 /** Estilos de Word -> HTML que entiende el editor. Los nombres son los que escribe nuestro exportador. */
@@ -36,16 +42,18 @@ const BLOCK_STYLE_CLASSES = ['title', 'subtitle', 'quote', 'no-spacing']
 
 const BROWSER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp', 'image/webp', 'image/svg+xml']
 
-/** Lo que mammoth descarta y queremos contar para el aviso. */
+/** Lo que no conseguimos conservar y queremos contar para el aviso. */
 interface LostFormatting {
   alignedParagraphs: number
-  formattedRuns: number
   unsupportedImages: number
 }
 
+const WORD_DOCUMENT = 'word/document.xml'
+
 export async function importDocx(bytes: Uint8Array, extensions: Extensions): Promise<ImportResult<WriterContent>> {
-  const lost: LostFormatting = { alignedParagraphs: 0, formattedRuns: 0, unsupportedImages: 0 }
-  const arrayBuffer = bytes.slice().buffer
+  const lost: LostFormatting = { alignedParagraphs: 0, unsupportedImages: 0 }
+  const parts = await readDocxParts(bytes)
+  const arrayBuffer = (parts?.annotatedBytes ?? bytes).slice().buffer
 
   // mammoth lee `arrayBuffer` en el navegador y `buffer` en Node (tests). Le damos ambos.
   const input = { arrayBuffer, buffer: arrayBuffer } as unknown as { arrayBuffer: ArrayBuffer }
@@ -54,11 +62,6 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
     styleMap: STYLE_MAP,
     // Conservar los párrafos vacíos: en un procesador de texto son espacio intencionado.
     ignoreEmptyParagraphs: false,
-    // Solo leemos el documento para contar lo que se va a perder; no lo modificamos.
-    transformDocument: (document: unknown) => {
-      countLostFormatting(document as DocxElement, lost)
-      return document
-    },
     convertImage: mammoth.images.imgElement(async (image) => {
       if (!BROWSER_IMAGE_TYPES.includes(image.contentType)) {
         lost.unsupportedImages++
@@ -68,13 +71,77 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
     })
   })
 
-  const doc = generateJSON(prepareHtml(result.value), extensions) as WriterContent['doc']
-  return { content: { doc }, warnings: describeLosses(lost) }
+  const commentIds = new Map((parts?.comments ?? []).map(({ docxId, comment }) => [docxId, comment.id]))
+  const html = prepareHtml(result.value, (body) => {
+    if (!parts) return
+    lost.alignedParagraphs += applyAnnotations(body, parts.annotations, commentIds).alignedParagraphs
+  })
+  const content: WriterContent = { doc: generateJSON(html, extensions) as WriterContent['doc'] }
+  if (parts?.header) content.header = parts.header
+  if (parts?.footer) content.footer = parts.footer
+  if (parts && parts.comments.length > 0) content.comments = parts.comments.map(({ comment }) => comment)
+  return { content, warnings: describeLosses(lost) }
 }
 
-/** Ajusta el HTML de mammoth a lo que esperan las extensiones del editor. */
-export function prepareHtml(html: string): string {
+interface DocxParts {
+  /** El mismo .docx con las marcas de formato directo en el texto (ver directFormatting.ts). */
+  annotatedBytes: Uint8Array
+  annotations: DocxAnnotations
+  header: HeaderFooter | null
+  footer: HeaderFooter | null
+  comments: DocxComment[]
+}
+
+/**
+ * Lo que leemos nosotros del zip, en paralelo a mammoth. Si el archivo no tiene la forma
+ * esperada devolvemos null y mammoth hace la importación de siempre (o da su error).
+ */
+async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
+  let zip: JSZip
+  try {
+    zip = await JSZip.loadAsync(bytes)
+  } catch {
+    return null
+  }
+  const readText = (filePath: string): Promise<string | null> =>
+    zip.file(filePath)?.async('string') ?? Promise.resolve(null)
+  const documentXml = await readText(WORD_DOCUMENT)
+  if (!documentXml) return null
+
+  const { xml, annotations } = annotateDocumentXml(documentXml, await readText('word/styles.xml'))
+  zip.file(WORD_DOCUMENT, xml)
+
+  const rels = readRelationships(parseOptionalXml(await readText(relsPathFor(WORD_DOCUMENT))), WORD_DOCUMENT)
+  const { header, footer } = defaultHeaderFooterIds(parseXml(documentXml))
+  const readPart = async (relationId: string | null): Promise<Element | null> => {
+    const target = relationId ? rels.get(relationId)?.target : undefined
+    return target ? parseOptionalXml(await readText(target)) : null
+  }
+  const commentsTarget = [...rels.values()].find((rel) => rel.type.endsWith('/comments'))?.target
+
+  return {
+    annotatedBytes: await zip.generateAsync({ type: 'uint8array' }),
+    annotations,
+    header: readHeaderFooter(await readPart(header)),
+    footer: readHeaderFooter(await readPart(footer)),
+    comments: commentsTarget
+      ? readComments(parseOptionalXml(await readText(commentsTarget)), () => createId('comment'))
+      : []
+  }
+}
+
+function parseOptionalXml(text: string | null): Element | null {
+  return text ? parseXml(text) : null
+}
+
+/**
+ * Ajusta el HTML de mammoth a lo que esperan las extensiones del editor.
+ * `transform` permite trabajar sobre el DOM antes de serializarlo (lo usa la importación para
+ * aplicar el formato directo) sin volver a parsear el HTML.
+ */
+export function prepareHtml(html: string, transform?: (body: HTMLElement) => void): string {
   const dom = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
+  transform?.(dom.body)
   for (const className of BLOCK_STYLE_CLASSES) {
     dom.querySelectorAll(`p.${className}`).forEach((paragraph) => {
       paragraph.setAttribute('data-style', className)
@@ -87,32 +154,11 @@ export function prepareHtml(html: string): string {
   return dom.body.innerHTML
 }
 
-interface DocxElement {
-  type?: string
-  alignment?: string | null
-  font?: string | null
-  fontSize?: number | null
-  highlight?: string | null
-  children?: DocxElement[]
-}
-
-function countLostFormatting(element: DocxElement, lost: LostFormatting): void {
-  // mammoth solo informa de la alineación puesta a mano (la de los estilos, como "Cita", sí se conserva).
-  if (element.type === 'paragraph' && isVisibleAlignment(element.alignment)) {
-    lost.alignedParagraphs++
-  }
-  if (element.type === 'run' && (element.font || element.fontSize || element.highlight)) lost.formattedRuns++
-  element.children?.forEach((child) => countLostFormatting(child, lost))
-}
-
-function isVisibleAlignment(alignment: string | null | undefined): boolean {
-  return alignment === 'center' || alignment === 'right' || alignment === 'both'
-}
-
 export function describeLosses(lost: LostFormatting): string[] {
   const warnings: string[] = []
-  if (lost.formattedRuns > 0) warnings.push('fuentes, tamaños, colores y resaltados aplicados a mano')
-  if (lost.alignedParagraphs > 0) warnings.push(`la alineación de ${plural(lost.alignedParagraphs, 'párrafo')}`)
+  if (lost.alignedParagraphs > 0) {
+    warnings.push(`la alineación de ${plural(lost.alignedParagraphs, 'párrafo')} dentro de listas`)
+  }
   if (lost.unsupportedImages > 0) {
     warnings.push(`${plural(lost.unsupportedImages, 'imagen', 'imágenes')} en formatos que no se pueden mostrar`)
   }

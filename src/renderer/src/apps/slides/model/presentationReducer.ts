@@ -6,6 +6,7 @@ import {
   type ShapeStyle,
   type Slide,
   type SlideElement,
+  type TableCell,
   type TextParagraph,
   type TextStyle
 } from './types'
@@ -27,6 +28,8 @@ export type PresentationAction =
   | { type: 'element/setTextStyle'; slideId: string; elementId: string; style: Partial<TextStyle> }
   | { type: 'element/setShapeStyle'; slideId: string; elementId: string; style: Partial<ShapeStyle> }
   | { type: 'element/reorder'; slideId: string; elementId: string; direction: 'front' | 'back' }
+  | { type: 'element/setRotation'; slideId: string; elementId: string; rotation: number }
+  | { type: 'table/setCell'; slideId: string; elementId: string; row: number; col: number; cell: Partial<TableCell> }
   | { type: 'presentation/setTheme'; themeId: string }
 
 export function presentationReducer(state: Presentation, action: PresentationAction): Presentation {
@@ -89,9 +92,45 @@ export function presentationReducer(state: Presentation, action: PresentationAct
         const others = slide.elements.filter((element) => element.id !== action.elementId)
         return { ...slide, elements: action.direction === 'front' ? [...others, target] : [target, ...others] }
       })
-    case 'presentation/setTheme':
-      return state.themeId === action.themeId ? state : { ...state, themeId: action.themeId }
+    case 'element/setRotation': {
+      const rotation = normalizeRotation(action.rotation)
+      return updateElement(state, action.slideId, action.elementId, (element) => {
+        if ((element.rotation ?? 0) === rotation) return element
+        const { rotation: _previous, ...rest } = element
+        return rotation === 0 ? (rest as SlideElement) : { ...element, rotation }
+      })
+    }
+    case 'table/setCell':
+      return updateElement(state, action.slideId, action.elementId, (element) => {
+        if (element.type !== 'table' || !element.rows[action.row]?.[action.col]) return element
+        const rows = element.rows.map((cells, rowIndex) =>
+          rowIndex === action.row
+            ? cells.map((cell, colIndex) => (colIndex === action.col ? { ...cell, ...action.cell } : cell))
+            : cells
+        )
+        return { ...element, rows }
+      })
+    case 'presentation/setTheme': {
+      if (state.themeId === action.themeId) return state
+      // Los fondos propios de cada diapositiva vienen del tema importado: con otro tema, se ve el suyo.
+      const keepsBackgrounds = action.themeId === state.importedTheme?.id
+      const slides = keepsBackgrounds
+        ? state.slides
+        : state.slides.map((slide) => {
+            if (slide.background === undefined) return slide
+            const { background: _background, ...rest } = slide
+            return rest
+          })
+      return { ...state, themeId: action.themeId, slides }
+    }
   }
+}
+
+/** Grados en [0, 360), redondeados a décimas. */
+export function normalizeRotation(degrees: number): number {
+  if (!Number.isFinite(degrees)) return 0
+  const value = Math.round((((degrees % 360) + 360) % 360) * 10) / 10
+  return value === 360 ? 0 : value
 }
 
 function clamp(value: number, min: number, max: number): number {

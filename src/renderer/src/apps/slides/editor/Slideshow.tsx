@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type Presentation } from '../model/types'
+import { presentationTheme } from '../model/themes'
 import { SlideView } from './SlideView'
 
 interface SlideshowProps {
@@ -85,7 +86,7 @@ export function Slideshow({ presentation, startIndex, onExit }: SlideshowProps) 
         setIndex(Math.max(0, index - 1))
       }}
     >
-      <SlideView slide={slide} themeId={presentation.themeId} width={width} />
+      <SlideView slide={slide} theme={presentationTheme(presentation)} width={width} />
       <div className="slideshow__counter">
         {index + 1} / {presentation.slides.length}
       </div>

@@ -10,6 +10,7 @@ import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
 import { buildSlideAgentRequest, interpretSlideCalls } from '../model/ai/slideTools'
 import { SLIDES_ACCENT } from '../constants'
 import { presentationReducer, type PresentationAction } from '../model/presentationReducer'
+import { presentationTheme } from '../model/themes'
 import type { Presentation } from '../model/types'
 import { NotesPane } from './NotesPane'
 import { SlideCanvas } from './SlideCanvas'
@@ -30,6 +31,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function SlidesEditor({ initialContent, session, onChange }: EditorProps<Presentation>) {
   const [history, dispatch] = useReducer(historyReducer, initialContent, initHistory)
   const presentation = history.present
+  const theme = presentationTheme(presentation)
 
   const [tab, setTab] = useState<SlidesTabId>('home')
   const [selectedSlideId, setSelectedSlideId] = useState(initialContent.slides[0].id)
@@ -165,7 +167,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
     () => (
       <SlidePanel
         slides={presentation.slides}
-        themeId={presentation.themeId}
+        theme={theme}
         selectedSlideId={currentSlide.id}
         onSelect={selectSlide}
         onMove={commands.moveSlide}
@@ -173,7 +175,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         onDelete={commands.deleteSlide}
       />
     ),
-    [presentation, currentSlide.id, selectSlide, commands]
+    [presentation, theme, currentSlide.id, selectSlide, commands]
   )
 
   return (
@@ -262,7 +264,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
           <div className="slides-stage">
             <SlideCanvas
               slide={currentSlide}
-              themeId={presentation.themeId}
+              theme={theme}
               selectedElementId={selectedElementId}
               editingElementId={editingElementId}
               onSelectElement={(id) => {
@@ -285,7 +287,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         <div className="print-only slides-print" aria-hidden>
           {presentation.slides.map((slide) => (
             <div key={slide.id} className="slides-print__page">
-              <SlideView slide={slide} themeId={presentation.themeId} width={1040} />
+              <SlideView slide={slide} theme={theme} width={1040} />
             </div>
           ))}
         </div>

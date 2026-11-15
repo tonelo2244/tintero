@@ -1,7 +1,7 @@
 import PptxGenJS from 'pptxgenjs'
 import { cssColorToHex, cssFontToName } from '@/core/office/cssValues'
 import { hasText, resolveRunFormat } from '../richText'
-import { getTheme, type SlideTheme } from '../themes'
+import { presentationTheme, type SlideTheme } from '../themes'
 import {
   SLIDE_HEIGHT,
   SLIDE_WIDTH,
@@ -10,6 +10,7 @@ import {
   type Presentation,
   type ShapeElement,
   type ShapeKind,
+  type TableElement,
   type TextElement,
   type TextStyle
 } from '../types'
@@ -47,13 +48,22 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
   pptx.layout = 'TINTERO_16x9'
   pptx.author = 'Tintero'
 
-  const theme = getTheme(presentation.themeId)
+  const theme = presentationTheme(presentation)
   // El fondo del tema va en un "patrón" (master): así no se puede mover por accidente en PowerPoint.
   const master = `Tintero · ${theme.name}`
-  pptx.defineSlideMaster({ title: master, ...masterBackground(theme) })
+  pptx.defineSlideMaster({ title: master, ...backgroundParts(theme.background) })
 
   for (const slide of presentation.slides) {
     const pptxSlide = pptx.addSlide({ masterName: master })
+    // Fondo propio (importado de otro .pptx): color o imagen en la diapositiva y, si es un degradado,
+    // sus franjas como rectángulos al fondo, igual que en el patrón.
+    if (slide.background) {
+      const parts = backgroundParts(slide.background)
+      if (parts.background) pptxSlide.background = parts.background
+      for (const object of parts.objects ?? []) {
+        if ('rect' in object && object.rect) pptxSlide.addShape('rect', { ...object.rect, line: { type: 'none' } })
+      }
+    }
     for (const element of slide.elements) {
       switch (element.type) {
         case 'text':
@@ -65,6 +75,9 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
         case 'shape':
           addShape(pptxSlide, element, theme)
           break
+        case 'table':
+          addTable(pptxSlide, element, theme)
+          break
       }
     }
     if (slide.notes.trim()) pptxSlide.addNotes(slide.notes)
@@ -74,8 +87,11 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
   return fixSlideParagraphs(output)
 }
 
-function masterBackground(theme: SlideTheme): Pick<PptxGenJS.SlideMasterProps, 'background' | 'objects'> {
-  const { axis, bands } = parseBackground(theme.background)
+function backgroundParts(css: string): Pick<PptxGenJS.SlideMasterProps, 'background' | 'objects'> {
+  const image = /url\(["']?data:([^"')]+)["']?\)/.exec(css)
+  // pptxgenjs espera "image/png;base64,..." (sin el prefijo "data:").
+  if (image) return { background: { data: image[1] } }
+  const { axis, bands } = parseBackground(css)
   const [base, ...rest] = bands
   return {
     background: { color: base.color },
@@ -100,8 +116,42 @@ function masterBackground(theme: SlideTheme): Pick<PptxGenJS.SlideMasterProps, '
   }
 }
 
-function position(element: { x: number; y: number; width: number; height: number }) {
-  return { x: inches(element.x), y: inches(element.y), w: inches(element.width), h: inches(element.height) }
+function position(element: { x: number; y: number; width: number; height: number; rotation?: number }) {
+  return {
+    x: inches(element.x),
+    y: inches(element.y),
+    w: inches(element.width),
+    h: inches(element.height),
+    ...(element.rotation ? { rotate: element.rotation } : {})
+  }
+}
+
+/** Tabla con los mismos colores que en pantalla: encabezado con el acento del tema y bordes grises. */
+function addTable(slide: PptxGenJS.Slide, element: TableElement, theme: SlideTheme): void {
+  const border = { type: 'solid' as const, pt: 0.75, color: 'A6A6A6' }
+  const textColor = cssColorToHex(theme.textColor) ?? '222222'
+  const rows: PptxGenJS.TableRow[] = element.rows.map((cells, rowIndex) => {
+    const isHeader = element.headerRow && rowIndex === 0
+    return cells.map((cell) => {
+      const fill = cssColorToHex(cell.fill ?? (isHeader ? theme.accentColor : null))
+      return {
+        text: cell.text,
+        options: {
+          bold: cell.bold || isHeader,
+          color: cssColorToHex(cell.color) ?? (isHeader ? 'FFFFFF' : textColor),
+          ...(fill ? { fill: { color: fill } } : {})
+        }
+      }
+    })
+  })
+  slide.addTable(rows, {
+    ...position(element),
+    colW: element.columnWidths.map((fraction) => inches(element.width * fraction)),
+    fontFace: cssFontToName(theme.fontFamily) ?? undefined,
+    fontSize: points(element.fontSize),
+    valign: 'middle',
+    border: [border, border, border, border]
+  })
 }
 
 function addText(slide: PptxGenJS.Slide, element: TextElement, theme: SlideTheme): void {

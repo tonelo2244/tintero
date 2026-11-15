@@ -54,6 +54,17 @@ export function excelWidthToPixels(width: number): number {
   return Math.round(width * 7 + 5)
 }
 
+/** Alto de fila de Excel por defecto (Calibri 11). Excel mide los altos en puntos; nosotros en píxeles. */
+export const EXCEL_DEFAULT_ROW_HEIGHT_PT = 15
+
+export function pointsToPixels(points: number): number {
+  return Math.round((points * 96) / 72)
+}
+
+export function pixelsToPoints(pixels: number): number {
+  return Math.round(((pixels * 72) / 96) * 100) / 100
+}
+
 /** 'FF1F7A4D' (ARGB de Excel) <-> '#1f7a4d'. */
 export function argbToHex(argb: string | undefined): string | undefined {
   if (!argb || !/^[0-9a-f]{8}$/i.test(argb)) return undefined

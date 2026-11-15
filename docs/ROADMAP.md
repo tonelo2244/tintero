@@ -59,22 +59,22 @@ Lo que no está tan bien:
 
 ### Limitaciones conocidas
 
-| Limitación                                                                                                   | Impacto                                                    | Dónde se resuelve        |
-| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------ |
-| Instaladores sin icono ni firma; macOS pide "Abrir igualmente" o `xattr -cr`                                 | Mala primera impresión; nadie que no seas tú lo instalaría | Fase 7                   |
-| Sin e2e en CI                                                                                                | Las regresiones de interfaz solo se ven a mano             | Resuelto (fase 7)        |
-| El banco de evals existe, pero todavía no se ha ejecutado con un modelo real                                 | Aún no hay cifras de calidad ni latencia                   | `npm run eval` en el Mac |
-| Fórmulas en lenguaje natural sin hacer (estaban bloqueadas por el parser de la fase 5)                       | Falta la función de IA más vistosa de Hojas                | Resuelto (fase 8)        |
-| El asistente trabaja en texto plano: al reemplazar se pierde la negrita, colores, etc.                       | Molesto en documentos con formato                          | Resuelto (fase 8)        |
-| Documentos de más de 12.000 caracteres se recortan para el modelo                                            | Resumir un documento largo resume solo el principio        | Resuelto (fase 8)        |
-| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel   | Resuelto (fase 9)        |
-| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                 | Resuelto (fase 9)        |
-| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                           | Resuelto (fase 9)        |
-| Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                       | Fase 10                  |
-| Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                | Fase 10                  |
-| Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                              | Fase 9 y 10              |
-| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes        | Fase 11                  |
-| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint              | Fase 11                  |
+| Limitación                                                                                                   | Impacto                                                    | Dónde se resuelve              |
+| ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------ |
+| Instaladores sin icono ni firma; macOS pide "Abrir igualmente" o `xattr -cr`                                 | Mala primera impresión; nadie que no seas tú lo instalaría | Fase 7                         |
+| Sin e2e en CI                                                                                                | Las regresiones de interfaz solo se ven a mano             | Resuelto (fase 7)              |
+| El banco de evals existe, pero todavía no se ha ejecutado con un modelo real                                 | Aún no hay cifras de calidad ni latencia                   | `npm run eval` en el Mac       |
+| Fórmulas en lenguaje natural sin hacer (estaban bloqueadas por el parser de la fase 5)                       | Falta la función de IA más vistosa de Hojas                | Resuelto (fase 8)              |
+| El asistente trabaja en texto plano: al reemplazar se pierde la negrita, colores, etc.                       | Molesto en documentos con formato                          | Resuelto (fase 8)              |
+| Documentos de más de 12.000 caracteres se recortan para el modelo                                            | Resumir un documento largo resume solo el principio        | Resuelto (fase 8)              |
+| Hojas: sin insertar/borrar filas o columnas, ordenar, filtrar, buscar, celdas combinadas ni gráficos         | Es lo primero que echa en falta cualquiera que use Excel   | Resuelto (fase 9)              |
+| Hojas: 29 funciones; BUSCARX, SI.CONJUNTO, fechas o `A:A` dan `#¿NOMBRE?`                                    | Hojas reales de Excel se abren con errores                 | Resuelto (fase 9)              |
+| Hojas: cortar y pegar no actualiza las fórmulas que apuntaban a lo movido                                    | Resultados incorrectos sin aviso                           | Resuelto (fase 9)              |
+| Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                       | Fase 10 (hecha)                |
+| Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                | Fase 10 (hecha salvo gráficos) |
+| Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                              | Fase 9 y 10 (hechas)           |
+| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes        | Fase 11                        |
+| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint              | Fase 11                        |
 
 ## 3. Lo que queda, por fases
 
@@ -139,7 +139,14 @@ Objetivo: que una hoja normal de Excel se pueda abrir y trabajar sin echar nada 
 
 Esfuerzo estimado: 4–6 semanas.
 
-### Fase 10 · Fidelidad con Office
+### Fase 10 · Fidelidad con Office · hecha
+
+Hecha entera. Decisiones y lo que queda fuera:
+
+- **.docx:** en vez de un segundo lector que hubiera que emparejar párrafo a párrafo con mammoth, el lector propio deja marcas invisibles (caracteres de uso privado de Unicode) en el texto de `word/document.xml`; mammoth las copia al HTML en su sitio exacto y después se cambian por estilos. Fuera: cuadros de texto, alineación dentro de listas y encabezados distintos en la primera página o en las pares.
+- **.pptx:** el tema importado es un tema más (`Presentation.importedTheme`); si todas las diapositivas comparten fondo, pasa al tema. Fuera: gráficos y SmartArt, estilos de tabla de PowerPoint, celdas combinadas en tablas y volteo.
+- **.xlsx:** la fuente normal del libro (la primera de `xl/styles.xml`) no se copia a cada celda. Fuera: exportar gráficos (ExcelJS no los escribe) y filtros.
+- **Corpus:** `fixtures/office/generar.py` crea cada archivo con python-docx, openpyxl y python-pptx, y una segunda versión pasada por LibreOffice. Cada importador tiene su `corpus.test.ts`.
 
 Objetivo: perder menos al abrir archivos de Office, y saber exactamente cuánto se pierde.
 

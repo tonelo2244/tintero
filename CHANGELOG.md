@@ -27,6 +27,20 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
   filas enteras (`A:A`, `2:5`); ordenar por varias columnas; autofiltro; buscar y reemplazar;
   inmovilizar paneles; alto de fila; ajustar texto; celdas combinadas (también en .xlsx); formato
   condicional; gráficos de columnas, líneas y circular; imprimir ajustando al ancho.
+- **Fidelidad con Office** (fase 10):
+  - **.docx**: se conservan fuente, tamaño, color, resaltado y alineación aplicados a mano;
+    encabezado, pie (con número de página) y comentarios se importan y se exportan.
+  - **Texto**: comentarios con panel lateral (Insertar → Comentario / Ver comentarios).
+  - **.pptx**: tema «Importado» con los colores, fuentes y fondo del archivo; fondos propios por
+    diapositiva; tablas y giros, que también se exportan.
+  - **Diapositivas**: insertar y editar tablas; girar elementos.
+  - **.xlsx**: fuentes y tamaños, alto de filas, paneles inmovilizados, ajuste de texto y
+    formato condicional se leen y se escriben. **Hojas**: selector de fuente y tamaño.
+  - Corpus de archivos de Office en `fixtures/office/` con tests por importador.
+
+### Corregido
+
+- Hojas: «Ajustar texto» no partía las líneas en pantalla (una regla CSS posterior lo anulaba).
 
 ### Cambiado
 

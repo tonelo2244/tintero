@@ -23,3 +23,13 @@ export function fontLabel(value: string | undefined): string {
   if (!value) return ''
   return FONT_FAMILIES.find((font) => font.value === value)?.label ?? value.split(',')[0].replace(/"/g, '')
 }
+
+/**
+ * Nombre de fuente de Office ("Times New Roman") -> valor CSS del selector de fuentes, para que el
+ * selector la reconozca. Si no es una de las nuestras, se usa tal cual (el sistema la buscará).
+ */
+export function cssFontFamilyFor(name: string): string {
+  const known = FONT_FAMILIES.find((font) => font.label.toLowerCase() === name.trim().toLowerCase())
+  if (known) return known.value
+  return /[\s,]/.test(name) ? `"${name.replace(/"/g, '')}"` : name
+}
