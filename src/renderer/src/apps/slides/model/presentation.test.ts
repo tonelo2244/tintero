@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { migrateSlideV1toV2, parsePresentation } from './content'
-import { createShapeElement, createSlide, createTextElement } from './factories'
+import { createShapeElement, createSlide, createTableElement, createTextElement } from './factories'
 import { resizeBox, snapToCenter } from './geometry'
 import { presentationReducer } from './presentationReducer'
+import { IMPORTED_THEME_ID, presentationTheme, SLIDE_THEMES } from './themes'
 import type { Presentation } from './types'
 
 function deck(count: number): Presentation {
@@ -130,5 +131,51 @@ describe('migración de archivos antiguos', () => {
     const slide = createSlide('title')
     const current = parsePresentation({ themeId: 'blank', slides: [slide] }, 2)
     expect(current.slides[0]).toBe(slide)
+  })
+})
+
+describe('fase 10: giro, tablas y tema importado', () => {
+  it('normaliza el giro y lo quita al volver a 0', () => {
+    const slide = createSlide('blank')
+    const shape = createShapeElement('rect')
+    slide.elements = [shape]
+    let state: Presentation = { themeId: 'blank', slides: [slide] }
+    state = presentationReducer(state, {
+      type: 'element/setRotation',
+      slideId: slide.id,
+      elementId: shape.id,
+      rotation: -15
+    })
+    expect(state.slides[0].elements[0].rotation).toBe(345)
+    state = presentationReducer(state, {
+      type: 'element/setRotation',
+      slideId: slide.id,
+      elementId: shape.id,
+      rotation: 360
+    })
+    expect('rotation' in state.slides[0].elements[0]).toBe(false)
+  })
+
+  it('edita una celda de tabla', () => {
+    const slide = createSlide('blank')
+    const table = createTableElement(2, 3)
+    slide.elements = [table]
+    const state = presentationReducer(
+      { themeId: 'blank', slides: [slide] },
+      { type: 'table/setCell', slideId: slide.id, elementId: table.id, row: 1, col: 2, cell: { text: 'hola' } }
+    )
+    const edited = state.slides[0].elements[0]
+    expect(edited.type === 'table' && edited.rows[1][2].text).toBe('hola')
+  })
+
+  it('al cambiar a un tema de la galería, las diapositivas dejan su fondo importado', () => {
+    const importedTheme = { ...SLIDE_THEMES[0], id: IMPORTED_THEME_ID, name: 'Importado' }
+    const slide = { ...createSlide('blank'), background: '#123456' }
+    const start: Presentation = { themeId: IMPORTED_THEME_ID, slides: [slide], importedTheme }
+    expect(presentationTheme(start)).toBe(importedTheme)
+    const changed = presentationReducer(start, { type: 'presentation/setTheme', themeId: 'bosque' })
+    expect(changed.slides[0].background).toBeUndefined()
+    expect(presentationTheme(changed).id).toBe('bosque')
+    expect(parsePresentation(JSON.parse(JSON.stringify(start)), 2).importedTheme).toEqual(importedTheme)
   })
 })

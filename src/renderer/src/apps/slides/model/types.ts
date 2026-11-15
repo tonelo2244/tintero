@@ -1,3 +1,5 @@
+import type { SlideTheme } from './themes'
+
 /** Tamaño lógico de una diapositiva (16:9). Todo se guarda en estas unidades y se escala al pintar. */
 export const SLIDE_WIDTH = 1280
 export const SLIDE_HEIGHT = 720
@@ -7,6 +9,16 @@ export interface Box {
   y: number
   width: number
   height: number
+}
+
+/**
+ * Lo que comparten todos los elementos además de su caja. El giro es opcional (fase 10) para que
+ * las presentaciones anteriores se abran igual sin migración: ausente = sin girar.
+ */
+interface ElementBase extends Box {
+  id: string
+  /** Giro en grados, en el sentido de las agujas del reloj, alrededor del centro de la caja. */
+  rotation?: number
 }
 
 export type TextRole = 'title' | 'subtitle' | 'body' | 'free'
@@ -57,8 +69,7 @@ export interface TextParagraph {
   runs: TextRun[]
 }
 
-export interface TextElement extends Box {
-  id: string
+export interface TextElement extends ElementBase {
   type: 'text'
   role: TextRole
   /** Contenido con formato por palabra. Un cuadro vacío no tiene párrafos. */
@@ -68,8 +79,7 @@ export interface TextElement extends Box {
   style: TextStyle
 }
 
-export interface ImageElement extends Box {
-  id: string
+export interface ImageElement extends ElementBase {
   type: 'image'
   src: string
   alt: string
@@ -84,14 +94,34 @@ export interface ShapeStyle {
   strokeWidth: number
 }
 
-export interface ShapeElement extends Box {
-  id: string
+export interface ShapeElement extends ElementBase {
   type: 'shape'
   shape: ShapeKind
   style: ShapeStyle
 }
 
-export type SlideElement = TextElement | ImageElement | ShapeElement
+/** Celda de una tabla: texto plano con un poco de formato, lo que más se usa en una diapositiva. */
+export interface TableCell {
+  text: string
+  bold?: boolean
+  /** "#rrggbb"; ausente = color de texto del tema. */
+  color?: string
+  /** "#rrggbb"; ausente = sin relleno (o el de la fila de encabezado). */
+  fill?: string
+}
+
+export interface TableElement extends ElementBase {
+  type: 'table'
+  /** Filas x columnas. Todas las filas tienen el mismo número de celdas. */
+  rows: TableCell[][]
+  /** Ancho de cada columna como fracción del ancho de la tabla (suman 1): así redimensionar no recalcula nada. */
+  columnWidths: number[]
+  /** La primera fila se pinta como encabezado (color de acento del tema). */
+  headerRow: boolean
+  fontSize: number
+}
+
+export type SlideElement = TextElement | ImageElement | ShapeElement | TableElement
 
 export type SlideLayoutId = 'title' | 'titleContent' | 'sectionHeader' | 'titleOnly' | 'blank'
 
@@ -100,9 +130,13 @@ export interface Slide {
   layout: SlideLayoutId
   elements: SlideElement[]
   notes: string
+  /** Fondo propio de esta diapositiva (valor CSS de `background`). Ausente = el del tema. */
+  background?: string
 }
 
 export interface Presentation {
   themeId: string
   slides: Slide[]
+  /** Tema leído de un .pptx (colores, fuentes y fondo del patrón). Se usa si `themeId` es su id. */
+  importedTheme?: SlideTheme
 }

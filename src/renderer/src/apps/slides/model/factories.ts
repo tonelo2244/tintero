@@ -10,6 +10,7 @@ import {
   type Slide,
   type SlideElement,
   type SlideLayoutId,
+  type TableElement,
   type TextElement,
   type TextParagraph,
   type TextRole,
@@ -68,6 +69,21 @@ export function createShapeElement(shape: ShapeKind, box?: Box): ShapeElement {
     shape,
     ...(box ?? centeredBox(320, 220)),
     style: { fill: null, stroke: null, strokeWidth: 0 }
+  }
+}
+
+/** Tabla vacía centrada, con fila de encabezado y columnas iguales. */
+export function createTableElement(rowCount: number, colCount: number, box?: Box): TableElement {
+  const rows = Math.max(1, rowCount)
+  const cols = Math.max(1, colCount)
+  return {
+    id: createId('el'),
+    type: 'table',
+    ...(box ?? centeredBox(Math.min(1104, cols * 220), Math.min(520, rows * 56))),
+    rows: Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ text: '' }))),
+    columnWidths: Array.from({ length: cols }, () => 1 / cols),
+    headerRow: true,
+    fontSize: 20
   }
 }
 

@@ -1,6 +1,6 @@
 import type { AppTemplate } from '@/core/appModule'
 import { createSlide, createShapeElement, createTextElement } from './model/factories'
-import { SLIDE_THEMES } from './model/themes'
+import { presentationTheme, SLIDE_THEMES } from './model/themes'
 import { paragraphsFromText } from './model/richText'
 import type { Presentation, Slide, TextElement } from './model/types'
 import { SlideView } from './editor/SlideView'
@@ -65,7 +65,7 @@ function tourDeck(): Presentation {
 function deckPreview(deck: () => Presentation) {
   const presentation = deck()
   return function Preview() {
-    return <SlideView slide={presentation.slides[0]} themeId={presentation.themeId} width={PREVIEW_WIDTH} />
+    return <SlideView slide={presentation.slides[0]} theme={presentationTheme(presentation)} width={PREVIEW_WIDTH} />
   }
 }
 

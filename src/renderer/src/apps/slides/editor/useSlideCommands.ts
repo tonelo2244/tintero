@@ -5,6 +5,7 @@ import {
   createImageElement,
   createShapeElement,
   createSlide,
+  createTableElement,
   createTextElement,
   centeredBox
 } from '../model/factories'
@@ -75,6 +76,18 @@ export function useSlideCommands(context: SlideCommandContext) {
       },
       insertShape(shape: ShapeKind) {
         addElement(createShapeElement(shape))
+      },
+      insertTable(rows: number, cols: number) {
+        addElement(createTableElement(rows, cols))
+      },
+      /** Gira el elemento seleccionado `delta` grados; con `delta` null, lo deja recto. */
+      rotateSelected(delta: number | null) {
+        if (!selectedElement) return
+        const rotation = delta === null ? 0 : (selectedElement.rotation ?? 0) + delta
+        apply({ type: 'element/setRotation', slideId: currentSlide.id, elementId: selectedElement.id, rotation })
+      },
+      setTableCell(elementId: string, row: number, col: number, text: string, sessionKey: string) {
+        apply({ type: 'table/setCell', slideId: currentSlide.id, elementId, row, col, cell: { text } }, sessionKey)
       },
       async insertImage(file: File) {
         const src = await readImageFile(file)

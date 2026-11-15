@@ -68,3 +68,17 @@ export const SLIDE_THEMES: SlideTheme[] = [
 export function getTheme(id: string): SlideTheme {
   return SLIDE_THEMES.find((theme) => theme.id === id) ?? SLIDE_THEMES[0]
 }
+
+/** Id del tema que se crea al importar un .pptx. No está en la galería de temas fijos. */
+export const IMPORTED_THEME_ID = 'imported'
+
+/** Tema en uso: el importado si la presentación lo usa; si no, uno de la galería. */
+export function presentationTheme(presentation: { themeId: string; importedTheme?: SlideTheme }): SlideTheme {
+  const imported = presentation.importedTheme
+  return imported && presentation.themeId === imported.id ? imported : getTheme(presentation.themeId)
+}
+
+/** Temas que se pueden elegir en esta presentación: el importado (si hay) primero. */
+export function availableThemes(presentation: { importedTheme?: SlideTheme }): SlideTheme[] {
+  return presentation.importedTheme ? [presentation.importedTheme, ...SLIDE_THEMES] : SLIDE_THEMES
+}

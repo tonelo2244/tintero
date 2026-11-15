@@ -3,7 +3,7 @@
 // (en <p:sldId id="256" r:id="rId1"/> se queda solo con uno), y el lector depende de ambos.
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
-import { createShapeElement, createSlide, createTextElement } from '../factories'
+import { createShapeElement, createSlide, createTableElement, createTextElement } from '../factories'
 import { plainText } from '../richText'
 import type { Presentation, ShapeElement, TextElement } from '../types'
 import { exportPptx } from './exportPptx'
@@ -86,10 +86,11 @@ describe('importPptx con un archivo escrito a mano', () => {
     const mixed = `<p:sp><p:nvSpPr><p:cNvPr id="7" name="m"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 300, 400, 80)}</p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>normal </a:t></a:r><a:r><a:rPr b="1"/><a:t>negrita</a:t></a:r></a:p></p:txBody></p:sp>`
     const { content, warnings } = await importPptx(await handmadePptx(rotated + table + mixed))
     expect(content.slides[0].elements.map((element) => element.type)).toEqual(['shape', 'text'])
+    // El giro ya se conserva (fase 10): 1800000 / 60000 = 30 grados.
+    expect(content.slides[0].elements[0].rotation).toBe(30)
     expect(warnings).toEqual([
-      '1 tabla, gráfico o SmartArt',
-      '1 forma o línea sin equivalente (se omiten o pasan a rectángulo)',
-      'el giro de 1 elemento'
+      '1 gráfico o SmartArt',
+      '1 forma o línea sin equivalente (se omiten o pasan a rectángulo)'
     ])
   })
 
@@ -156,9 +157,35 @@ describe('importPptx (ida y vuelta con exportPptx)', () => {
     expect(text.paragraphs).toEqual(paragraphs)
   })
 
-  it('un tema con fondo de color avisa de que el fondo no se importa', async () => {
+  it('el fondo del tema vuelve como tema importado', async () => {
     const slide = createSlide('blank')
-    const { warnings } = await importPptx(await exportPptx({ themeId: 'pizarra', slides: [slide] }))
-    expect(warnings).toContain('el fondo y los colores del tema (se aplica el tema Blanco)')
+    const { content, warnings } = await importPptx(await exportPptx({ themeId: 'pizarra', slides: [slide] }))
+    expect(warnings).toEqual([])
+    expect(content.themeId).toBe('imported')
+    expect(content.importedTheme?.background).toBe('#8796a0')
+  })
+})
+
+describe('fase 10: tablas, giros y fondos (ida y vuelta)', () => {
+  it('exporta e importa una tabla, un giro y un fondo propio', async () => {
+    const slide = createSlide('blank')
+    const table = createTableElement(2, 2, { x: 100, y: 100, width: 600, height: 200 })
+    table.rows[0][0].text = 'Producto'
+    table.rows[1][1] = { text: '1,50 €', fill: '#ffeeaa' }
+    const shape = { ...createShapeElement('rect', { x: 800, y: 100, width: 200, height: 100 }), rotation: 45 }
+    slide.elements = [table, shape]
+    const other = { ...createSlide('blank'), background: '#123456' }
+    const { content, warnings } = await importPptx(await exportPptx({ themeId: 'blank', slides: [slide, other] }))
+    expect(warnings).toEqual([])
+    const imported = content.slides[0].elements
+    const readTable = imported.find((element) => element.type === 'table')
+    expect(readTable?.type === 'table' && readTable.rows.map((row) => row.map((cell) => cell.text))).toEqual([
+      ['Producto', ''],
+      ['', '1,50 €']
+    ])
+    expect(readTable?.type === 'table' && readTable.rows[1][1].fill).toBe('#ffeeaa')
+    expect(imported.find((element) => element.type === 'shape')?.rotation).toBe(45)
+    expect(content.slides[0].background).toBeUndefined()
+    expect(content.slides[1].background).toBe('#123456')
   })
 })

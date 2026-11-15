@@ -24,16 +24,20 @@ import {
   Shapes,
   SquarePlus,
   Strikethrough,
+  RotateCcw,
+  RotateCcwSquare,
+  RotateCw,
   Trash2,
   Type,
   TypeOutline,
   Underline
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
+import { TableGridPicker } from '@/ui/TableGridPicker'
 import { FONT_FAMILIES, FONT_SIZES, nextFontSize } from '@/ui/fonts'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
 import { SLIDE_LAYOUTS } from '../model/factories'
-import { getTheme, SLIDE_THEMES } from '../model/themes'
+import { availableThemes, presentationTheme, type SlideTheme } from '../model/themes'
 import type { HorizontalAlign, Presentation, ShapeKind, Slide, SlideElement, VerticalAlign } from '../model/types'
 import { SHAPE_LABELS, ShapeIcon } from './ElementContent'
 import { SlideView } from './SlideView'
@@ -71,7 +75,7 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
             selectedElement={props.selectedElement}
             textEditor={props.textEditor}
             commands={props.commands}
-            themeId={props.presentation.themeId}
+            theme={presentationTheme(props.presentation)}
           />
           <DrawingGroup selectedElement={props.selectedElement} commands={props.commands} />
         </>
@@ -151,17 +155,16 @@ function TextGroups({
   selectedElement,
   textEditor,
   commands,
-  themeId
+  theme
 }: {
   selectedElement: SlideElement | null
   textEditor: Editor | null
   commands: SlideCommands
-  themeId: string
+  theme: SlideTheme
 }) {
   const text = selectedElement?.type === 'text' ? selectedElement : null
   const disabled = !text
   const style = text?.style
-  const theme = getTheme(themeId)
   const defaultFont = text?.role === 'title' ? theme.titleFontFamily : theme.fontFamily
   const character = useCharacterFormat(textEditor, text, commands)
   const format = character.format
@@ -334,6 +337,7 @@ function InsertGroup({ commands }: { commands: SlideCommands }) {
       <ToolButton label="Cuadro de texto" large onClick={commands.insertTextBox}>
         <TypeOutline size={22} />
       </ToolButton>
+      <TableGridPicker onInsert={({ rows, cols }) => commands.insertTable(rows, cols)} />
     </RibbonGroup>
   )
 }
@@ -375,6 +379,32 @@ function DrawingGroup({
           </ToolButton>
         </div>
         <div className="ribbon-stack">
+          <ToolButton
+            label="Girar a la izquierda 15°"
+            showLabel
+            disabled={!selectedElement}
+            onClick={() => commands.rotateSelected(-15)}
+          >
+            <RotateCcw size={14} />
+          </ToolButton>
+          <ToolButton
+            label="Girar a la derecha 15°"
+            showLabel
+            disabled={!selectedElement}
+            onClick={() => commands.rotateSelected(15)}
+          >
+            <RotateCw size={14} />
+          </ToolButton>
+          <ToolButton
+            label="Quitar giro"
+            showLabel
+            disabled={!selectedElement?.rotation}
+            onClick={() => commands.rotateSelected(null)}
+          >
+            <RotateCcwSquare size={14} />
+          </ToolButton>
+        </div>
+        <div className="ribbon-stack">
           <ColorPicker
             label="Relleno de forma"
             icon={<PaintBucket size={15} />}
@@ -411,7 +441,7 @@ function ThemeGallery({
   return (
     <RibbonGroup label="Temas">
       <div className="theme-gallery">
-        {SLIDE_THEMES.map((theme) => (
+        {availableThemes(presentation).map((theme) => (
           <button
             key={theme.id}
             type="button"
@@ -419,7 +449,7 @@ function ThemeGallery({
             title={theme.name}
             onClick={() => commands.setTheme(theme.id)}
           >
-            <SlideView slide={currentSlide} themeId={theme.id} width={104} />
+            <SlideView slide={currentSlide} theme={theme} width={104} themeBackground />
             <span>{theme.name}</span>
           </button>
         ))}
