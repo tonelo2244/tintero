@@ -34,7 +34,7 @@ function fakeAi(calls: AiGenerateRequest[]): AiApi {
       const part = /^Parte (\d+) de/.exec(user)
       const text = part ? `Resumen de la parte ${part[1]}.` : 'FINAL'
       onToken?.(text)
-      return { result: Promise.resolve({ text, cancelled: false }), cancel: () => {} }
+      return { result: Promise.resolve({ text, toolCalls: [], cancelled: false }), cancel: () => {} }
     }
   }
 }

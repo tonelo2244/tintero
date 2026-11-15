@@ -99,28 +99,38 @@ export function createFormulaParser(target: FormulaTarget): (value: unknown) => 
     if (typeof value !== 'object' || value === null) throw new Error('la respuesta debe ser un objeto JSON')
     const { formula, explicacion } = value as Record<string, unknown>
     if (typeof formula !== 'string' || !formula.trim()) throw new Error('falta "formula"')
-    const source = formula.trim().replace(/^=+/, '')
-
-    let node: FormulaNode
-    try {
-      node = parseFormula(source)
-    } catch (error) {
-      if (error instanceof FormulaSyntaxError)
-        throw new Error(`la fórmula «${source}» no es válida: ${error.message}`, { cause: error })
-      throw error
-    }
-    checkNode(node, target)
-
-    const canonical = printFormula(node, 'canonical')
-    const preview = previewFormula(target, canonical)
-    if (isRetryableError(preview)) {
-      throw new Error(
-        `la fórmula «${source}» da ${localizedError(preview.error)} con los datos de la hoja; revisa los rangos y los argumentos`
-      )
-    }
+    const { canonical, localized, preview } = validateFormula(formula, target)
     const explanation = typeof explicacion === 'string' ? explicacion.trim().slice(0, MAX_EXPLANATION_CHARS) : ''
-    return { canonical, localized: `=${printFormula(node, 'es')}`, explanation, preview }
+    return { canonical, localized, explanation, preview }
   }
+}
+
+/**
+ * Validación completa de una fórmula escrita por un modelo para una celda: sintaxis, funciones
+ * y argumentos, hojas, autorreferencias y que su resultado no sea un error de fórmula mal hecha.
+ * La comparten "Fórmula con IA" y la herramienta set_formula del agente de Hojas.
+ */
+export function validateFormula(formula: string, target: FormulaTarget): Omit<FormulaProposal, 'explanation'> {
+  const source = formula.trim().replace(/^=+/, '')
+  let node: FormulaNode
+  try {
+    node = parseFormula(source)
+  } catch (error) {
+    if (error instanceof FormulaSyntaxError) {
+      throw new Error(`la fórmula «${source}» no es válida: ${error.message}`, { cause: error })
+    }
+    throw error
+  }
+  checkNode(node, target)
+
+  const canonical = printFormula(node, 'canonical')
+  const preview = previewFormula(target, canonical)
+  if (isRetryableError(preview)) {
+    throw new Error(
+      `la fórmula «${source}» da ${localizedError(preview.error)} con los datos de la hoja; revisa los rangos y los argumentos`
+    )
+  }
+  return { canonical, localized: `=${printFormula(node, 'es')}`, preview }
 }
 
 function isRetryableError(value: CellValue): value is { error: '#NAME?' } {

@@ -43,4 +43,12 @@ describe('withHistory', () => {
     state = counter(state, { type: 'history/undo' })
     expect(state.present).toBe(0)
   })
+
+  it('aplica varias acciones como un solo paso de deshacer', () => {
+    let state = initHistory(0)
+    state = counter(state, { type: 'history/applyBatch', actions: [{ by: 1 }, { by: 2 }, { by: 3 }] })
+    expect(state.present).toBe(6)
+    state = counter(state, { type: 'history/undo' })
+    expect(state.present).toBe(0)
+  })
 })

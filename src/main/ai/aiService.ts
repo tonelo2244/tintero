@@ -76,7 +76,7 @@ export class AiService {
       if (status.state === 'no-models') {
         throw new Error(`Ollama no tiene ningún modelo. Descarga uno con: ollama pull ${status.suggestedModel}`)
       }
-      const text = await this.runtime.chat(
+      const { text, toolCalls } = await this.runtime.chat(
         status.model,
         request,
         (chunk) => {
@@ -85,10 +85,10 @@ export class AiService {
         },
         controller.signal
       )
-      return { text, cancelled: false }
+      return { text, toolCalls, cancelled: false }
     } catch (error) {
       // Cancelar no es un error: devolvemos lo que llegó para que la interfaz decida.
-      if (controller.signal.aborted) return { text: partial, cancelled: true }
+      if (controller.signal.aborted) return { text: partial, toolCalls: [], cancelled: true }
       throw error
     } finally {
       this.running.delete(requestId)

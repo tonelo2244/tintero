@@ -19,7 +19,7 @@ export interface SuiteSummary {
   /** Proporción de ejecuciones aprobadas (todas las comprobaciones y el juez). */
   passRate: number
   meanScore: number
-  /** Solo suites con JSON: ejecuciones que dieron JSON válido sin reintentar. */
+  /** Solo suites con salida estructurada (JSON o herramientas): ejecuciones válidas sin reintentar. */
   validFirstTryRate: number | null
   meanRetries: number | null
   errors: number
@@ -81,7 +81,7 @@ export function renderMarkdown(report: EvalReport, baseline?: EvalReport): strin
     `- Commit: ${info.commit ?? 'desconocido'}`,
     `- Repeticiones por caso: ${info.repeat}`,
     '',
-    '| Suite | Ejecuciones | Aprobadas | Nota media | JSON a la primera | Reintentos | Latencia p50 / p95 | Primer texto p50 |',
+    '| Suite | Ejecuciones | Aprobadas | Nota media | Válido a la primera | Reintentos | Latencia p50 / p95 | Primer texto p50 |',
     '| ----- | ----------: | --------: | ---------: | ----------------: | ---------: | -----------------: | ---------------: |'
   ]
   for (const suite of report.suites) {

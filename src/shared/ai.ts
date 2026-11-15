@@ -16,8 +16,28 @@ export interface AiMessage {
 /** JSON Schema (el subconjunto que entienden los runtimes locales para "salida estructurada"). */
 export type JsonSchema = Record<string, unknown>
 
+/**
+ * Una herramienta que el modelo puede pedir que se ejecute ("tool calling"). La define la app;
+ * main solo se la pasa al runtime. Importante: pedirla no la ejecuta. El modelo devuelve
+ * llamadas propuestas y es la app quien las valida y, si el usuario quiere, las aplica.
+ */
+export interface AiToolDefinition {
+  name: string
+  description: string
+  /** JSON Schema de los argumentos. */
+  parameters: JsonSchema
+}
+
+export interface AiToolCall {
+  name: string
+  /** Argumentos tal y como los escribió el modelo: sin validar. */
+  arguments: Record<string, unknown>
+}
+
 export interface AiGenerateRequest {
   messages: AiMessage[]
+  /** Herramientas disponibles. Con ellas, el resultado puede traer `toolCalls` en vez de (o además de) texto. */
+  tools?: AiToolDefinition[]
   /**
    * Si se indica, el runtime restringe la salida a JSON que cumple este esquema.
    * Aun así la app debe validar el resultado: el esquema guía al modelo, no garantiza el contenido.
@@ -37,6 +57,8 @@ export type AiStatus =
 
 export interface AiGenerateResult {
   text: string
+  /** Llamadas a herramientas que propone el modelo (vacío si no se pasaron `tools` o no usó ninguna). */
+  toolCalls: AiToolCall[]
   /** true si el usuario lo canceló: `text` es lo que llegó hasta ese momento. */
   cancelled: boolean
 }

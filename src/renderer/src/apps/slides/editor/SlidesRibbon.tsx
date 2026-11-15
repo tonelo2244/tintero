@@ -40,13 +40,14 @@ import { SlideView } from './SlideView'
 import { useCharacterFormat } from './useCharacterFormat'
 import type { SlideCommands } from './useSlideCommands'
 
-export type SlidesTabId = 'home' | 'insert' | 'design' | 'show'
+export type SlidesTabId = 'home' | 'insert' | 'design' | 'show' | 'assistant'
 
 export const SLIDES_TABS: { id: SlidesTabId; label: string }[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'insert', label: 'Insertar' },
   { id: 'design', label: 'Diseño' },
-  { id: 'show', label: 'Presentación' }
+  { id: 'show', label: 'Presentación' },
+  { id: 'assistant', label: 'Asistente' }
 ]
 
 interface SlidesRibbonProps {
@@ -97,6 +98,9 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
           </ToolButton>
         </RibbonGroup>
       )
+    case 'assistant':
+      // La pestaña Asistente la pinta SlidesEditor (necesita el estado de la IA).
+      return null
   }
 }
 

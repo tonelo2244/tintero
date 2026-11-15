@@ -16,8 +16,9 @@ function fakeRuntime(reply: (request: AiGenerateRequest) => string): LocalModelR
     chat: async (_model, request, onToken) => {
       const text = reply(request)
       onToken(text)
-      return text
-    }
+      return { text, toolCalls: [] }
+    },
+    embed: async (_model, inputs) => inputs.map(() => [1])
   }
 }
 

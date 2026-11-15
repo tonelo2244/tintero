@@ -34,9 +34,9 @@ export function createEvalAi(runtime: LocalModelRuntime, model: string): Measure
           },
           controller.signal
         )
-        .then((text) => {
+        .then(({ text, toolCalls }) => {
           calls.push({ ms: performance.now() - started, firstTokenMs, outputChars: text.length })
-          return { text, cancelled: false }
+          return { text, toolCalls, cancelled: false }
         })
       return { result, cancel: () => controller.abort() }
     }

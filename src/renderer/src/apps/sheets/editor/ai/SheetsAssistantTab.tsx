@@ -1,4 +1,4 @@
-import { ChartColumn, MessageCircleQuestionMark, SquareFunction } from 'lucide-react'
+import { ChartColumn, MessageCircleQuestionMark, SquareFunction, WandSparkles } from 'lucide-react'
 import type { AiStatus } from '@shared/ai'
 import { AiModelGroup } from '@/ui/ai/AiModelGroup'
 import { RibbonGroup, RibbonRow, ToolButton } from '@/ui/Ribbon'
@@ -10,6 +10,7 @@ interface SheetsAssistantTabProps {
   onFormula(): void
   onExplain(): void
   onAnalyze(): void
+  onAsk(): void
   onSelectModel(model: string): void
 }
 
@@ -35,6 +36,11 @@ export function SheetsAssistantTab(props: SheetsAssistantTabProps) {
       <RibbonGroup label="Datos">
         <ToolButton large label="Analizar datos" disabled={props.busy} onClick={props.onAnalyze}>
           <ChartColumn size={22} />
+        </ToolButton>
+      </RibbonGroup>
+      <RibbonGroup label="Editar con IA">
+        <ToolButton large label="Pedir cambios" disabled={props.busy} onClick={props.onAsk}>
+          <WandSparkles size={22} />
         </ToolButton>
       </RibbonGroup>
       <AiModelGroup status={props.status} busy={props.busy} onSelectModel={props.onSelectModel} />
