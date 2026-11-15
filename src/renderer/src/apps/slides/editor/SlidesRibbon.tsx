@@ -62,7 +62,11 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
       return (
         <>
           <SlidesGroup commands={props.commands} />
-          <TextGroups selectedElement={props.selectedElement} commands={props.commands} themeId={props.presentation.themeId} />
+          <TextGroups
+            selectedElement={props.selectedElement}
+            commands={props.commands}
+            themeId={props.presentation.themeId}
+          />
           <DrawingGroup selectedElement={props.selectedElement} commands={props.commands} />
         </>
       )
@@ -74,7 +78,9 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
         </>
       )
     case 'design':
-      return <ThemeGallery presentation={props.presentation} currentSlide={props.currentSlide} commands={props.commands} />
+      return (
+        <ThemeGallery presentation={props.presentation} currentSlide={props.currentSlide} commands={props.commands} />
+      )
     case 'show':
       return (
         <RibbonGroup label="Iniciar presentación">
@@ -132,7 +138,15 @@ const V_ALIGN: { value: VerticalAlign; label: string; Icon: typeof AlignLeft }[]
   { value: 'bottom', label: 'Alinear abajo', Icon: AlignVerticalJustifyEnd }
 ]
 
-function TextGroups({ selectedElement, commands, themeId }: { selectedElement: SlideElement | null; commands: SlideCommands; themeId: string }) {
+function TextGroups({
+  selectedElement,
+  commands,
+  themeId
+}: {
+  selectedElement: SlideElement | null
+  commands: SlideCommands
+  themeId: string
+}) {
   const text = selectedElement?.type === 'text' ? selectedElement : null
   const disabled = !text
   const style = text?.style
@@ -159,24 +173,52 @@ function TextGroups({ selectedElement, commands, themeId }: { selectedElement: S
             options={FONT_SIZES.map((size) => ({ label: String(size), value: String(size) }))}
             onChange={(value) => commands.setTextStyle({ fontSize: Number(value) })}
           />
-          <ToolButton label="Aumentar tamaño" disabled={disabled} onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, 1) })}>
+          <ToolButton
+            label="Aumentar tamaño"
+            disabled={disabled}
+            onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, 1) })}
+          >
             <AArrowUp size={16} />
           </ToolButton>
-          <ToolButton label="Disminuir tamaño" disabled={disabled} onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, -1) })}>
+          <ToolButton
+            label="Disminuir tamaño"
+            disabled={disabled}
+            onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, -1) })}
+          >
             <AArrowDown size={16} />
           </ToolButton>
         </RibbonRow>
         <RibbonRow>
-          <ToolButton label="Negrita" disabled={disabled} active={style?.bold} onClick={() => commands.setTextStyle({ bold: !style?.bold })}>
+          <ToolButton
+            label="Negrita"
+            disabled={disabled}
+            active={style?.bold}
+            onClick={() => commands.setTextStyle({ bold: !style?.bold })}
+          >
             <Bold size={16} />
           </ToolButton>
-          <ToolButton label="Cursiva" disabled={disabled} active={style?.italic} onClick={() => commands.setTextStyle({ italic: !style?.italic })}>
+          <ToolButton
+            label="Cursiva"
+            disabled={disabled}
+            active={style?.italic}
+            onClick={() => commands.setTextStyle({ italic: !style?.italic })}
+          >
             <Italic size={16} />
           </ToolButton>
-          <ToolButton label="Subrayado" disabled={disabled} active={style?.underline} onClick={() => commands.setTextStyle({ underline: !style?.underline })}>
+          <ToolButton
+            label="Subrayado"
+            disabled={disabled}
+            active={style?.underline}
+            onClick={() => commands.setTextStyle({ underline: !style?.underline })}
+          >
             <Underline size={16} />
           </ToolButton>
-          <ToolButton label="Tachado" disabled={disabled} active={style?.strike} onClick={() => commands.setTextStyle({ strike: !style?.strike })}>
+          <ToolButton
+            label="Tachado"
+            disabled={disabled}
+            active={style?.strike}
+            onClick={() => commands.setTextStyle({ strike: !style?.strike })}
+          >
             <Strikethrough size={16} />
           </ToolButton>
           <ColorPicker
@@ -194,17 +236,34 @@ function TextGroups({ selectedElement, commands, themeId }: { selectedElement: S
       <RibbonGroup label="Párrafo">
         <RibbonRow>
           {H_ALIGN.map(({ value, label, Icon }) => (
-            <ToolButton key={value} label={label} disabled={disabled} active={style?.align === value} onClick={() => commands.setTextStyle({ align: value })}>
+            <ToolButton
+              key={value}
+              label={label}
+              disabled={disabled}
+              active={style?.align === value}
+              onClick={() => commands.setTextStyle({ align: value })}
+            >
               <Icon size={16} />
             </ToolButton>
           ))}
         </RibbonRow>
         <RibbonRow>
-          <ToolButton label="Viñetas" disabled={disabled} active={style?.bullets} onClick={() => commands.setTextStyle({ bullets: !style?.bullets })}>
+          <ToolButton
+            label="Viñetas"
+            disabled={disabled}
+            active={style?.bullets}
+            onClick={() => commands.setTextStyle({ bullets: !style?.bullets })}
+          >
             <List size={16} />
           </ToolButton>
           {V_ALIGN.map(({ value, label, Icon }) => (
-            <ToolButton key={value} label={label} disabled={disabled} active={style?.verticalAlign === value} onClick={() => commands.setTextStyle({ verticalAlign: value })}>
+            <ToolButton
+              key={value}
+              label={label}
+              disabled={disabled}
+              active={style?.verticalAlign === value}
+              onClick={() => commands.setTextStyle({ verticalAlign: value })}
+            >
               <Icon size={16} />
             </ToolButton>
           ))}
@@ -266,7 +325,13 @@ function InsertGroup({ commands }: { commands: SlideCommands }) {
   )
 }
 
-function DrawingGroup({ selectedElement, commands }: { selectedElement: SlideElement | null; commands: SlideCommands }) {
+function DrawingGroup({
+  selectedElement,
+  commands
+}: {
+  selectedElement: SlideElement | null
+  commands: SlideCommands
+}) {
   const shape = selectedElement?.type === 'shape' ? selectedElement : null
   return (
     <>
@@ -279,10 +344,20 @@ function DrawingGroup({ selectedElement, commands }: { selectedElement: SlideEle
       </RibbonGroup>
       <RibbonGroup label="Organizar">
         <div className="ribbon-stack">
-          <ToolButton label="Traer al frente" showLabel disabled={!selectedElement} onClick={() => commands.reorderSelected('front')}>
+          <ToolButton
+            label="Traer al frente"
+            showLabel
+            disabled={!selectedElement}
+            onClick={() => commands.reorderSelected('front')}
+          >
             <BringToFront size={14} />
           </ToolButton>
-          <ToolButton label="Enviar al fondo" showLabel disabled={!selectedElement} onClick={() => commands.reorderSelected('back')}>
+          <ToolButton
+            label="Enviar al fondo"
+            showLabel
+            disabled={!selectedElement}
+            onClick={() => commands.reorderSelected('back')}
+          >
             <SendToBack size={14} />
           </ToolButton>
         </div>
@@ -311,7 +386,15 @@ function DrawingGroup({ selectedElement, commands }: { selectedElement: SlideEle
   )
 }
 
-function ThemeGallery({ presentation, currentSlide, commands }: { presentation: Presentation; currentSlide: Slide; commands: SlideCommands }) {
+function ThemeGallery({
+  presentation,
+  currentSlide,
+  commands
+}: {
+  presentation: Presentation
+  currentSlide: Slide
+  commands: SlideCommands
+}) {
   return (
     <RibbonGroup label="Temas">
       <div className="theme-gallery">

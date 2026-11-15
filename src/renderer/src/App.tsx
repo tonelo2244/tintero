@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import type { RecoverySnapshot } from '@shared/ipc'
 import { installedApps } from '@/apps'
 import { platform } from '@/core/platform'
 import { Launcher } from '@/shell/Launcher'
 import { NoticeBar } from '@/shell/NoticeBar'
+import { RecoveryBar } from '@/shell/RecoveryBar'
+import { useAutosave } from '@/shell/useAutosave'
 import { useDocumentSession } from '@/shell/useDocumentSession'
 
 const LAST_APP_KEY = 'tintero:last-app'
@@ -21,6 +24,20 @@ export function App() {
   const session = useDocumentSession(installedApps)
   const [launcherAppId, setLauncherAppId] = useState(readLastAppId)
   const launcherApp = installedApps.get(launcherAppId) ?? installedApps.all[0]
+  const [recoverable, setRecoverable] = useState<RecoverySnapshot[]>([])
+
+  useAutosave(session.takeRecoverySnapshot)
+
+  // Al arrancar: ¿quedó algún documento sin guardar de la última vez?
+  useEffect(() => {
+    platform.recovery
+      .listRecoverable()
+      .then(setRecoverable)
+      .catch(() => setRecoverable([]))
+  }, [])
+
+  const removeFromRecoverable = (snapshot: RecoverySnapshot) =>
+    setRecoverable((list) => list.filter((item) => item.id !== snapshot.id))
 
   const selectLauncherApp = (id: string) => {
     setLauncherAppId(id)
@@ -36,7 +53,17 @@ export function App() {
   useEffect(() => {
     const title = document ? `${document.name}${isDirty ? ' (sin guardar)' : ''} — ${document.app.name}` : 'Tintero'
     platform.window.setTitle(title)
+    // El proceso principal necesita saberlo ANTES de que el usuario cierre la ventana.
+    platform.window.setUnsavedChanges(
+      document && isDirty ? { name: document.name, recoveryId: document.recoveryId } : null
+    )
   }, [document, isDirty])
+
+  useEffect(() => {
+    return platform.onSaveBeforeClose(async () => {
+      if (await session.save()) platform.window.confirmClose()
+    })
+  }, [session])
 
   // Atajos del menú nativo (Cmd/Ctrl+S, etc.). Se re-suscribe cuando cambia la sesión
   // para que los callbacks siempre vean el documento actual.
@@ -69,6 +96,16 @@ export function App() {
 
   return (
     <div className="app-root">
+      <RecoveryBar
+        snapshots={recoverable}
+        onRecover={(snapshot) => {
+          if (session.openRecovered(snapshot)) removeFromRecoverable(snapshot)
+        }}
+        onDiscard={(snapshot) => {
+          removeFromRecoverable(snapshot)
+          void platform.recovery.discard(snapshot.id).catch(() => {})
+        }}
+      />
       {session.notice && <NoticeBar message={session.notice} onDismiss={session.dismissNotice} />}
       {document ? (
         <document.app.Editor

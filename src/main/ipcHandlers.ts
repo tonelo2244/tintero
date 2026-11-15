@@ -1,14 +1,23 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { IpcChannel, type FileFilter, type OpenedFile, type RecentFile } from '@shared/ipc'
+import {
+  IpcChannel,
+  type FileFilter,
+  type OpenedFile,
+  type RecentFile,
+  type RecoverySnapshot,
+  type UnsavedDocument
+} from '@shared/ipc'
 import { ensureExtension, readTextFile, writeFileAtomic } from './fileService'
 import type { RecentsStore } from './recentsStore'
+import type { RecoveryStore } from './recoveryStore'
+import { closeGuardFor } from './windowCloseHandling'
 
 /**
  * Traduce mensajes IPC a llamadas a los servicios. Aquí no hay lógica de negocio:
  * el proceso principal no sabe qué es un "documento de texto" o una "presentación",
  * solo lee y escribe archivos. Así, añadir una app nueva no obliga a tocar este archivo.
  */
-export function registerIpcHandlers(recents: RecentsStore): void {
+export function registerIpcHandlers(recents: RecentsStore, recovery: RecoveryStore): void {
   ipcMain.handle(IpcChannel.FilesOpenDialog, async (event, filters: FileFilter[]): Promise<OpenedFile | null> => {
     const window = BrowserWindow.fromWebContents(event.sender)
     const options = { properties: ['openFile' as const], filters }
@@ -31,7 +40,10 @@ export function registerIpcHandlers(recents: RecentsStore): void {
         const options = { defaultPath: suggestedName, filters }
         const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
         if (result.canceled || !result.filePath) return null
-        targetPath = ensureExtension(result.filePath, filters.flatMap((filter) => filter.extensions))
+        targetPath = ensureExtension(
+          result.filePath,
+          filters.flatMap((filter) => filter.extensions)
+        )
       }
       await writeFileAtomic(targetPath, contents)
       return targetPath
@@ -49,6 +61,20 @@ export function registerIpcHandlers(recents: RecentsStore): void {
 
   ipcMain.on(IpcChannel.WindowSetTitle, (event, title: string) => {
     BrowserWindow.fromWebContents(event.sender)?.setTitle(title)
+  })
+
+  ipcMain.handle(IpcChannel.RecoverySave, (_event, snapshot: RecoverySnapshot) => recovery.save(snapshot))
+  ipcMain.handle(IpcChannel.RecoveryDiscard, (_event, id: string) => recovery.discard(id))
+  ipcMain.handle(IpcChannel.RecoveryList, () => recovery.listRecoverable())
+
+  ipcMain.on(IpcChannel.WindowSetUnsavedChanges, (event, document: UnsavedDocument | null) => {
+    closeGuardFor(event.sender)?.setDirtyDocument(document)
+    // En macOS pinta el punto en el botón de cerrar, como cualquier app nativa.
+    BrowserWindow.fromWebContents(event.sender)?.setDocumentEdited(document !== null)
+  })
+
+  ipcMain.on(IpcChannel.WindowConfirmClose, (event) => {
+    closeGuardFor(event.sender)?.confirmSaved()
   })
 
   ipcMain.handle(IpcChannel.WindowPrint, (event) => {

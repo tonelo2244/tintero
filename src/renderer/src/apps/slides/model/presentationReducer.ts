@@ -41,7 +41,10 @@ export function presentationReducer(state: Presentation, action: PresentationAct
     case 'slide/setNotes':
       return updateSlide(state, action.slideId, (slide) => ({ ...slide, notes: action.notes }))
     case 'element/add':
-      return updateSlide(state, action.slideId, (slide) => ({ ...slide, elements: [...slide.elements, action.element] }))
+      return updateSlide(state, action.slideId, (slide) => ({
+        ...slide,
+        elements: [...slide.elements, action.element]
+      }))
     case 'element/delete':
       return updateSlide(state, action.slideId, (slide) => ({
         ...slide,

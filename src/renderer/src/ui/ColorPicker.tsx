@@ -2,10 +2,30 @@ import type { ReactNode } from 'react'
 import { Dropdown } from './Ribbon'
 
 const PALETTE = [
-  '#000000', '#434343', '#666666', '#999999', '#cccccc', '#ffffff',
-  '#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#2980b9', '#8e44ad',
-  '#f5b7b1', '#fad7a0', '#fcf3cf', '#abebc6', '#aed6f1', '#d2b4de',
-  '#7b241c', '#9c640c', '#9a7d0a', '#196f3d', '#1a5276', '#4a235a'
+  '#000000',
+  '#434343',
+  '#666666',
+  '#999999',
+  '#cccccc',
+  '#ffffff',
+  '#c0392b',
+  '#e67e22',
+  '#f1c40f',
+  '#27ae60',
+  '#2980b9',
+  '#8e44ad',
+  '#f5b7b1',
+  '#fad7a0',
+  '#fcf3cf',
+  '#abebc6',
+  '#aed6f1',
+  '#d2b4de',
+  '#7b241c',
+  '#9c640c',
+  '#9a7d0a',
+  '#196f3d',
+  '#1a5276',
+  '#4a235a'
 ]
 
 interface ColorPickerProps {

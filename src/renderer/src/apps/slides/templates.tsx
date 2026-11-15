@@ -27,20 +27,32 @@ function tourDeck(): Presentation {
       createShapeElement('roundRect', { x: 120, y: 260, width: 300, height: 200 }),
       createShapeElement('ellipse', { x: 490, y: 260, width: 300, height: 200 }),
       createShapeElement('arrow', { x: 860, y: 280, width: 300, height: 160 }),
-      createTextElement('free', { x: 120, y: 520, width: 1040, height: 80 }, {
-        text: 'Insertar → Formas o Imagen. Arrastra para mover y usa los tiradores para cambiar el tamaño.',
-        style: { align: 'center', fontSize: 24 }
-      })
+      createTextElement(
+        'free',
+        { x: 120, y: 520, width: 1040, height: 80 },
+        {
+          text: 'Insertar → Formas o Imagen. Arrastra para mover y usa los tiradores para cambiar el tamaño.',
+          style: { align: 'center', fontSize: 24 }
+        }
+      )
     ]
   }
   return {
     themeId: 'carmesi',
     slides: [
-      withTexts(createSlide('title'), ['Le damos la bienvenida', 'Un recorrido rápido por Tintero Diapositivas'], 'Pulsa F5 para ver la presentación a pantalla completa.'),
-      withTexts(createSlide('titleContent'), [
-        'Edita como en cualquier suite',
-        'Haz clic en un cuadro para seleccionarlo y otra vez para escribir\nArrastra las miniaturas de la izquierda para reordenar\nCambia el tema completo desde la pestaña Diseño\nEscribe notas del orador debajo de cada diapositiva'
-      ], 'Las notas no se ven durante la presentación.'),
+      withTexts(
+        createSlide('title'),
+        ['Le damos la bienvenida', 'Un recorrido rápido por Tintero Diapositivas'],
+        'Pulsa F5 para ver la presentación a pantalla completa.'
+      ),
+      withTexts(
+        createSlide('titleContent'),
+        [
+          'Edita como en cualquier suite',
+          'Haz clic en un cuadro para seleccionarlo y otra vez para escribir\nArrastra las miniaturas de la izquierda para reordenar\nCambia el tema completo desde la pestaña Diseño\nEscribe notas del orador debajo de cada diapositiva'
+        ],
+        'Las notas no se ven durante la presentación.'
+      ),
       shapesSlide,
       withTexts(createSlide('sectionHeader'), ['Todo se guarda en tu disco', 'Archivos .tpres, sin nube y sin cuentas'])
     ]
@@ -55,7 +67,12 @@ function deckPreview(deck: () => Presentation) {
 }
 
 export const slidesTemplates: AppTemplate<Presentation>[] = [
-  { id: 'blank', name: 'Presentación en blanco', Preview: deckPreview(() => titleDeck('blank')), createContent: () => titleDeck('blank') },
+  {
+    id: 'blank',
+    name: 'Presentación en blanco',
+    Preview: deckPreview(() => titleDeck('blank')),
+    createContent: () => titleDeck('blank')
+  },
   { id: 'tour', name: 'Le damos la bienvenida', Preview: deckPreview(tourDeck), createContent: tourDeck },
   ...SLIDE_THEMES.filter((theme) => theme.id !== 'blank').map((theme) => ({
     id: `theme-${theme.id}`,

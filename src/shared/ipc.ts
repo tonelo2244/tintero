@@ -25,6 +25,25 @@ export interface RecentFile {
   pinned: boolean
 }
 
+/** Copia de seguridad de un documento abierto (autoguardado). */
+export interface RecoverySnapshot {
+  /** Id de la sesión del documento: cada documento abierto tiene el suyo. */
+  id: string
+  appId: string
+  name: string
+  /** Archivo original, o null si el documento nunca se guardó. */
+  path: string | null
+  savedAt: string
+  /** Documento serializado (mismo formato que un .tdoc/.tpres). */
+  contents: string
+}
+
+/** Lo que el renderer cuenta al proceso principal sobre el documento con cambios pendientes. */
+export interface UnsavedDocument {
+  name: string
+  recoveryId: string
+}
+
 /** Acciones lanzadas desde el menú nativo hacia la interfaz. */
 export type MenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'home' | 'print'
 
@@ -41,11 +60,23 @@ export interface TinteroApi {
     setPinned(path: string, pinned: boolean): Promise<RecentFile[]>
     remove(path: string): Promise<RecentFile[]>
   }
+  recovery: {
+    save(snapshot: RecoverySnapshot): Promise<void>
+    discard(id: string): Promise<void>
+    /** Copias que vale la pena ofrecer al arrancar (más nuevas que su archivo). */
+    listRecoverable(): Promise<RecoverySnapshot[]>
+  }
   window: {
     setTitle(title: string): void
     print(): Promise<void>
+    /** Documento con cambios sin guardar, o null si está todo guardado. */
+    setUnsavedChanges(document: UnsavedDocument | null): void
+    /** Tras guardar a petición de `onSaveBeforeClose`: ya se puede cerrar la ventana. */
+    confirmClose(): void
   }
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
+  /** El usuario eligió "Guardar" al cerrar la ventana. */
+  onSaveBeforeClose(handler: () => void): () => void
 }
 
 export const IpcChannel = {
@@ -56,7 +87,13 @@ export const IpcChannel = {
   RecentsTouch: 'recents:touch',
   RecentsSetPinned: 'recents:set-pinned',
   RecentsRemove: 'recents:remove',
+  RecoverySave: 'recovery:save',
+  RecoveryDiscard: 'recovery:discard',
+  RecoveryList: 'recovery:list',
   WindowSetTitle: 'window:set-title',
   WindowPrint: 'window:print',
+  WindowSetUnsavedChanges: 'window:set-unsaved-changes',
+  WindowSaveBeforeClose: 'window:save-before-close',
+  WindowConfirmClose: 'window:confirm-close',
   MenuCommand: 'menu:command'
 } as const
