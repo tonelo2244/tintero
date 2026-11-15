@@ -1,0 +1,16 @@
+[
+  {
+    "id": "ventas",
+    "why": "Tabla pequeña: debe citar a Este como máximo y no inventar cifras.",
+    "sheet": "ventas",
+    "range": "A1:C5",
+    "mustMention": ["este"]
+  },
+  {
+    "id": "gastos",
+    "why": "Tabla de 30 filas con textos repetidos (categorías).",
+    "sheet": "gastos",
+    "range": "A1:D31",
+    "mustMention": ["supermercado"]
+  }
+]

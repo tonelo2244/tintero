@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from 'react'
 import type { EditorProps } from '@/core/appModule'
+import { useAiStatus } from '@/core/ai/useAiStatus'
+import { useToolAgent } from '@/core/ai/useToolAgent'
 import { initHistory, withHistory } from '@/core/history'
 import { platform } from '@/core/platform'
 import { EditorLayout } from '@/ui/EditorLayout'
+import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
+import { describeSheet } from '../model/ai/sheetContext'
+import { buildSheetAgentRequest, interpretSheetCalls } from '../model/ai/sheetTools'
 import { SHEETS_ACCENT } from '../constants'
 import { cellAddress, parseCellAddress, rangeAddress, rangeSize } from '../model/address'
 import { getCellValue } from '../model/calc'
@@ -31,6 +36,9 @@ import { SheetPrintView } from './SheetPrintView'
 import { SHEETS_TABS, SheetsRibbon, type SheetCommands, type SheetsTabId } from './SheetsRibbon'
 import { SheetTabs } from './SheetTabs'
 import { useEvaluation } from './useEvaluation'
+import { SheetAssistantPanel } from './ai/SheetAssistantPanel'
+import { SheetsAssistantTab } from './ai/SheetsAssistantTab'
+import { useSheetAssistant } from './ai/useSheetAssistant'
 
 const historyReducer = withHistory(workbookReducer)
 
@@ -97,6 +105,59 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
     []
   )
   const focusGrid = () => viewportRef.current?.focus()
+
+  // ---------- Asistente de IA ----------
+
+  const ai = useAiStatus()
+  const assistant = useSheetAssistant({ workbook, evaluation, sheet, anchor: selection.anchor, range, apply })
+  // Lo que el agente necesita leer al pedir los cambios (siempre lo último, no lo del render en que se creó).
+  const agentContext = useRef({ workbook, evaluation, sheet, anchorAddress })
+  agentContext.current = { workbook, evaluation, sheet, anchorAddress }
+  const agent = useToolAgent<Workbook, WorkbookAction>({
+    getState: () => agentContext.current.workbook,
+    buildRequest: (_state, request) => {
+      const current = agentContext.current
+      return buildSheetAgentRequest(
+        describeSheet(current.sheet, current.evaluation).text,
+        current.anchorAddress,
+        request
+      )
+    },
+    interpret: (state, calls) =>
+      interpretSheetCalls(
+        state,
+        { sheetId: agentContext.current.sheet.id, evaluation: agentContext.current.evaluation },
+        calls
+      ),
+    applyActions: (actions) => dispatch({ type: 'history/applyBatch', actions })
+  })
+  /** Panel abierto: cómo preparar Ollama, fórmulas/explicar/analizar, o el agente de cambios. */
+  const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'open' | 'agent'>('closed')
+  const aiBusy =
+    assistant.generation.phase === 'running' ||
+    (assistant.job?.kind === 'formula' && assistant.job.job.phase === 'running') ||
+    agent.job?.phase === 'running'
+
+  /** Comprueba el estado justo antes de usarla: el usuario puede haber abierto Ollama hace un momento. */
+  const runAssistant = async (action: () => void, panel: 'open' | 'agent' = 'open') => {
+    if (editing) commitEditing(null)
+    const status = ai.status?.state === 'ready' ? ai.status : await ai.refresh()
+    if (status.state !== 'ready') {
+      setAiPanel('setup')
+      return
+    }
+    if (panel === 'agent') assistant.close()
+    else agent.close()
+    setAiPanel(panel)
+    action()
+  }
+
+  const closeAssistant = () => {
+    assistant.close()
+    agent.close()
+    setAiPanel('closed')
+    focusGrid()
+  }
 
   // Colocar el cursor del <input> donde toca tras insertar una referencia o empezar a escribir.
   useEffect(() => {
@@ -411,12 +472,25 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       activeTab={tab}
       onTabChange={(id) => setTab(id as SheetsTabId)}
       ribbon={
-        <SheetsRibbon
-          tab={tab}
-          activeStyle={activeStyle}
-          canDeleteSheet={workbook.sheets.length > 1}
-          commands={commands}
-        />
+        tab === 'assistant' ? (
+          <SheetsAssistantTab
+            status={ai.status}
+            busy={aiBusy}
+            activeCellHasFormula={activeCell?.formula !== undefined}
+            onFormula={() => void runAssistant(assistant.openFormula)}
+            onExplain={() => void runAssistant(assistant.explain)}
+            onAnalyze={() => void runAssistant(assistant.analyze)}
+            onAsk={() => void runAssistant(agent.open, 'agent')}
+            onSelectModel={(model) => void ai.setModel(model)}
+          />
+        ) : (
+          <SheetsRibbon
+            tab={tab}
+            activeStyle={activeStyle}
+            canDeleteSheet={workbook.sheets.length > 1}
+            commands={commands}
+          />
+        )
       }
       statusBar={
         <>
@@ -434,6 +508,39 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
         </>
       }
     >
+      {aiPanel === 'agent' && (
+        <ToolAgentPanel
+          appLabel="Hojas de cálculo"
+          job={agent.job}
+          setupStatus={null}
+          model={ai.status?.state === 'ready' ? ai.status.model : null}
+          examples={[
+            'Pon en negrita la fila 1 y rellénala de amarillo',
+            'Añade una fila de totales debajo de los datos',
+            'Formato de moneda en la columna B'
+          ]}
+          onRequestChange={agent.setRequest}
+          onPropose={(request) => void agent.propose(request)}
+          onApply={() => {
+            agent.apply()
+            focusGrid()
+          }}
+          onCancel={agent.cancel}
+          onEdit={agent.open}
+          onRetrySetup={() => void ai.refresh()}
+          onClose={closeAssistant}
+        />
+      )}
+      {(aiPanel === 'open' || aiPanel === 'setup') && (
+        <SheetAssistantPanel
+          assistant={assistant}
+          setupStatus={aiPanel === 'setup' ? ai.status : null}
+          model={ai.status?.state === 'ready' ? ai.status.model : null}
+          targetHasContent={assistant.job?.kind === 'formula' && isFilled(sheet.cells[assistant.job.target])}
+          onRetrySetup={() => void ai.refresh().then((status) => status.state === 'ready' && setAiPanel('open'))}
+          onClose={closeAssistant}
+        />
+      )}
       <div className="sheets-workspace">
         <FormulaBar
           location={rangeAddress(range)}
@@ -523,6 +630,10 @@ export function SheetsEditor({ initialContent, session, onChange }: EditorProps<
       <SheetPrintView sheet={sheet} evaluation={evaluation} />
     </EditorLayout>
   )
+}
+
+function isFilled(cell: Cell | undefined): boolean {
+  return cell?.formula !== undefined || cell?.value !== undefined
 }
 
 function defaultDecimals(kind: NumberFormatKind): number | undefined {

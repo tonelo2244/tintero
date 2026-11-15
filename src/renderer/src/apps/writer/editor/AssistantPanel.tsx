@@ -2,7 +2,9 @@ import { ArrowDownToLine, Copy, RefreshCw, Replace, Square } from 'lucide-react'
 import type { AiStatus } from '@shared/ai'
 import { AiPanel } from '@/ui/ai/AiPanel'
 import { AiSetupNotice } from '@/ui/ai/AiSetupNotice'
+import { markedToPlain } from '../model/ai/inlineMarks'
 import { cleanModelText } from '../model/ai/writingActions'
+import { MarkedPreview } from './MarkedPreview'
 import type { useWritingAssistant } from './useWritingAssistant'
 
 type WritingAssistant = ReturnType<typeof useWritingAssistant>
@@ -49,12 +51,23 @@ export function AssistantPanel({ assistant, setupStatus, model, onRetrySetup, on
         <p className="ai-panel__message is-error">{generation.message}</p>
       ) : generation.phase === 'running' || generation.phase === 'cancelled' ? (
         <div className={`ai-panel__result ${running ? 'is-streaming' : ''}`}>
-          {cleanModelText(generation.text) ||
-            (running ? 'Pensando… (la primera vez tarda más: el modelo se carga en memoria)' : '')}
+          {cleanModelText(generation.text) ? (
+            <MarkedPreview text={cleanModelText(generation.text)} />
+          ) : running ? (
+            (generation.phase === 'running' && generation.progress) ||
+            'Pensando… (la primera vez tarda más: el modelo se carga en memoria)'
+          ) : (
+            ''
+          )}
         </div>
       ) : generation.phase === 'done' ? (
-        <div className="ai-panel__result">{result || 'El modelo no devolvió texto.'}</div>
+        <div className="ai-panel__result">
+          {result ? <MarkedPreview text={result} /> : 'El modelo no devolvió texto.'}
+        </div>
       ) : null}
+      {showJob && job.target?.formatLost && generation.phase === 'done' && (
+        <p className="ai-warning">Parte del formato de la selección (colores, resaltado o enlaces) no se conservará.</p>
+      )}
     </AiPanel>
   )
 }
@@ -103,7 +116,11 @@ function PanelActions({ assistant }: { assistant: WritingAssistant }) {
   return (
     <>
       {job.action.placement === 'replace' ? [replace, insert] : [insert, replace]}
-      <button type="button" className="ai-button" onClick={() => void navigator.clipboard.writeText(result)}>
+      <button
+        type="button"
+        className="ai-button"
+        onClick={() => void navigator.clipboard.writeText(markedToPlain(result))}
+      >
         <Copy size={14} /> Copiar
       </button>
       <button type="button" className="ai-button" onClick={assistant.retry}>

@@ -1,6 +1,7 @@
 import type { AiGenerateRequest, AiGenerateResult, AiStatus } from '@shared/ai'
 import type { AiSettings } from './aiSettingsStore'
 import { RuntimeUnreachableError, type LocalModelRuntime } from './ollamaClient'
+import { isEmbeddingModel } from './rag/ragService'
 
 /**
  * Modelos recomendados, en orden de preferencia, si el usuario no ha elegido ninguno.
@@ -47,7 +48,10 @@ export class AiService {
     const endpoint = this.runtime.endpoint
     let models: string[]
     try {
-      models = await this.runtime.listModels(AbortSignal.timeout(STATUS_TIMEOUT_MS))
+      // Los modelos de embeddings (para buscar en documentos) no saben conversar: fuera de la lista.
+      models = (await this.runtime.listModels(AbortSignal.timeout(STATUS_TIMEOUT_MS))).filter(
+        (name) => !isEmbeddingModel(name)
+      )
     } catch {
       return { state: 'unreachable', endpoint }
     }
@@ -76,7 +80,7 @@ export class AiService {
       if (status.state === 'no-models') {
         throw new Error(`Ollama no tiene ningún modelo. Descarga uno con: ollama pull ${status.suggestedModel}`)
       }
-      const text = await this.runtime.chat(
+      const { text, toolCalls } = await this.runtime.chat(
         status.model,
         request,
         (chunk) => {
@@ -85,10 +89,10 @@ export class AiService {
         },
         controller.signal
       )
-      return { text, cancelled: false }
+      return { text, toolCalls, cancelled: false }
     } catch (error) {
       // Cancelar no es un error: devolvemos lo que llegó para que la interfaz decida.
-      if (controller.signal.aborted) return { text: partial, cancelled: true }
+      if (controller.signal.aborted) return { text: partial, toolCalls: [], cancelled: true }
       throw error
     } finally {
       this.running.delete(requestId)

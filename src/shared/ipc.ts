@@ -1,4 +1,4 @@
-import type { AiApi } from './ai'
+import type { AiApi, RagApi } from './ai'
 
 /**
  * Contrato entre el proceso principal (Node) y la interfaz (renderer).
@@ -105,6 +105,7 @@ export interface TinteroApi {
   }
   /** IA local (Ollama en este equipo). Contrato y canales en `shared/ai.ts`. */
   ai: AiApi
+  rag: RagApi
   onMenuCommand(handler: (command: MenuCommand) => void): () => void
   /** El usuario eligió "Guardar" al cerrar la ventana. */
   onSaveBeforeClose(handler: () => void): () => void

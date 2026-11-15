@@ -27,11 +27,12 @@ import { localizedFunctionName } from '../model/formula/functionNames'
 import type { CellStyle, HorizontalAlign, NumberFormatKind } from '../model/types'
 import type { BorderMode } from '../model/workbookReducer'
 
-export type SheetsTabId = 'home' | 'formulas'
+export type SheetsTabId = 'home' | 'formulas' | 'assistant'
 
 export const SHEETS_TABS: { id: SheetsTabId; label: string }[] = [
   { id: 'home', label: 'Inicio' },
-  { id: 'formulas', label: 'Fórmulas' }
+  { id: 'formulas', label: 'Fórmulas' },
+  { id: 'assistant', label: 'Asistente' }
 ]
 
 /** Lo que la cinta puede pedirle al editor. La cinta no sabe nada del libro ni de la selección. */

@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 /**
- * Un Ollama de mentira para los e2e: habla la misma API HTTP (`/api/tags` y `/api/chat` con
- * streaming NDJSON) pero responde con textos fijos. Así la prueba es rápida, determinista y
+ * Un Ollama de mentira para los e2e: habla la misma API HTTP (`/api/tags`, `/api/chat` con
+ * streaming NDJSON y `/api/embed`) pero responde con textos fijos. Así la prueba es rápida, determinista y
  * no necesita GPU ni descargar un modelo de varios GB en CI.
  *
  * Lo que comprueba el e2e es la tubería (interfaz → IPC → main → HTTP → streaming → interfaz),
@@ -22,12 +22,20 @@ export interface ChatRequestBody {
   messages: { role: string; content: string }[]
   format?: unknown
   stream?: boolean
+  tools?: { function: { name: string } }[]
+}
+
+export interface FakeToolCall {
+  name: string
+  arguments: Record<string, unknown>
 }
 
 export interface FakeOllamaOptions {
   models?: string[]
   /** Respuesta para cada petición: texto plano o, si la app pide salida estructurada, un objeto. */
   reply(request: ChatRequestBody): string | object
+  /** Si la app ofrece herramientas (`tools`), qué llamadas devuelve el "modelo". */
+  toolCalls?(request: ChatRequestBody): FakeToolCall[]
 }
 
 export async function startFakeOllama(options: FakeOllamaOptions): Promise<FakeOllama> {
@@ -43,6 +51,16 @@ export async function startFakeOllama(options: FakeOllamaOptions): Promise<FakeO
     if (req.method === 'POST' && req.url === '/api/chat') {
       const body = JSON.parse(await readBody(req)) as ChatRequestBody
       chatRequests.push(body)
+      if (body.tools?.length && options.toolCalls) {
+        // Como Ollama: cada llamada a herramienta llega completa, con los argumentos como objeto.
+        const calls = options.toolCalls(body).map((call) => ({ function: call }))
+        res.writeHead(200, { 'Content-Type': 'application/x-ndjson' })
+        res.write(
+          JSON.stringify({ message: { role: 'assistant', content: '', tool_calls: calls }, done: false }) + '\n'
+        )
+        res.end(JSON.stringify({ message: { role: 'assistant', content: '' }, done: true }) + '\n')
+        return
+      }
       const reply = options.reply(body)
       const text = typeof reply === 'string' ? reply : JSON.stringify(reply)
 
@@ -54,6 +72,12 @@ export async function startFakeOllama(options: FakeOllamaOptions): Promise<FakeO
         )
       }
       res.end(JSON.stringify({ model: body.model, message: { role: 'assistant', content: '' }, done: true }) + '\n')
+      return
+    }
+    if (req.method === 'POST' && req.url === '/api/embed') {
+      const body = JSON.parse(await readBody(req)) as { input: string[] }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ embeddings: body.input.map(hashedBagOfWords) }))
       return
     }
     res.writeHead(404).end()
@@ -83,4 +107,18 @@ function splitIntoChunks(text: string, size: number): string[] {
   const chunks: string[] = []
   for (let index = 0; index < text.length; index += size) chunks.push(text.slice(index, index + size))
   return chunks
+}
+
+/**
+ * Embeddings de juguete pero deterministas: cada palabra suma en una de 64 dimensiones. Textos que
+ * comparten palabras quedan cerca, que es todo lo que necesita la prueba de "preguntar".
+ */
+function hashedBagOfWords(text: string): number[] {
+  const vector = new Array<number>(64).fill(0)
+  for (const word of text.toLowerCase().match(/[\p{L}\d]{4,}/gu) ?? []) {
+    let hash = 0
+    for (const char of word) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+    vector[hash % 64] += 1
+  }
+  return vector
 }

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "informe-trimestral",
+    "why": "Resumen de un documento con cifras: no debe inventar ninguna.",
+    "input": "# Informe del tercer trimestre\n\nLas ventas crecieron un 12 % respecto al trimestre anterior, hasta 480.000 euros. El crecimiento vino sobre todo de la tienda en línea, que ya supone el 35 % de la facturación.\n\n## Problemas\n\nEl almacén de Valencia sufrió retrasos en septiembre por la falta de personal. Se contrataron cuatro personas y los envíos volvieron a la normalidad en octubre.\n\n## Próximos pasos\n\nPara el cuarto trimestre se abrirá una segunda línea de envío y se lanzará el programa de fidelización. El objetivo es cerrar el año por encima de 1,9 millones de euros.",
+    "mustContain": ["ventas"],
+    "language": "es"
+  },
+  {
+    "id": "acta-reunion",
+    "why": "Resumen de un texto sin cifras: tiene que recoger las decisiones.",
+    "input": "Acta de la reunión del equipo de producto.\n\nAsistieron Marta, Jorge y Elena. Se revisó el estado de la aplicación móvil: la versión para Android está terminada, pero la de iOS sigue con problemas en las notificaciones.\n\nSe decidió no publicar ninguna de las dos hasta resolver el fallo de iOS, para lanzar a la vez en ambas tiendas. Jorge se encarga de investigar el fallo y Elena preparará los textos de las tiendas.\n\nLa próxima reunión será el jueves para comprobar el avance.",
+    "mustContain": ["ios"],
+    "language": "es"
+  }
+]

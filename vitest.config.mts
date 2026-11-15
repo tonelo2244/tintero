@@ -8,5 +8,5 @@ export default defineConfig({
       '@': resolve(import.meta.dirname, 'src/renderer/src')
     }
   },
-  test: { include: ['src/**/*.test.ts'] }
+  test: { include: ['src/**/*.test.ts', 'evals/**/*.test.ts'] }
 })

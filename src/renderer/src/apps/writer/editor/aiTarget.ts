@@ -3,12 +3,21 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import type { ResultPlacement, WritingAction } from '../model/ai/writingActions'
 import { MAX_INPUT_CHARS, splitParagraphs } from '../model/ai/writingActions'
 import { documentToPlainText } from '../model/ai/plainText'
+import { MAX_LONG_DOCUMENT_CHARS } from '../model/ai/longDocument'
+import { blocksToMarked, commonUnmarkedMarks, hasPartialUnmarkedFormat, markedToInline } from '../model/ai/inlineMarks'
 
 /** El trozo de documento sobre el que trabaja el asistente, capturado al pulsar el botón. */
 export interface AiTarget {
   from: number
   to: number
+  /** Texto plano de la selección: sirve para comprobar que sigue ahí al aplicar. */
   text: string
+  /** Lo que se le manda al modelo: el texto con marcas de formato (**negrita**...) si la acción lo conserva. */
+  modelText: string
+  /** Formato sin marca de texto que comparte toda la selección (color, fuente): se reaplica al resultado. */
+  baseMarks: NonNullable<JSONContent['marks']>
+  /** Parte de la selección tenía formato que no viaja como texto (un color en una palabra): se perderá. */
+  formatLost: boolean
   /** Documento en ese momento (inmutable): sirve para saber si el usuario lo cambió mientras tanto. */
   doc: ProseMirrorNode
   wholeDocument: boolean
@@ -21,24 +30,41 @@ export function captureTarget(editor: Editor, action: WritingAction): CaptureRes
   const { from, to, empty } = state.selection
   let target: AiTarget
   if (!empty) {
+    const text = state.doc.textBetween(from, to, '\n\n', ' ').trim()
+    const slice = (state.doc.slice(from, to).content.toJSON() ?? []) as JSONContent[]
     target = {
       from,
       to,
-      text: state.doc.textBetween(from, to, '\n\n', ' ').trim(),
+      text,
+      modelText: action.preservesFormat ? blocksToMarked(slice) || text : text,
+      baseMarks: action.preservesFormat ? commonUnmarkedMarks(slice) : [],
+      formatLost: action.preservesFormat && hasPartialUnmarkedFormat(slice),
       doc: state.doc,
       wholeDocument: false
     }
   } else if (action.allowsWholeDocument) {
     const text = documentToPlainText(editor.getJSON())
-    target = { from: 0, to: state.doc.content.size, text, doc: state.doc, wholeDocument: true }
+    target = {
+      from: 0,
+      to: state.doc.content.size,
+      text,
+      modelText: text,
+      baseMarks: [],
+      formatLost: false,
+      doc: state.doc,
+      wholeDocument: true
+    }
   } else {
     return { ok: false, message: `Selecciona el texto que quieres ${verbFor(action)}.` }
   }
   if (!target.text) return { ok: false, message: 'No hay texto que procesar.' }
-  if (target.text.length > MAX_INPUT_CHARS) {
+  // Resumir trocea los textos largos (map-reduce); reescribir no, porque el resultado tendría que
+  // sustituir al original de una vez y un modelo local reescribe mal (y despacio) textos tan largos.
+  const limit = action.id === 'summarize' ? MAX_LONG_DOCUMENT_CHARS : MAX_INPUT_CHARS
+  if (target.text.length > limit) {
     return {
       ok: false,
-      message: `El texto es demasiado largo para el modelo local (${target.text.length.toLocaleString('es')} caracteres; máximo ${MAX_INPUT_CHARS.toLocaleString('es')}). Selecciona un fragmento.`
+      message: `El texto es demasiado largo para el modelo local (${target.text.length.toLocaleString('es')} caracteres; máximo ${limit.toLocaleString('es')}). Selecciona un fragmento.`
     }
   }
   return { ok: true, target }
@@ -65,15 +91,15 @@ export function applyResult(editor: Editor, target: AiTarget, result: string, pl
     if (!stillThere && !(target.wholeDocument && placement === 'insertBelow')) return false
   }
 
-  const paragraphNodes: JSONContent[] = paragraphs.map((text) => ({
-    type: 'paragraph',
-    content: [{ type: 'text', text }]
-  }))
+  // Las marcas del modelo (**negrita**...) vuelven a ser marks de Tiptap.
+  const inlines = paragraphs.map((text) => markedToInline(text, target.baseMarks)).filter((nodes) => nodes.length > 0)
+  if (inlines.length === 0) return false
+  const paragraphNodes: JSONContent[] = inlines.map((content) => ({ type: 'paragraph', content }))
 
   if (placement === 'replace') {
     // Dentro de un mismo párrafo, un resultado de un párrafo se inserta como texto: no parte la línea.
     const sameBlock = state.doc.resolve(target.from).sameParent(state.doc.resolve(target.to))
-    const content = sameBlock && paragraphs.length === 1 ? { type: 'text', text: paragraphs[0] } : paragraphNodes
+    const content = sameBlock && inlines.length === 1 ? inlines[0] : paragraphNodes
     return editor.chain().focus().insertContentAt({ from: target.from, to: target.to }, content).run()
   }
 

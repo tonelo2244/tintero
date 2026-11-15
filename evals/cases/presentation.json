@@ -1,0 +1,18 @@
+[
+  {
+    "id": "plan-lanzamiento",
+    "why": "Caso del e2e, ahora con un modelo de verdad: fechas y objetivos.",
+    "input": "Plan de lanzamiento de la app\n\nQueremos lanzar la aplicación en junio, con una beta privada en marzo para 200 personas. El objetivo es llegar a 1.000 usuarios activos en el primer mes y medir la retención semanal.\n\nRiesgos: el equipo es pequeño (tres personas) y la integración con pagos aún no está probada. Para reducirlos, la beta se centrará en los pagos.\n\nPresupuesto: 15.000 euros para marketing, sobre todo en redes sociales.",
+    "mustMention": ["beta", "junio"],
+    "minSlides": 2,
+    "maxSlides": 6
+  },
+  {
+    "id": "receta-larga",
+    "why": "Un texto con pasos debe convertirse en diapositivas ordenadas, sin cifras inventadas.",
+    "input": "Cómo hacer pan casero\n\nIngredientes: 500 gramos de harina de fuerza, 300 mililitros de agua templada, 10 gramos de sal y 7 gramos de levadura seca.\n\nPaso 1: mezcla la harina con la levadura y añade el agua poco a poco.\n\nPaso 2: amasa durante 10 minutos hasta que la masa sea elástica y añade la sal al final.\n\nPaso 3: deja reposar la masa una hora tapada, hasta que doble su tamaño.\n\nPaso 4: dale forma, haz unos cortes en la superficie y hornea a 220 grados durante 35 minutos.\n\nConsejo: pon un recipiente con agua en el horno para que la corteza quede crujiente.",
+    "mustMention": ["harina", "hornea"],
+    "minSlides": 2,
+    "maxSlides": 8
+  }
+]

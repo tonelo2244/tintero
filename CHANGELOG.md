@@ -8,6 +8,26 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Banco de evaluación de la IA** (`npm run eval`): casos por función, comprobaciones
+  deterministas y juez LLM con rúbrica, informe con aciertos, JSON válido a la primera,
+  reintentos y latencia p50/p95, y comparación con un informe anterior.
+- **Hojas**: fórmulas en lenguaje natural validadas por el motor de fórmulas, explicar una
+  fórmula y analizar una tabla (el código calcula, el modelo redacta).
+- **Texto**: preguntar a tus documentos con RAG local (embeddings de Ollama, citas de documento y
+  párrafo); resumir documentos largos por partes.
+- **Diapositivas y Hojas**: pedir cambios en lenguaje natural con herramientas (tool calling);
+  se revisan antes de aplicar y se deshacen en un paso.
+- Segundo runtime local: llama.cpp (`llama-server`), sobre todo para comparar en las evals.
+
+### Cambiado
+
+- El asistente de Texto conserva negrita, cursiva, subrayado, colores y demás formato al
+  reescribir.
+- Se quita el recorte de 12.000 caracteres al resumir o crear una presentación desde un
+  documento largo.
+
 ## [0.2.0] - 2026-11-15
 
 La primera versión pensada para que la use alguien más que su autor: tres apps, compatibilidad

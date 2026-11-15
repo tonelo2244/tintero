@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Briefcase, ListCollapse, Shrink, SpellCheck, WandSparkles, type LucideIcon } from 'lucide-react'
 import type { AiStatus } from '@shared/ai'
-import { RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
+import { AiModelGroup } from '@/ui/ai/AiModelGroup'
+import { RibbonGroup, RibbonRow, ToolButton } from '@/ui/Ribbon'
 import { WRITING_ACTIONS, type WritingActionId } from '../model/ai/writingActions'
 
 const ICONS: Record<WritingActionId, LucideIcon> = {
@@ -62,20 +63,7 @@ export function WriterAssistantTab({
         </RibbonGroup>
       ))}
       {extraGroups}
-      <RibbonGroup label="Modelo local">
-        {status?.state === 'ready' ? (
-          <SelectField
-            label="Modelo"
-            value={status.model}
-            width={170}
-            disabled={busy}
-            options={status.models.map((model) => ({ label: model, value: model }))}
-            onChange={onSelectModel}
-          />
-        ) : (
-          <span className="ribbon-note">{status ? 'Ollama no disponible' : 'Comprobando…'}</span>
-        )}
-      </RibbonGroup>
+      <AiModelGroup status={status} busy={busy} onSelectModel={onSelectModel} />
     </>
   )
 }

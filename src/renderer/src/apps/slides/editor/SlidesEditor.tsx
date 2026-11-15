@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import type { EditorProps } from '@/core/appModule'
+import { useAiStatus } from '@/core/ai/useAiStatus'
+import { useToolAgent } from '@/core/ai/useToolAgent'
 import { initHistory, withHistory } from '@/core/history'
 import { platform } from '@/core/platform'
 import { EditorLayout } from '@/ui/EditorLayout'
+import { ToolAgentPanel } from '@/ui/ai/ToolAgentPanel'
+import { buildSlideAgentRequest, interpretSlideCalls } from '../model/ai/slideTools'
 import { SLIDES_ACCENT } from '../constants'
 import { presentationReducer, type PresentationAction } from '../model/presentationReducer'
 import type { Presentation } from '../model/types'
@@ -12,6 +16,7 @@ import { SlideCanvas } from './SlideCanvas'
 import { SlidePanel } from './SlidePanel'
 import { Slideshow } from './Slideshow'
 import { SLIDES_TABS, SlidesRibbon, type SlidesTabId } from './SlidesRibbon'
+import { SlidesAssistantTab } from './SlidesAssistantTab'
 import { SlideView } from './SlideView'
 import { useSlideCommands } from './useSlideCommands'
 
@@ -55,6 +60,31 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
     (action: PresentationAction, coalesceKey?: string) => dispatch({ type: 'history/apply', action, coalesceKey }),
     []
   )
+
+  // ---------- Asistente: cambios con herramientas ----------
+  const ai = useAiStatus()
+  const presentationRef = useRef(presentation)
+  presentationRef.current = presentation
+  const agent = useToolAgent<Presentation, PresentationAction>({
+    getState: () => presentationRef.current,
+    buildRequest: buildSlideAgentRequest,
+    interpret: interpretSlideCalls,
+    applyActions: (actions) => {
+      setEditingElementId(null)
+      dispatch({ type: 'history/applyBatch', actions })
+    }
+  })
+  const [agentPanel, setAgentPanel] = useState<'closed' | 'setup' | 'open'>('closed')
+  const openAgent = async () => {
+    setEditingElementId(null)
+    const status = ai.status?.state === 'ready' ? ai.status : await ai.refresh()
+    setAgentPanel(status.state === 'ready' ? 'open' : 'setup')
+    if (status.state === 'ready') agent.open()
+  }
+  const closeAgent = () => {
+    agent.close()
+    setAgentPanel('closed')
+  }
 
   const selectSlide = useCallback((id: string) => {
     setSelectedSlideId(id)
@@ -171,15 +201,24 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         activeTab={tab}
         onTabChange={(id) => setTab(id as SlidesTabId)}
         ribbon={
-          <SlidesRibbon
-            tab={tab}
-            presentation={presentation}
-            currentSlide={currentSlide}
-            selectedElement={selectedElement}
-            textEditor={editingElementId ? textEditor : null}
-            commands={commands}
-            onStartSlideshow={startSlideshow}
-          />
+          tab === 'assistant' ? (
+            <SlidesAssistantTab
+              status={ai.status}
+              busy={agent.job?.phase === 'running'}
+              onAsk={() => void openAgent()}
+              onSelectModel={(model) => void ai.setModel(model)}
+            />
+          ) : (
+            <SlidesRibbon
+              tab={tab}
+              presentation={presentation}
+              currentSlide={currentSlide}
+              selectedElement={selectedElement}
+              textEditor={editingElementId ? textEditor : null}
+              commands={commands}
+              onStartSlideshow={startSlideshow}
+            />
+          )
         }
         statusBar={
           <>
@@ -192,6 +231,32 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
           </>
         }
       >
+        {agentPanel !== 'closed' && (
+          <ToolAgentPanel
+            appLabel="Diapositivas"
+            job={agent.job}
+            setupStatus={agentPanel === 'setup' ? ai.status : null}
+            model={ai.status?.state === 'ready' ? ai.status.model : null}
+            examples={[
+              'Pon en negrita los títulos y añade una diapositiva de conclusiones',
+              'Cambia al tema Bosque',
+              'Mueve la última diapositiva al principio'
+            ]}
+            onRequestChange={agent.setRequest}
+            onPropose={(request) => void agent.propose(request)}
+            onApply={agent.apply}
+            onCancel={agent.cancel}
+            onEdit={agent.open}
+            onRetrySetup={() =>
+              void ai.refresh().then((status) => {
+                if (status.state !== 'ready') return
+                setAgentPanel('open')
+                agent.open()
+              })
+            }
+            onClose={closeAgent}
+          />
+        )}
         <div className="slides-workspace">
           {thumbnails}
           <div className="slides-stage">

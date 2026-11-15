@@ -29,7 +29,10 @@ function fakeRuntime(models: string[] | 'down', reply = 'uno dos tres'): LocalMo
         text += word
         onToken(word)
       }
-      return text
+      return { text, toolCalls: [] }
+    },
+    async embed(_model: string, inputs: string[]) {
+      return inputs.map(() => [1, 0])
     }
   }
 }
@@ -68,7 +71,7 @@ describe('AiService', () => {
     expect(await service.setModel('mistral:7b')).toMatchObject({ state: 'ready', model: 'mistral:7b' })
     const tokens: string[] = []
     const result = await service.generate('r1', { messages: [] }, (chunk) => tokens.push(chunk))
-    expect(result).toEqual({ text: 'unodostres', cancelled: false })
+    expect(result).toEqual({ text: 'unodostres', toolCalls: [], cancelled: false })
     expect(tokens).toEqual(['uno', 'dos', 'tres'])
     expect(runtime.lastModel).toBe('mistral:7b')
   })
@@ -78,7 +81,7 @@ describe('AiService', () => {
     const pending = service.generate('r1', { messages: [] }, (chunk) => {
       if (chunk === 'uno') service.cancel('r1')
     })
-    expect(await pending).toEqual({ text: 'uno', cancelled: true })
+    expect(await pending).toEqual({ text: 'uno', toolCalls: [], cancelled: true })
   })
 
   it('falla con instrucciones si no hay modelos', async () => {

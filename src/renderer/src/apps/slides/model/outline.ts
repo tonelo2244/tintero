@@ -110,11 +110,13 @@ export function parseOutline(value: unknown): PresentationOutline {
 /** Esquema -> presentación, con los mismos diseños de diapositiva que el usuario elegiría a mano. */
 export function presentationFromOutline(outline: PresentationOutline, themeId = 'blank'): Presentation {
   const cover = fillSlide(createSlide('title'), outline.title, outline.subtitle)
-  const content = outline.slides.map((slide) => {
-    const filled = fillSlide(createSlide('titleContent'), slide.title, slide.bullets.join('\n'))
-    return { ...filled, notes: slide.notes }
-  })
+  const content = outline.slides.map((slide) => contentSlide(slide.title, slide.bullets, slide.notes))
   return { themeId, slides: [cover, ...content] }
+}
+
+/** Diapositiva de "título y contenido" ya rellena. La usan crear presentación y el agente de herramientas. */
+export function contentSlide(title: string, bullets: string[], notes = ''): Slide {
+  return { ...fillSlide(createSlide('titleContent'), title, bullets.join('\n')), notes }
 }
 
 /** Rellena el título y el segundo cuadro (subtítulo o cuerpo) del diseño. */

@@ -122,30 +122,39 @@ Atajos: `Cmd/Ctrl+N` nuevo, `Cmd/Ctrl+O` abrir, `Cmd/Ctrl+S` guardar, `Cmd/Ctrl+
 
 ## IA local (sin nube)
 
-Tintero Texto tiene una pestaña **Asistente**: _Corregir_, _Mejorar redacción_, _Más formal_, _Más breve_ y _Resumir_ (sobre la selección; _Resumir_ también sobre el documento entero), y **Crear presentación**, que convierte el documento en una presentación de Tintero Diapositivas con portada, puntos y notas del orador. El resultado aparece en un panel según se escribe y **solo se aplica cuando tú lo aceptas**. Además, el clic derecho ofrece las sugerencias del **corrector ortográfico**.
+Cada app tiene una pestaña **Asistente**. Todo se genera en tu equipo y **nada se aplica sin que lo revises**.
+
+- **Texto**: _Corregir_, _Mejorar redacción_, _Más formal_, _Más breve_ y _Resumir_, conservando negrita, cursiva y demás formato al reescribir. Los documentos largos se resumen por partes (_map-reduce_), sin recortarlos. **Crear presentación** convierte el documento en una presentación con portada, puntos y notas. **Preguntar a mis documentos** responde con lo que dicen tus documentos recientes y cita el documento y el párrafo de cada dato (RAG local). El clic derecho ofrece las sugerencias del **corrector ortográfico**.
+- **Hojas de cálculo**: **Fórmula con IA** («suma las ventas del norte») propone la fórmula en español, la valida con el motor de fórmulas y enseña el resultado antes de insertarla; **Explicar fórmula**; **Analizar datos**, donde el código calcula las estadísticas y el modelo solo las redacta.
+- **Diapositivas y Hojas**: **Pedir cambios** («pon en negrita los títulos y añade una diapositiva de conclusiones»). El modelo propone llamadas a herramientas que son las mismas acciones del editor; se ven en una lista en lenguaje llano y, si las aplicas, se deshacen todas con un solo Ctrl+Z.
 
 ### Puesta en marcha (una vez)
 
 1. Instala [Ollama](https://ollama.com/download) y ábrelo (en Mac queda en la barra de menús).
 2. Descarga un modelo en el Terminal: `ollama pull gemma4:e4b` (unos 3–4 GB).
 3. En Tintero: _Asistente_ → cualquier acción. Si Ollama no está abierto o no tiene modelos, el panel te dice exactamente qué falta.
+4. Para _Preguntar a mis documentos_, además un modelo de embeddings: `ollama pull embeddinggemma` (unos 600 MB).
 
 El selector _Modelo local_ de la pestaña lista los modelos que tengas y recuerda tu elección. Si no eliges ninguno, Tintero usa el primero instalado de esta lista: `gemma4:e4b`, `qwen3.5:9b`, `qwen3.5:4b`, `gemma3:4b`, `qwen3:8b`.
 
 ### Por qué así
 
 - **Local y no nube.** La promesa de Tintero es que tus documentos no salen del equipo; una API en la nube (Claude, GPT…) escribiría mejor y más rápido, pero rompería esa promesa y añadiría cuentas, claves y coste por uso. A cambio, en local la calidad depende del tamaño del modelo y de la memoria del equipo, y la primera petición tarda unos segundos en cargar el modelo. Para tareas acotadas (corregir, resumir, reestructurar) un modelo de 4–9B es suficiente. `assertLocalEndpoint` hace cumplir la promesa en código: el cliente solo acepta direcciones de este equipo.
-- **Ollama y no llama.cpp directamente.** Ollama gestiona descargas, cuantización y aceleración por GPU (Metal en Mac) y expone una API HTTP sencilla con streaming y **salida estructurada** (JSON Schema). llama.cpp es más ligero pero obliga a gestionar binarios y archivos de modelo a mano. El contrato `LocalModelRuntime` permite añadir llama.cpp (`llama-server`) más adelante sin tocar nada más.
+- **Ollama por defecto, llama.cpp para comparar.** Ollama gestiona descargas, cuantización y aceleración por GPU (Metal en Mac) y expone una API HTTP sencilla con streaming y **salida estructurada** (JSON Schema). llama.cpp (`llama-server`) es más ligero pero obliga a gestionar binarios y archivos de modelo a mano. Los dos implementan el contrato `LocalModelRuntime`; `TINTERO_AI_RUNTIME=llamacpp` cambia el de la app y `npm run eval -- --runtime llamacpp` permite compararlos con números.
 - **Gemma 4 E4B por defecto.** Buen español, sigue bien instrucciones y JSON, y cabe holgado en un portátil con 16 GB. Con más memoria, `qwen3.5:9b` escribe mejor a cambio de algo más de lentitud.
 - **La IA se llama desde main, no desde la interfaz.** El renderer no tiene red (CSP `default-src 'self'`) ni debería tenerla; main centraliza el endpoint, la cancelación y la regla de "solo local". Pero main **no sabe de documentos**: recibe mensajes y devuelve texto. Los prompts y la validación viven en cada app (`writer/model/ai`, `slides/model/outline.ts`), igual que la conversión a .docx vive en Texto y main solo escribe bytes.
 - **Salida estructurada + validación + reintento.** Para crear la presentación el modelo devuelve JSON con un esquema (título, diapositivas, puntos, notas) y no diapositivas: posiciones y estilos los pone el código con las mismas fábricas que el editor, así un error del modelo nunca produce un archivo roto. `parseOutline` valida; si falla, `generateStructured` reintenta enseñándole al modelo su respuesta y el error concreto.
+- **Medido, no a ojo.** `npm run eval` ejecuta un banco de casos contra un modelo real y da aciertos, JSON válido a la primera, reintentos y latencia p50/p95: comprobaciones deterministas donde se puede (la fórmula da el número esperado, el estado final de la presentación es el pedido) y un juez LLM con rúbrica solo donde no. Ver [evals/README.md](evals/README.md).
+- **El modelo propone, el código decide.** Una fórmula pasa por el parser y se calcula antes de insertarla; una llamada a herramienta pasa por el reducer, y si no cambia nada o no es válida se descarta y se le pide al modelo que lo corrija; las cifras de un análisis las calcula el código y se avisa si el texto menciona alguna que no sale de los datos.
+- **RAG sencillo a propósito.** Embeddings con Ollama (`/api/embed`) y búsqueda por similitud coseno en memoria sobre un índice en `userData`: con cientos de documentos es instantáneo y no añade dependencias nativas (SQLite + `sqlite-vec` es el siguiente paso si crece). El servicio de main es genérico; qué se indexa y cómo se trocea lo decide Texto. Solo se recalcula lo que cambió (huella del contenido), y las citas se comprueban: un `[7]` cuando hay 5 fragmentos se quita.
 - **El texto del usuario va como datos.** Los prompts lo delimitan (`<texto>…</texto>`) y piden no seguir instrucciones de dentro. No es infalible (inyección de prompt), por eso nada se aplica sin tu revisión.
 - **Corrector ortográfico:** en macOS es el del sistema (local, con tu diccionario). En Windows y Linux Chromium descarga una vez el diccionario de español e inglés; después funciona sin conexión y nunca envía tu texto.
 
 ```
 renderer (Texto)                     preload                  main
-writingActions / outline  ──►  platform.ai.generate  ──IPC──►  AiService ──► OllamaClient ──HTTP──► Ollama (127.0.0.1:11434)
-  prompts + validación          ◄── trozos (ai:token) ◄──────   cancelar, elegir modelo        streaming NDJSON
+writingActions / outline  ──►  platform.ai.generate  ──IPC──►  AiService ──► LocalModelRuntime ──HTTP──► Ollama (127.0.0.1:11434)
+  prompts + validación          ◄── trozos (ai:token) ◄──────   cancelar, elegir modelo   (Ollama o llama.cpp)
+documentChunks / askDocuments ─►  platform.rag.search ──IPC──►  RagService ──► /api/embed + índice en userData
 ```
 
 ## Stack y por qué

@@ -1,11 +1,11 @@
-import type { AiGenerateRequest } from '@shared/ai'
+import type { AiGenerateRequest, AiToolCall } from '@shared/ai'
 import { assertLocalEndpoint } from './localEndpoint'
 import { NdjsonDecoder } from './ndjson'
 
 /**
- * Lo que el servicio de IA necesita de un runtime de modelos locales. Hoy solo hay uno (Ollama),
- * pero tener el contrato separado permite probar el servicio con un runtime falso y, si algún día
- * se usa llama.cpp (llama-server), escribir solo otra implementación de esta interfaz.
+ * Lo que el servicio de IA necesita de un runtime de modelos locales. Hay dos implementaciones:
+ * Ollama (la de la app) y llama.cpp (llamaCppClient.ts, sobre todo para comparar en las evals).
+ * El contrato separado también permite probar el servicio con un runtime falso.
  */
 export interface LocalModelRuntime {
   readonly endpoint: string
@@ -17,13 +17,20 @@ export interface LocalModelRuntime {
     request: AiGenerateRequest,
     onToken: (chunk: string) => void,
     signal: AbortSignal
-  ): Promise<string>
+  ): Promise<ChatResult>
+  /** Vectores (embeddings) de cada texto, para la búsqueda semántica (RAG). */
+  embed(model: string, inputs: string[], signal?: AbortSignal): Promise<number[][]>
+}
+
+export interface ChatResult {
+  text: string
+  toolCalls: AiToolCall[]
 }
 
 /** El runtime no está arrancado (o no está instalado). La interfaz lo explica con instrucciones. */
 export class RuntimeUnreachableError extends Error {
-  constructor(endpoint: string, cause?: unknown) {
-    super(`No se pudo conectar con Ollama en ${endpoint}. ¿Está instalado y abierto?`, { cause })
+  constructor(endpoint: string, cause?: unknown, runtimeName = 'Ollama') {
+    super(`No se pudo conectar con ${runtimeName} en ${endpoint}. ¿Está instalado y abierto?`, { cause })
     this.name = 'RuntimeUnreachableError'
   }
 }
@@ -31,7 +38,7 @@ export class RuntimeUnreachableError extends Error {
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
 interface OllamaChunk {
-  message?: { content?: string }
+  message?: { content?: string; tool_calls?: { function?: { name?: unknown; arguments?: unknown } }[] }
   done?: boolean
   error?: string
 }
@@ -58,7 +65,7 @@ export class OllamaClient implements LocalModelRuntime {
     request: AiGenerateRequest,
     onToken: (chunk: string) => void,
     signal: AbortSignal
-  ): Promise<string> {
+  ): Promise<ChatResult> {
     const response = await this.request('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,6 +77,7 @@ export class OllamaClient implements LocalModelRuntime {
     const decoder = new NdjsonDecoder()
     const textDecoder = new TextDecoder()
     let text = ''
+    const toolCalls: AiToolCall[] = []
     const handle = (chunks: unknown[]) => {
       for (const chunk of chunks as OllamaChunk[]) {
         if (chunk.error) throw new Error(chunk.error)
@@ -77,6 +85,11 @@ export class OllamaClient implements LocalModelRuntime {
         if (piece) {
           text += piece
           onToken(piece)
+        }
+        // Con streaming, Ollama manda cada llamada a herramienta completa en un trozo.
+        for (const call of chunk.message?.tool_calls ?? []) {
+          const parsed = toToolCall(call.function)
+          if (parsed) toolCalls.push(parsed)
         }
       }
     }
@@ -89,7 +102,21 @@ export class OllamaClient implements LocalModelRuntime {
       handle(decoder.push(textDecoder.decode(value, { stream: true })))
     }
     handle(decoder.flush())
-    return text
+    return { text, toolCalls }
+  }
+
+  async embed(model: string, inputs: string[], signal?: AbortSignal): Promise<number[][]> {
+    const response = await this.request('/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, input: inputs, keep_alive: '10m' }),
+      signal
+    })
+    const body = (await response.json()) as { embeddings?: unknown }
+    if (!Array.isArray(body.embeddings) || body.embeddings.length !== inputs.length) {
+      throw new Error('Ollama no devolvió un vector por texto.')
+    }
+    return body.embeddings as number[][]
   }
 
   /** fetch con los errores traducidos: "no responde" se distingue de "respondió con un error". */
@@ -115,10 +142,35 @@ export function buildChatBody(model: string, request: AiGenerateRequest): Record
     // `format` con un JSON Schema activa la "salida estructurada": Ollama restringe la gramática
     // de la generación para que el resultado sea JSON con esa forma.
     ...(request.jsonSchema ? { format: request.jsonSchema } : {}),
+    // Herramientas en el formato de Ollama (el mismo que el de OpenAI): { type, function }.
+    ...(request.tools?.length
+      ? {
+          tools: request.tools.map((tool) => ({
+            type: 'function',
+            function: { name: tool.name, description: tool.description, parameters: tool.parameters }
+          }))
+        }
+      : {}),
     options: { temperature: request.temperature ?? 0.4 },
     // Mantiene el modelo cargado en memoria unos minutos: la segunda petición no espera a cargarlo.
     keep_alive: '10m'
   }
+}
+
+/** Los argumentos llegan como objeto (Ollama) o como texto JSON (otros runtimes): se aceptan ambos. */
+export function toToolCall(fn: { name?: unknown; arguments?: unknown } | undefined): AiToolCall | null {
+  if (!fn || typeof fn.name !== 'string') return null
+  let args = fn.arguments
+  if (typeof args === 'string') {
+    try {
+      args = JSON.parse(args)
+    } catch {
+      args = {}
+    }
+  }
+  const record =
+    typeof args === 'object' && args !== null && !Array.isArray(args) ? (args as Record<string, unknown>) : {}
+  return { name: fn.name, arguments: record }
 }
 
 async function errorFromResponse(response: Response): Promise<string> {

@@ -11,7 +11,7 @@ function scriptedAi(replies: string[]) {
     generate: (request) => {
       requests.push(structuredClone(request))
       const text = replies.shift() ?? ''
-      return { result: Promise.resolve({ text, cancelled: false }), cancel: () => {} }
+      return { result: Promise.resolve({ text, toolCalls: [], cancelled: false }), cancel: () => {} }
     }
   }
   return { ai, requests }

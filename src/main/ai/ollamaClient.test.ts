@@ -76,9 +76,52 @@ describe('OllamaClient', () => {
       streamingResponse([stream.slice(0, 7), stream.slice(7, 50), stream.slice(50)])
     )
     const tokens: string[] = []
-    const text = await client.chat('m', { messages: [] }, (chunk) => tokens.push(chunk), new AbortController().signal)
+    const { text } = await client.chat(
+      'm',
+      { messages: [] },
+      (chunk) => tokens.push(chunk),
+      new AbortController().signal
+    )
     expect(tokens).toEqual(['Había ', 'una ', 'vez'])
     expect(text).toBe('Había una vez')
+  })
+
+  it('recoge las llamadas a herramientas, con argumentos como objeto o como texto JSON', async () => {
+    const toolLine = JSON.stringify({
+      message: {
+        content: '',
+        tool_calls: [
+          { function: { name: 'add_slide', arguments: { title: 'Fin' } } },
+          { function: { name: 'delete_slide', arguments: '{"slide": 2}' } }
+        ]
+      },
+      done: false
+    })
+    const client = new OllamaClient('http://127.0.0.1:11434', async () =>
+      streamingResponse([toolLine + '\n', JSON.stringify({ done: true })])
+    )
+    const result = await client.chat('m', { messages: [] }, () => {}, new AbortController().signal)
+    expect(result.toolCalls).toEqual([
+      { name: 'add_slide', arguments: { title: 'Fin' } },
+      { name: 'delete_slide', arguments: { slide: 2 } }
+    ])
+  })
+
+  it('pide los embeddings de varios textos de una vez', async () => {
+    const client = new OllamaClient('http://127.0.0.1:11434', async (url, init) => {
+      expect(url).toBe('http://127.0.0.1:11434/api/embed')
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: 'embeddinggemma', input: ['a', 'b'] })
+      return Response.json({
+        embeddings: [
+          [1, 0],
+          [0, 1]
+        ]
+      })
+    })
+    expect(await client.embed('embeddinggemma', ['a', 'b'])).toEqual([
+      [1, 0],
+      [0, 1]
+    ])
   })
 
   it('propaga un error que llega a mitad del stream', async () => {
@@ -92,6 +135,17 @@ describe('OllamaClient', () => {
 })
 
 describe('buildChatBody', () => {
+  it('pasa las herramientas en el formato de Ollama', () => {
+    const tool = { name: 'set_theme', description: 'Cambia el tema', parameters: { type: 'object' } }
+    expect(buildChatBody('m', { messages: [], tools: [tool] }).tools).toEqual([
+      {
+        type: 'function',
+        function: { name: 'set_theme', description: 'Cambia el tema', parameters: { type: 'object' } }
+      }
+    ])
+    expect(buildChatBody('m', { messages: [] })).not.toHaveProperty('tools')
+  })
+
   it('activa la salida estructurada solo si hay esquema', () => {
     const schema = { type: 'object' }
     expect(buildChatBody('m', { messages: [] })).not.toHaveProperty('format')
