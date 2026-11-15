@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { EditorProps } from '@/core/appModule'
 import { platform } from '@/core/platform'
@@ -6,20 +6,25 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { WRITER_ACCENT } from '../constants'
 import type { WriterContent } from '../model/content'
 import { createWriterExtensions } from './extensions'
+import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
+import { WriterTableTab } from './WriterTableTab'
 import { WriterStatusBar } from './WriterStatusBar'
 
 const TABS = [
   { id: 'home', label: 'Inicio' },
   { id: 'insert', label: 'Insertar' }
 ]
+/** Pestaña contextual: solo existe mientras el cursor está dentro de una tabla. */
+const TABLE_TAB = { id: 'table', label: 'Tabla' }
 
 export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
   const [activeTab, setActiveTab] = useState('home')
   const [zoom, setZoom] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
+  const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
   const pageRef = useRef<HTMLDivElement>(null)
 
   const extensions = useMemo(createWriterExtensions, [])
@@ -36,6 +41,42 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const toolbar = useWriterToolbarState(editor)
   const pages = usePageMetrics(editor, pageRef, zoom)
 
+  const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
+
+  // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja).
+  useEffect(
+    () =>
+      platform.onMenuCommand((command) => {
+        if (command === 'find' || command === 'replace') openFind(command)
+      }),
+    []
+  )
+
+  const inTable = toolbar?.table.active ?? false
+  const tabs = inTable ? [...TABS, TABLE_TAB] : TABS
+  // Si el cursor sale de la tabla con su pestaña abierta, se vuelve a Inicio (la pestaña desaparece).
+  const visibleTab = activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab
+
+  const renderRibbon = () => {
+    if (!editor || !toolbar) return null
+    switch (visibleTab) {
+      case 'insert':
+        return <WriterInsertTab editor={editor} />
+      case TABLE_TAB.id:
+        return <WriterTableTab editor={editor} state={toolbar} />
+      default:
+        return (
+          <WriterHomeTab
+            editor={editor}
+            state={toolbar}
+            showMarks={showMarks}
+            onToggleMarks={() => setShowMarks((value) => !value)}
+            onFind={openFind}
+          />
+        )
+    }
+  }
+
   return (
     <EditorLayout
       accentColor={WRITER_ACCENT}
@@ -49,23 +90,10 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       canRedo={toolbar?.canRedo ?? false}
       onPrint={() => void platform.window.print()}
       exportOptions={session.exportOptions}
-      tabs={TABS}
-      activeTab={activeTab}
+      tabs={tabs}
+      activeTab={visibleTab}
       onTabChange={setActiveTab}
-      ribbon={
-        editor && toolbar ? (
-          activeTab === 'home' ? (
-            <WriterHomeTab
-              editor={editor}
-              state={toolbar}
-              showMarks={showMarks}
-              onToggleMarks={() => setShowMarks((value) => !value)}
-            />
-          ) : (
-            <WriterInsertTab editor={editor} />
-          )
-        ) : null
-      }
+      ribbon={renderRibbon()}
       statusBar={
         <WriterStatusBar
           currentPage={pages.current}
@@ -76,6 +104,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         />
       }
     >
+      {editor && find && (
+        <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
+      )}
       <div
         className="writer-canvas"
         onMouseDown={(event) => {

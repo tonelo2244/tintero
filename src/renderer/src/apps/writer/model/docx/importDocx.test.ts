@@ -74,9 +74,32 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
   })
 
   it('redacta los avisos en plural cuando toca', () => {
-    expect(describeLosses({ alignedParagraphs: 0, formattedRuns: 0, tables: 2, unsupportedImages: 1 })).toEqual([
-      '2 tablas (su texto se conserva como párrafos)',
-      '1 imagen en formatos que no se pueden mostrar'
+    expect(describeLosses({ alignedParagraphs: 3, formattedRuns: 0, unsupportedImages: 2 })).toEqual([
+      'la alineación de 3 párrafos',
+      '2 imágenes en formatos que no se pueden mostrar'
     ])
+  })
+
+  it('reconstruye tablas con fila de encabezado y celdas combinadas', async () => {
+    const cell = (type: string, label: string, attrs: Record<string, unknown> = {}): JSONContent => ({
+      type,
+      attrs,
+      content: [paragraph([text(label)])]
+    })
+    const { content, warnings } = await roundTrip([
+      {
+        type: 'table',
+        content: [
+          { type: 'tableRow', content: [cell('tableHeader', 'Producto'), cell('tableHeader', 'Precio')] },
+          { type: 'tableRow', content: [cell('tableCell', 'Total', { colspan: 2 })] }
+        ]
+      }
+    ])
+    const [table] = blocks(content.doc)
+    expect(table.type).toBe('table')
+    const [header, total] = table.content ?? []
+    expect(header.content?.map((item) => item.type)).toEqual(['tableHeader', 'tableHeader'])
+    expect(total.content?.[0]).toMatchObject({ type: 'tableCell', attrs: { colspan: 2 } })
+    expect(warnings).toEqual([])
   })
 })

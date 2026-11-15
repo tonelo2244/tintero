@@ -6,8 +6,10 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
+import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { ParagraphFormat } from './ParagraphFormat'
+import { SearchAndReplace } from './SearchAndReplace'
 
 /**
  * Lista única de extensiones. La usan el editor y las plantillas (para convertir
@@ -29,8 +31,11 @@ export function createWriterExtensions(): Extensions {
     Superscript,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Image.configure({ allowBase64: true }),
+    // Tablas con columnas redimensionables arrastrando el borde, como en un procesador de texto.
+    TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
     CharacterCount,
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
-    ParagraphFormat
+    ParagraphFormat,
+    SearchAndReplace
   ]
 }

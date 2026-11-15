@@ -5,7 +5,13 @@
  */
 
 export const FILE_FORMAT_ID = 'tintero'
-export const FILE_FORMAT_VERSION = 1
+/**
+ * Historial de versiones del sobre:
+ *   1. Primera versión.
+ *   2. Diapositivas: los cuadros de texto guardan párrafos con formato por palabra en vez de
+ *      texto plano. Cada app migra su contenido en `parseContent` (ver apps/slides/model/content.ts).
+ */
+export const FILE_FORMAT_VERSION = 2
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

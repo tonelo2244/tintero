@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import type { Editor } from '@tiptap/react'
 import type { EditorProps } from '@/core/appModule'
 import { initHistory, withHistory } from '@/core/history'
 import { platform } from '@/core/platform'
@@ -29,6 +30,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
   const [selectedSlideId, setSelectedSlideId] = useState(initialContent.slides[0].id)
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [editingElementId, setEditingElementId] = useState<string | null>(null)
+  const [textEditor, setTextEditor] = useState<Editor | null>(null)
   const [slideshowStart, setSlideshowStart] = useState<number | null>(null)
   const lastSlideIndex = useRef(0)
 
@@ -152,8 +154,15 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         isDirty={session.isDirty}
         onHome={session.goHome}
         onSave={session.save}
-        onUndo={() => dispatch({ type: 'history/undo' })}
-        onRedo={() => dispatch({ type: 'history/redo' })}
+        onUndo={() => {
+          // Deshacer la presentación cambia el texto por debajo del editor: primero se sale de él.
+          setEditingElementId(null)
+          dispatch({ type: 'history/undo' })
+        }}
+        onRedo={() => {
+          setEditingElementId(null)
+          dispatch({ type: 'history/redo' })
+        }}
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         onPrint={() => void platform.window.print()}
@@ -167,6 +176,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
             presentation={presentation}
             currentSlide={currentSlide}
             selectedElement={selectedElement}
+            textEditor={editingElementId ? textEditor : null}
             commands={commands}
             onStartSlideshow={startSlideshow}
           />
@@ -195,9 +205,13 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
                 if (id !== editingElementId) setEditingElementId(null)
               }}
               onEditElement={setEditingElementId}
+              onTextEditorChange={setTextEditor}
               apply={apply}
             />
-            <NotesPane notes={currentSlide.notes} onChange={commands.setNotes} />
+            {/* Escribir en las notas termina la edición del cuadro de texto. */}
+            <div className="slides-notes-slot" onFocusCapture={() => setEditingElementId(null)}>
+              <NotesPane notes={currentSlide.notes} onChange={commands.setNotes} />
+            </div>
           </div>
         </div>
 

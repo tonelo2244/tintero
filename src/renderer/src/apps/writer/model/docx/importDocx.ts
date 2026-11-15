@@ -8,6 +8,8 @@ import type { WriterContent } from '../content'
  *   1. mammoth convierte el .docx en HTML semántico (títulos, listas, negrita, enlaces, imágenes...).
  *   2. Tiptap convierte ese HTML en su JSON con las mismas extensiones que usa el editor.
  *
+ * Las tablas llegan como <table> (con colspan/rowspan) y las reconoce la extensión de tablas del editor.
+ *
  * mammoth ignora a propósito el formato "directo" (fuente, tamaño, color, alineación) y se queda
  * con la estructura. Es una pérdida real; en vez de esconderla, la medimos y avisamos al usuario.
  */
@@ -38,12 +40,11 @@ const BROWSER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/bmp'
 interface LostFormatting {
   alignedParagraphs: number
   formattedRuns: number
-  tables: number
   unsupportedImages: number
 }
 
 export async function importDocx(bytes: Uint8Array, extensions: Extensions): Promise<ImportResult<WriterContent>> {
-  const lost: LostFormatting = { alignedParagraphs: 0, formattedRuns: 0, tables: 0, unsupportedImages: 0 }
+  const lost: LostFormatting = { alignedParagraphs: 0, formattedRuns: 0, unsupportedImages: 0 }
   const arrayBuffer = bytes.slice().buffer
 
   // mammoth lee `arrayBuffer` en el navegador y `buffer` en Node (tests). Le damos ambos.
@@ -101,7 +102,6 @@ function countLostFormatting(element: DocxElement, lost: LostFormatting): void {
     lost.alignedParagraphs++
   }
   if (element.type === 'run' && (element.font || element.fontSize || element.highlight)) lost.formattedRuns++
-  if (element.type === 'table') lost.tables++
   element.children?.forEach((child) => countLostFormatting(child, lost))
 }
 
@@ -113,7 +113,6 @@ export function describeLosses(lost: LostFormatting): string[] {
   const warnings: string[] = []
   if (lost.formattedRuns > 0) warnings.push('fuentes, tamaños, colores y resaltados aplicados a mano')
   if (lost.alignedParagraphs > 0) warnings.push(`la alineación de ${plural(lost.alignedParagraphs, 'párrafo')}`)
-  if (lost.tables > 0) warnings.push(`${plural(lost.tables, 'tabla')} (su texto se conserva como párrafos)`)
   if (lost.unsupportedImages > 0) {
     warnings.push(`${plural(lost.unsupportedImages, 'imagen', 'imágenes')} en formatos que no se pueden mostrar`)
   }

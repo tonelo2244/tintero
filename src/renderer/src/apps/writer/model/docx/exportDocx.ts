@@ -9,7 +9,12 @@ import {
   Packer,
   Paragraph,
   ShadingType,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
+  VerticalAlign,
+  WidthType,
   type IParagraphOptions,
   type IRunOptions,
   type ParagraphChild
@@ -27,12 +32,20 @@ import {
   numberedListReference,
   TWIPS_PER_CM
 } from './docxStyles'
+import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
 /** A4 con márgenes de 2,5 cm, igual que la hoja del editor. */
 const PAGE = { width: 11906, height: 16838, margin: Math.round(2.5 * TWIPS_PER_CM) }
 /** Ancho útil de la página en píxeles (16 cm a 96 ppp): las imágenes más anchas se reducen. */
 const MAX_IMAGE_WIDTH_PX = 605
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
+const CONTENT_WIDTH_TWIPS = PAGE.width - 2 * PAGE.margin
+/** Mismo gris que las celdas de encabezado en el editor. */
+const HEADER_CELL_FILL = 'F2F2F2'
+const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'BFBFBF' }
+
+/** Un bloque de Word: párrafo o tabla. */
+type DocxBlock = Paragraph | Table
 
 const HEADING_BY_LEVEL = {
   1: HeadingLevel.HEADING_1,
@@ -100,11 +113,11 @@ class DocxConverter {
   private nextListInstance = 1
   readonly numberedListStarts = new Set<number>()
 
-  blocks(nodes: JSONContent[], list?: ListContext): Paragraph[] {
+  blocks(nodes: JSONContent[], list?: ListContext): DocxBlock[] {
     return nodes.flatMap((node) => this.block(node, list))
   }
 
-  private block(node: JSONContent, list?: ListContext): Paragraph[] {
+  private block(node: JSONContent, list?: ListContext): DocxBlock[] {
     switch (node.type) {
       case 'paragraph':
         return [this.paragraph(node, list)]
@@ -138,13 +151,64 @@ class DocxConverter {
         ]
       case 'image':
         return [new Paragraph({ children: this.inline(node, []) })]
+      case 'table':
+        return [this.table(node, CONTENT_WIDTH_TWIPS)]
       default:
         // Nodo desconocido (extensión futura): mejor conservar su texto que perderlo.
         return node.content ? this.blocks(node.content, list) : []
     }
   }
 
-  private list(node: JSONContent, reference: string, parent?: ListContext): Paragraph[] {
+  /**
+   * Tabla de Tiptap -> tabla de Word. Tiptap y Word representan igual las celdas combinadas
+   * (colspan/rowspan en la celda de origen y las demás omitidas), así que la traducción es directa.
+   */
+  private table(node: JSONContent, availableTwips: number): Table {
+    const columnWidths = columnWidthsTwips(readColumnWidths(node), availableTwips)
+    const rows = (node.content ?? []).map((row) => {
+      const cells = row.content ?? []
+      // Una fila hecha solo de encabezados se repite arriba de cada página, como en Word.
+      const isHeaderRow = cells.length > 0 && cells.every((cell) => cell.type === 'tableHeader')
+      let column = 0
+      return new TableRow({
+        // Solo se escribe cuando es cierto: algunos lectores (mammoth) tratan `w:tblHeader w:val="off"` como encabezado.
+        tableHeader: isHeaderRow || undefined,
+        children: cells.map((cell) => {
+          const columnSpan = Math.max(1, Number(cell.attrs?.colspan) || 1)
+          const width = columnWidths.slice(column, column + columnSpan).reduce((sum, value) => sum + value, 0)
+          column += columnSpan
+          const content = this.blocks(cell.content ?? [])
+          return new TableCell({
+            // Word exige que una celda termine en párrafo.
+            children: content.at(-1) instanceof Paragraph ? content : [...content, new Paragraph({})],
+            columnSpan,
+            rowSpan: Math.max(1, Number(cell.attrs?.rowspan) || 1),
+            width: { size: width, type: WidthType.DXA },
+            verticalAlign: VerticalAlign.TOP,
+            shading:
+              cell.type === 'tableHeader'
+                ? { type: ShadingType.CLEAR, fill: HEADER_CELL_FILL, color: 'auto' }
+                : undefined
+          })
+        })
+      })
+    })
+    return new Table({
+      rows,
+      columnWidths,
+      width: { size: columnWidths.reduce((sum, value) => sum + value, 0), type: WidthType.DXA },
+      borders: {
+        top: TABLE_BORDER,
+        bottom: TABLE_BORDER,
+        left: TABLE_BORDER,
+        right: TABLE_BORDER,
+        insideHorizontal: TABLE_BORDER,
+        insideVertical: TABLE_BORDER
+      }
+    })
+  }
+
+  private list(node: JSONContent, reference: string, parent?: ListContext): DocxBlock[] {
     // Una lista anidada del mismo tipo es el siguiente nivel de la misma lista; si cambia de tipo, empieza otra.
     const sameList = parent && parent.reference === reference
     const context: ListContext = {

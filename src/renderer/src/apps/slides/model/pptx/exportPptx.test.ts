@@ -81,3 +81,24 @@ describe('exportPptx', () => {
     expect(xml.match(/<a:buChar/g)).toHaveLength(3)
   })
 })
+
+describe('exportPptx: formato por palabra', () => {
+  it('cada trozo es un a:r con su propio formato', async () => {
+    const slide = createSlide('blank')
+    slide.elements = [
+      createTextElement(
+        'free',
+        { x: 0, y: 0, width: 600, height: 200 },
+        { paragraphs: [{ runs: [{ text: 'normal ' }, { text: 'roja', bold: true, color: '#c00000' }] }] }
+      )
+    ]
+    const xml = await read(await unzip({ themeId: 'blank', slides: [slide] }), 'ppt/slides/slide1.xml')
+    expect(xml.match(/<a:r>/g)).toHaveLength(2)
+    // Un solo <a:pPr> por párrafo (pptxgenjs pone uno por trozo; lo corregimos).
+    expect(xml.match(/<a:pPr/g)).toHaveLength(1)
+    expect(xml).toMatch(/<a:rPr lang="en-US" sz="\d+" dirty="0">.*?<a:t>normal <\/a:t>/)
+    expect(xml).toMatch(
+      /<a:rPr[^>]*b="1"[^>]*><a:solidFill><a:srgbClr val="C00000"\/><\/a:solidFill>.*?<a:t>roja<\/a:t>/
+    )
+  })
+})

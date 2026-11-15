@@ -45,7 +45,17 @@ export interface UnsavedDocument {
 }
 
 /** Acciones lanzadas desde el menú nativo hacia la interfaz. */
-export type MenuCommand = 'new' | 'open' | 'save' | 'save-as' | 'home' | 'print' | 'export-pdf'
+export type MenuCommand =
+  | 'new'
+  | 'open'
+  | 'save'
+  | 'save-as'
+  | 'home'
+  | 'print'
+  | 'export-pdf'
+  // Comandos de edición: los atiende el editor activo, si los entiende.
+  | 'find'
+  | 'replace'
 
 export interface TinteroApi {
   files: {

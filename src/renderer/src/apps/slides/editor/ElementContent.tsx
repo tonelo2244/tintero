@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
+import { hasText, resolveRunFormat } from '../model/richText'
 import type { SlideTheme } from '../model/themes'
-import type { ShapeElement, ShapeKind, SlideElement, TextElement } from '../model/types'
+import type { ShapeElement, ShapeKind, SlideElement, TextElement, TextRun, TextStyle } from '../model/types'
 
 const VERTICAL_JUSTIFY = { top: 'flex-start', middle: 'center', bottom: 'flex-end' } as const
 
@@ -19,6 +20,29 @@ export function textCss(element: TextElement, theme: SlideTheme): CSSProperties 
     textAlign: style.align,
     justifyContent: VERTICAL_JUSTIFY[style.verticalAlign]
   }
+}
+
+/**
+ * Estilo de un trozo de texto. Negrita, cursiva y subrayado se ponen siempre en el trozo (no en el
+ * cuadro): en CSS un subrayado del contenedor no se puede "quitar" en un hijo.
+ * Fuente, tamaño y color solo si el trozo tiene los suyos; si no, se heredan del cuadro.
+ */
+export function runCss(style: TextStyle, run: TextRun): CSSProperties {
+  const resolved = resolveRunFormat(style, run)
+  return {
+    fontWeight: resolved.bold ? 700 : 400,
+    fontStyle: resolved.italic ? 'italic' : 'normal',
+    textDecoration:
+      [resolved.underline && 'underline', resolved.strike && 'line-through'].filter(Boolean).join(' ') || 'none',
+    color: run.color,
+    fontFamily: run.fontFamily,
+    fontSize: run.fontSize
+  }
+}
+
+/** Clases del contenedor de texto: con viñetas, cada párrafo es un elemento de lista. */
+export function textClassName(element: TextElement, ...extra: string[]): string {
+  return ['slide-text', element.style.bullets && 'slide-text--bullets', ...extra].filter(Boolean).join(' ')
 }
 
 export function boxCss(element: SlideElement): CSSProperties {
@@ -53,7 +77,7 @@ function TextContent({
   showPlaceholder: boolean
 }) {
   const css = textCss(element, theme)
-  if (!element.text) {
+  if (!hasText(element.paragraphs)) {
     return showPlaceholder && element.placeholder ? (
       <div className="slide-text is-placeholder" style={css}>
         {element.placeholder}
@@ -61,16 +85,22 @@ function TextContent({
     ) : null
   }
   return (
-    <div className="slide-text" style={css}>
-      {element.style.bullets ? (
-        <ul className="slide-text__bullets">
-          {element.text.split('\n').map((line, index) => (
-            <li key={index}>{line || ' '}</li>
-          ))}
-        </ul>
-      ) : (
-        element.text
-      )}
+    <div className={textClassName(element)} style={{ ...css, textDecoration: 'none' }}>
+      <div className="slide-text__content">
+        {element.paragraphs.map((paragraph, index) => (
+          <p key={index}>
+            {paragraph.runs.length === 0 ? (
+              <br />
+            ) : (
+              paragraph.runs.map((run, runIndex) => (
+                <span key={runIndex} style={runCss(element.style, run)}>
+                  {run.text}
+                </span>
+              ))
+            )}
+          </p>
+        ))}
+      </div>
     </div>
   )
 }

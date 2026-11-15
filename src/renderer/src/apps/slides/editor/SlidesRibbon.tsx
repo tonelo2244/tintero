@@ -1,4 +1,5 @@
 import type { ChangeEvent } from 'react'
+import type { Editor } from '@tiptap/react'
 import {
   AArrowDown,
   AArrowUp,
@@ -36,6 +37,7 @@ import { getTheme, SLIDE_THEMES } from '../model/themes'
 import type { HorizontalAlign, Presentation, ShapeKind, Slide, SlideElement, VerticalAlign } from '../model/types'
 import { SHAPE_LABELS, ShapeIcon } from './ElementContent'
 import { SlideView } from './SlideView'
+import { useCharacterFormat } from './useCharacterFormat'
 import type { SlideCommands } from './useSlideCommands'
 
 export type SlidesTabId = 'home' | 'insert' | 'design' | 'show'
@@ -52,6 +54,8 @@ interface SlidesRibbonProps {
   presentation: Presentation
   currentSlide: Slide
   selectedElement: SlideElement | null
+  /** Editor del cuadro de texto en el que se está escribiendo, si lo hay (formato por palabra). */
+  textEditor: Editor | null
   commands: SlideCommands
   onStartSlideshow(fromStart: boolean): void
 }
@@ -64,6 +68,7 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
           <SlidesGroup commands={props.commands} />
           <TextGroups
             selectedElement={props.selectedElement}
+            textEditor={props.textEditor}
             commands={props.commands}
             themeId={props.presentation.themeId}
           />
@@ -140,10 +145,12 @@ const V_ALIGN: { value: VerticalAlign; label: string; Icon: typeof AlignLeft }[]
 
 function TextGroups({
   selectedElement,
+  textEditor,
   commands,
   themeId
 }: {
   selectedElement: SlideElement | null
+  textEditor: Editor | null
   commands: SlideCommands
   themeId: string
 }) {
@@ -152,7 +159,9 @@ function TextGroups({
   const style = text?.style
   const theme = getTheme(themeId)
   const defaultFont = text?.role === 'title' ? theme.titleFontFamily : theme.fontFamily
-  const fontSize = style?.fontSize ?? 24
+  const character = useCharacterFormat(textEditor, text, commands)
+  const format = character.format
+  const fontSize = format?.fontSize ?? 24
 
   return (
     <>
@@ -161,9 +170,9 @@ function TextGroups({
           <SelectField
             label="Fuente"
             disabled={disabled}
-            value={style?.fontFamily ?? defaultFont}
+            value={format?.fontFamily ?? defaultFont}
             options={FONT_FAMILIES}
-            onChange={(fontFamily) => commands.setTextStyle({ fontFamily })}
+            onChange={character.setFontFamily}
           />
           <SelectField
             label="Tamaño de fuente"
@@ -171,19 +180,19 @@ function TextGroups({
             disabled={disabled}
             value={String(fontSize)}
             options={FONT_SIZES.map((size) => ({ label: String(size), value: String(size) }))}
-            onChange={(value) => commands.setTextStyle({ fontSize: Number(value) })}
+            onChange={(value) => character.setFontSize(Number(value))}
           />
           <ToolButton
             label="Aumentar tamaño"
             disabled={disabled}
-            onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, 1) })}
+            onClick={() => character.setFontSize(nextFontSize(fontSize, 1))}
           >
             <AArrowUp size={16} />
           </ToolButton>
           <ToolButton
             label="Disminuir tamaño"
             disabled={disabled}
-            onClick={() => commands.setTextStyle({ fontSize: nextFontSize(fontSize, -1) })}
+            onClick={() => character.setFontSize(nextFontSize(fontSize, -1))}
           >
             <AArrowDown size={16} />
           </ToolButton>
@@ -192,32 +201,32 @@ function TextGroups({
           <ToolButton
             label="Negrita"
             disabled={disabled}
-            active={style?.bold}
-            onClick={() => commands.setTextStyle({ bold: !style?.bold })}
+            active={format?.bold}
+            onClick={() => character.toggle('bold')}
           >
             <Bold size={16} />
           </ToolButton>
           <ToolButton
             label="Cursiva"
             disabled={disabled}
-            active={style?.italic}
-            onClick={() => commands.setTextStyle({ italic: !style?.italic })}
+            active={format?.italic}
+            onClick={() => character.toggle('italic')}
           >
             <Italic size={16} />
           </ToolButton>
           <ToolButton
             label="Subrayado"
             disabled={disabled}
-            active={style?.underline}
-            onClick={() => commands.setTextStyle({ underline: !style?.underline })}
+            active={format?.underline}
+            onClick={() => character.toggle('underline')}
           >
             <Underline size={16} />
           </ToolButton>
           <ToolButton
             label="Tachado"
             disabled={disabled}
-            active={style?.strike}
-            onClick={() => commands.setTextStyle({ strike: !style?.strike })}
+            active={format?.strike}
+            onClick={() => character.toggle('strike')}
           >
             <Strikethrough size={16} />
           </ToolButton>
@@ -225,10 +234,10 @@ function TextGroups({
             label="Color de fuente"
             icon={<Type size={16} />}
             disabled={disabled}
-            value={style?.color ?? null}
+            value={format?.color ?? null}
             clearLabel="Color del tema"
-            onChange={(color) => commands.setTextStyle({ color })}
-            onClear={() => commands.setTextStyle({ color: null })}
+            onChange={character.setColor}
+            onClear={() => character.setColor(null)}
           />
         </RibbonRow>
       </RibbonGroup>

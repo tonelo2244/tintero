@@ -4,6 +4,7 @@
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
 import { createShapeElement, createSlide, createTextElement } from '../factories'
+import { plainText } from '../richText'
 import type { Presentation, ShapeElement, TextElement } from '../types'
 import { exportPptx } from './exportPptx'
 import { importPptx } from './importPptx'
@@ -58,7 +59,7 @@ describe('importPptx con un archivo escrito a mano', () => {
     expect(title).toMatchObject({
       type: 'text',
       role: 'title',
-      text: 'Resultados',
+      paragraphs: [{ runs: [{ text: 'Resultados' }] }],
       x: 100,
       y: 50,
       width: 1080,
@@ -86,11 +87,27 @@ describe('importPptx con un archivo escrito a mano', () => {
     const { content, warnings } = await importPptx(await handmadePptx(rotated + table + mixed))
     expect(content.slides[0].elements.map((element) => element.type)).toEqual(['shape', 'text'])
     expect(warnings).toEqual([
-      'el formato por palabra en 1 cuadro (cada cuadro toma el formato de su primer texto)',
       '1 tabla, gráfico o SmartArt',
       '1 forma o línea sin equivalente (se omiten o pasan a rectángulo)',
       'el giro de 1 elemento'
     ])
+  })
+
+  it('conserva el formato por palabra (negrita, color, tamaño) y los saltos de línea', async () => {
+    const runs =
+      '<a:r><a:rPr sz="2000"/><a:t>Precio: </a:t></a:r>' +
+      '<a:r><a:rPr sz="2000" b="1"><a:solidFill><a:srgbClr val="C00000"/></a:solidFill></a:rPr><a:t>gratis</a:t></a:r>' +
+      '<a:br/><a:r><a:rPr sz="3000" i="1"/><a:t>oferta</a:t></a:r>'
+    const shape = `<p:sp><p:nvSpPr><p:cNvPr id="8" name="w"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(0, 0, 400, 120)}</p:spPr><p:txBody><a:bodyPr/><a:p>${runs}</a:p></p:txBody></p:sp>`
+    const { content, warnings } = await importPptx(await handmadePptx(shape))
+    const [text] = content.slides[0].elements as TextElement[]
+    // El primer trozo marca el formato del cuadro; el resto guarda solo lo que cambia.
+    expect(text.style).toMatchObject({ bold: false, fontSize: 27 })
+    expect(text.paragraphs).toEqual([
+      { runs: [{ text: 'Precio: ' }, { text: 'gratis', bold: true, color: '#C00000' }] },
+      { runs: [{ text: 'oferta', italic: true, fontSize: 40 }] }
+    ])
+    expect(warnings).toEqual([])
   })
 
   it('rechaza un zip que no es una presentación', async () => {
@@ -118,12 +135,25 @@ describe('importPptx (ida y vuelta con exportPptx)', () => {
 
     const { content, warnings } = await importPptx(await exportPptx(original))
     const [text, shape] = content.slides[0].elements as [TextElement, ShapeElement]
-    expect(text).toMatchObject({ text: 'uno\ndos', x: 80, y: 60, width: 700, height: 200 })
+    expect(text).toMatchObject({ x: 80, y: 60, width: 700, height: 200 })
+    expect(plainText(text.paragraphs)).toBe('uno\ndos')
     expect(text.style).toMatchObject({ bullets: true, fontSize: 32, bold: true })
     expect(shape).toMatchObject({ shape: 'star', x: 900, y: 400, width: 200, height: 180 })
     expect(shape.style.fill).toBe('#3366CC')
     expect(content.slides[0].notes).toBe('Recordar la demo')
     expect(warnings).toEqual([])
+  })
+
+  it('recupera el formato por palabra exportado', async () => {
+    const slide = createSlide('blank')
+    const paragraphs = [
+      { runs: [{ text: 'Tintero ' }, { text: 'es', italic: true }, { text: ' local', bold: true, color: '#C00000' }] },
+      { runs: [{ text: 'sin nube', underline: true, fontSize: 40 }] }
+    ]
+    slide.elements = [createTextElement('free', { x: 80, y: 60, width: 700, height: 200 }, { paragraphs })]
+    const { content } = await importPptx(await exportPptx({ themeId: 'blank', slides: [slide] }))
+    const [text] = content.slides[0].elements as TextElement[]
+    expect(text.paragraphs).toEqual(paragraphs)
   })
 
   it('un tema con fondo de color avisa de que el fondo no se importa', async () => {

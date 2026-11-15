@@ -26,7 +26,22 @@ export function buildAppMenu(): Menu {
         ...(isMac ? [] : [{ type: 'separator' as const }, { role: 'quit' as const, label: 'Salir' }])
       ]
     },
-    { role: 'editMenu', label: 'Edición' },
+    {
+      label: 'Edición',
+      submenu: [
+        { role: 'undo', label: 'Deshacer' },
+        { role: 'redo', label: 'Rehacer' },
+        { type: 'separator' },
+        { role: 'cut', label: 'Cortar' },
+        { role: 'copy', label: 'Copiar' },
+        { role: 'paste', label: 'Pegar' },
+        { role: 'selectAll', label: 'Seleccionar todo' },
+        { type: 'separator' },
+        { label: 'Buscar…', accelerator: 'CmdOrCtrl+F', click: () => send('find') },
+        // Ctrl+H es el atajo de Word en Windows; en Mac Cmd+H oculta la app, así que se usa Cmd+Alt+F.
+        { label: 'Reemplazar…', accelerator: isMac ? 'Cmd+Alt+F' : 'Ctrl+H', click: () => send('replace') }
+      ]
+    },
     { role: 'viewMenu', label: 'Ver' },
     { role: 'windowMenu', label: 'Ventana' }
   ]
