@@ -1,5 +1,28 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { AiChannel, type AiApi } from '@shared/ai'
 import { IpcChannel, type MenuCommand, type TinteroApi } from '@shared/ipc'
+
+let nextAiRequest = 0
+
+/**
+ * IPC no puede pasar funciones (callbacks) entre procesos. Así que cada generación lleva un id:
+ * main manda los trozos de texto como eventos con ese id y aquí se reparten a quien los pidió.
+ */
+const ai: AiApi = {
+  status: () => ipcRenderer.invoke(AiChannel.Status),
+  setModel: (model) => ipcRenderer.invoke(AiChannel.SetModel, model),
+  generate: (request, onToken) => {
+    const requestId = `ai-${Date.now()}-${nextAiRequest++}`
+    const listener = (_event: Electron.IpcRendererEvent, id: string, chunk: string) => {
+      if (id === requestId) onToken?.(chunk)
+    }
+    ipcRenderer.on(AiChannel.Token, listener)
+    const result = ipcRenderer
+      .invoke(AiChannel.Generate, requestId, request)
+      .finally(() => ipcRenderer.removeListener(AiChannel.Token, listener))
+    return { result, cancel: () => ipcRenderer.send(AiChannel.Cancel, requestId) }
+  }
+}
 
 /**
  * Puente seguro entre la interfaz y Node. Solo expone funciones concretas,
@@ -39,6 +62,7 @@ const api: TinteroApi = {
     setUnsavedChanges: (document) => ipcRenderer.send(IpcChannel.WindowSetUnsavedChanges, document),
     confirmClose: () => ipcRenderer.send(IpcChannel.WindowConfirmClose)
   },
+  ai,
   onMenuCommand: (handler) => {
     const listener = (_event: Electron.IpcRendererEvent, command: MenuCommand) => handler(command)
     ipcRenderer.on(IpcChannel.MenuCommand, listener)

@@ -194,6 +194,25 @@ export function useDocumentSession(registry: AppRegistry) {
     [document]
   )
 
+  /**
+   * Documento nuevo sin guardar con contenido ya hecho (no de una plantilla), en cualquier app.
+   * Sustituye al actual: si este tiene cambios se guarda antes, en vez de preguntar "¿descartar?",
+   * porque el usuario no ha pedido cerrarlo. Si cancela el guardado, no se abre nada.
+   */
+  const createFromContent = useCallback(
+    async (appId: string, name: string, content: unknown, message?: string) => {
+      const app = registry.get(appId)
+      if (!app) {
+        setNotice(`No hay ninguna app instalada con el id "${appId}".`)
+        return
+      }
+      if (document && isDirty && !(await save(false))) return
+      show({ app, path: null, name, initialContent: content }, { isDirty: true })
+      if (message) setNotice(message)
+    },
+    [document, isDirty, registry, save, show]
+  )
+
   /** Exporta a PDF. No cambia la ruta del documento: un PDF es una copia, no el original. */
   const exportPdf = useCallback(async () => {
     if (!document) return
@@ -302,6 +321,7 @@ export function useDocumentSession(registry: AppRegistry) {
     notice,
     dismissNotice: () => setNotice(null),
     createFromTemplate,
+    createFromContent,
     openWithDialog,
     openRecent,
     openPath,

@@ -1,21 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
+import { Presentation } from 'lucide-react'
 import type { EditorProps } from '@/core/appModule'
+import { useAiStatus } from '@/core/ai/useAiStatus'
 import { platform } from '@/core/platform'
 import { EditorLayout } from '@/ui/EditorLayout'
+import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
+import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import type { WriterContent } from '../model/content'
+import type { WritingActionId } from '../model/ai/writingActions'
+import { AssistantPanel } from './AssistantPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
+import { PresentationPanel } from './PresentationPanel'
 import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
+import { usePresentationFromDocument } from './usePresentationFromDocument'
+import { useWritingAssistant } from './useWritingAssistant'
+import { WriterAssistantTab } from './WriterAssistantTab'
 import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
 import { WriterTableTab } from './WriterTableTab'
 import { WriterStatusBar } from './WriterStatusBar'
 
 const TABS = [
   { id: 'home', label: 'Inicio' },
-  { id: 'insert', label: 'Insertar' }
+  { id: 'insert', label: 'Insertar' },
+  { id: 'assistant', label: 'Asistente' }
 ]
 /** Pestaña contextual: solo existe mientras el cursor está dentro de una tabla. */
 const TABLE_TAB = { id: 'table', label: 'Tabla' }
@@ -39,6 +50,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   })
 
   const toolbar = useWriterToolbarState(editor)
+  const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
+  const ai = useAiStatus()
+  const assistant = useWritingAssistant(editor)
+  const presentation = usePresentationFromDocument(editor)
+  /** Panel de IA abierto: ninguno, cómo preparar Ollama, el asistente de redacción o crear presentación. */
+  const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation'>('closed')
   const pages = usePageMetrics(editor, pageRef, zoom)
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
@@ -52,6 +69,49 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     []
   )
 
+  /** Comprueba el estado justo antes de usarla: el usuario puede haber abierto Ollama hace un momento. */
+  const ensureAiReady = async (): Promise<boolean> => {
+    const status = ai.status?.state === 'ready' ? ai.status : await ai.refresh()
+    if (status.state === 'ready') return true
+    setAiPanel('setup')
+    return false
+  }
+
+  const closeAiPanel = () => {
+    assistant.close()
+    presentation.close()
+    setAiPanel('closed')
+  }
+
+  const runWritingAction = async (id: WritingActionId) => {
+    if (!(await ensureAiReady())) return
+    presentation.close()
+    setFind(null) // los paneles flotan en la misma esquina
+    setAiPanel('writing')
+    assistant.run(id)
+  }
+
+  const createPresentation = async () => {
+    if (!(await ensureAiReady())) return
+    assistant.close()
+    setFind(null)
+    setAiPanel('presentation')
+    void presentation.start()
+  }
+
+  const openPresentation = () => {
+    const job = presentation.job
+    if (job?.phase !== 'done') return
+    // Sustituye a este documento en la ventana; el shell lo guarda antes si tiene cambios.
+    session.openNewDocument(
+      'slides',
+      job.outline.title,
+      presentationFromOutline(job.outline),
+      'Presentación creada con IA a partir de tu documento. Revísala antes de guardarla.'
+    )
+  }
+
+  const readyModel = ai.status?.state === 'ready' ? ai.status.model : null
   const inTable = toolbar?.table.active ?? false
   const tabs = inTable ? [...TABS, TABLE_TAB] : TABS
   // Si el cursor sale de la tabla con su pestaña abierta, se vuelve a Inicio (la pestaña desaparece).
@@ -62,6 +122,28 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     switch (visibleTab) {
       case 'insert':
         return <WriterInsertTab editor={editor} />
+      case 'assistant':
+        return (
+          <WriterAssistantTab
+            status={ai.status}
+            hasSelection={hasSelection ?? false}
+            busy={assistant.generation.phase === 'running' || presentation.job?.phase === 'running'}
+            onRun={(id) => void runWritingAction(id)}
+            onSelectModel={(model) => void ai.setModel(model)}
+            extraGroups={
+              <RibbonGroup label="Crear">
+                <ToolButton
+                  large
+                  label="Crear presentación"
+                  disabled={presentation.job?.phase === 'running'}
+                  onClick={() => void createPresentation()}
+                >
+                  <Presentation size={22} />
+                </ToolButton>
+              </RibbonGroup>
+            }
+          />
+        )
       case TABLE_TAB.id:
         return <WriterTableTab editor={editor} state={toolbar} />
       default:
@@ -104,6 +186,26 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         />
       }
     >
+      {(aiPanel === 'setup' || aiPanel === 'writing') && (
+        <AssistantPanel
+          assistant={assistant}
+          setupStatus={aiPanel === 'setup' ? ai.status : null}
+          model={readyModel}
+          onRetrySetup={() => void ai.refresh()}
+          onClose={closeAiPanel}
+        />
+      )}
+      {aiPanel === 'presentation' && presentation.job && (
+        <PresentationPanel
+          job={presentation.job}
+          isDirty={session.isDirty}
+          model={readyModel}
+          onOpen={openPresentation}
+          onRetry={() => void presentation.start()}
+          onCancel={presentation.cancel}
+          onClose={closeAiPanel}
+        />
+      )}
       {editor && find && (
         <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
       )}

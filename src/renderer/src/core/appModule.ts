@@ -85,6 +85,12 @@ export interface EditorSession {
   /** Formatos a los que se puede exportar este documento (PDF y los de la app). */
   exportOptions: ExportOption[]
   goHome(): void
+  /**
+   * Abre un documento nuevo sin guardar en otra app de la suite (p. ej. la presentación que la IA
+   * genera desde un texto). Sustituye al actual: si tiene cambios, el shell lo guarda antes y, si el
+   * usuario cancela ese guardado, no abre nada.
+   */
+  openNewDocument(appId: string, name: string, content: unknown, notice?: string): void
 }
 
 export interface EditorProps<TContent> {
