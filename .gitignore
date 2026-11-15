@@ -6,3 +6,5 @@ dist
 *.tsbuildinfo
 test-results
 playwright-report
+# Informes del banco de evaluación: se generan en cada equipo (ver evals/README.md)
+evals/results/

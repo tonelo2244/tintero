@@ -14,7 +14,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', '*.config.{ts,mts,mjs}', 'e2e/**/*.ts'],
+    files: ['src/main/**/*.ts', 'src/preload/**/*.ts', '*.config.{ts,mts,mjs}', 'e2e/**/*.ts', 'evals/**/*.ts'],
     languageOptions: { globals: globals.node }
   },
   {
