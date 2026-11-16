@@ -128,7 +128,7 @@ export interface WriterUi {
  * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
  * (ecuación, gráfico) lo leen de la selección al abrirse.
  */
-export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText' | 'chart'
+export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText' | 'chart' | 'equation'
 
 export interface CommandContext {
   editor: Editor
@@ -523,6 +523,14 @@ export const WRITER_COMMANDS = {
     run: (context, char: string) => chain(context).insertContent({ type: 'text', text: char }).run()
   },
   symbolDialog: { label: 'Más símbolos…', run: ({ ui }) => ui.openDialog('symbol') },
+  // --- Ecuaciones (fase 16): el cuadro inserta una o edita la seleccionada ---
+  equation: {
+    label: 'Ecuación',
+    shortcut: 'Alt+=',
+    keys: 'Alt-=',
+    run: ({ ui }) => ui.openDialog('equation'),
+    isEnabled: ({ editor }) => !editor.isActive('codeBlock')
+  },
   // --- Objetos: formas, cuadros de texto e imágenes (fase 16) ---
   insertShape: {
     label: 'Formas',

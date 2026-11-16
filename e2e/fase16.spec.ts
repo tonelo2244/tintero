@@ -138,3 +138,30 @@ test('Texto: convertir texto en tabla y darle estilo, sombreado y bordes', async
   await expect(table.locator('tr').nth(1).locator('td').first()).toHaveCSS('background-color', 'rgb(242, 242, 242)')
   await page.screenshot({ path: 'test-results/fase16-tabla.png' })
 })
+
+test('Texto: ecuación con vista previa, y se edita con doble clic', async ({ tintero }) => {
+  const { page } = tintero
+  await createBlank(page, 'Texto')
+  const editor = page.locator('.ProseMirror').first()
+  await editor.click()
+  await page.keyboard.insertText('Las raíces son ')
+
+  await page.keyboard.press('Alt+=')
+  const dialog = page.getByRole('dialog', { name: 'Insertar ecuación' })
+  await dialog.getByLabel('Ecuación en LaTeX').fill('x^2')
+  await dialog.getByRole('button', { name: 'Raíz' }).click()
+  await expect(dialog.getByLabel('Ecuación en LaTeX')).toHaveValue('x^2\\sqrt{x}')
+  await expect(dialog.getByLabel('Vista previa').locator('.katex')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Insertar' }).click()
+  const equation = editor.locator('.writer-equation')
+  await expect(equation).toHaveAttribute('data-latex', 'x^2\\sqrt{x}')
+  await expect(equation.locator('.katex .sqrt')).toBeAttached()
+
+  await equation.dblclick()
+  const edit = page.getByRole('dialog', { name: 'Editar ecuación' })
+  await edit.getByLabel('Ejemplos').selectOption({ label: 'Teorema de Pitágoras' })
+  await edit.getByRole('button', { name: 'Aceptar' }).click()
+  await expect(editor.locator('.writer-equation')).toHaveCount(1)
+  await expect(editor.locator('.writer-equation')).toHaveAttribute('data-latex', 'a^2 + b^2 = c^2')
+  await page.screenshot({ path: 'test-results/fase16-ecuacion.png' })
+})

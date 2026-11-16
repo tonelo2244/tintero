@@ -447,6 +447,16 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
 
+  // Doble clic sobre una ecuación: su cuadro, como el botón Ecuación con ella seleccionada.
+  useEffect(() => {
+    if (!editor) return
+    const storage = editor.storage.equation
+    storage.openEditor = () => commandContextRef.current?.ui.openDialog('equation')
+    return () => {
+      storage.openEditor = null
+    }
+  }, [editor])
+
   // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja): los mismos comandos que la cinta.
   useEffect(
     () =>

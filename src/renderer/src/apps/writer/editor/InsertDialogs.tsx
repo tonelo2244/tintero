@@ -5,6 +5,7 @@ import type { WriterDialogId, WriterUi } from '../model/commands'
 import { BookmarkDialog, LinkDialog } from './LinkDialogs'
 import { SymbolDialog } from './SymbolPicker'
 import { AltTextDialog, ChartDialog, CropDialog } from './ObjectDialogs'
+import { EquationDialog } from './EquationDialog'
 import { WriterDialog } from './WriterDialog'
 
 interface InsertDialogsProps {
@@ -27,6 +28,8 @@ export function InsertDialogs({ dialog, editor, ui, onClose }: InsertDialogsProp
       return <CropDialog editor={editor} onClose={onClose} />
     case 'altText':
       return <AltTextDialog editor={editor} onClose={onClose} />
+    case 'equation':
+      return <EquationDialog editor={editor} onClose={onClose} />
     case 'chart':
       return <ChartDialog editor={editor} onClose={onClose} />
     case 'author':

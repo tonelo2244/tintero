@@ -310,6 +310,20 @@ describe('comandos de Vista y Revisar (fase 14)', () => {
 })
 
 describe('comandos de Insertar (fase 16)', () => {
+  it('ecuación: el botón abre su cuadro y setEquation inserta o cambia la seleccionada', () => {
+    const { context, editor, calls } = setup('<p>a</p>')
+    editor.commands.setTextSelection(2)
+    runCommand(context, 'equation')
+    expect(calls.at(-1)).toBe('dialog:equation')
+    expect(commandKeyBindings()).toContainEqual({ keys: 'Alt-=', id: 'equation' })
+    editor.commands.setEquation('a^2')
+    expect(editor.getHTML()).toBe('<p>a<span data-latex="a^2" class="writer-equation"></span></p>')
+    editor.commands.setNodeSelection(2)
+    editor.commands.setEquation('b^2')
+    expect(editor.state.doc.firstChild?.childCount).toBe(2)
+    expect(editor.state.doc.firstChild?.lastChild?.attrs.latex).toBe('b^2')
+  })
+
   it('portada al principio (una sola) y letra capital', () => {
     const { context, editor, calls } = setup('<p>Texto</p>')
     editor.commands.setTextSelection(3)

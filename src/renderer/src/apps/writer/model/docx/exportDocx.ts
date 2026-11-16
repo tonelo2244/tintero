@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  Math as DocxMath,
   DropCapType,
   FrameAnchorType,
   FrameWrap,
@@ -69,6 +70,8 @@ import { chartRun, imageRun, objectParagraph, shapeRun, textBoxRun } from './obj
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 import { DEFAULT_FONT_SIZE_PT } from '../../constants'
+import { latexToMath } from 'docx/math'
+import { EQUATION } from '../equation'
 import { DROP_CAP_LINES, isDropCapMode, splitDropCap, type DropCapMode } from '../dropCap'
 import { isBandedRow, parseCellBorders, tableStyle, type CellSide, type TableStyle } from '../tableStyles'
 
@@ -505,6 +508,7 @@ class DocxConverter {
       const cached = fieldText(kind, { date: new Date(), page: 1, pages: 1, fileName: '', author: this.author })
       return [new SimpleField(docxFieldInstruction(kind), kind === 'fileName' ? '' : cached)]
     }
+    if (node.type === EQUATION) return [equationRun(String(node.attrs?.latex ?? ''))]
     if (node.type !== 'text' || !node.text) return []
 
     const run = new TextRun({ text: node.text, ...this.runDefaults, ...runOptions(marks) })
@@ -719,5 +723,17 @@ function headerRunOptions(style: TableStyle): MutableRunOptions {
   return {
     ...(style.headerBold && { bold: true }),
     ...(style.headerColor && { color: hex(style.headerColor) })
+  }
+}
+
+/**
+ * Ecuación -> ecuación nativa de Word (OMML), que allí se sigue editando. Si el LaTeX tiene algo
+ * que `docx/math` no conoce, va como texto en cursiva: mejor el LaTeX que perder la ecuación.
+ */
+function equationRun(latex: string): ParagraphChild {
+  try {
+    return new DocxMath({ children: latexToMath(latex) })
+  } catch {
+    return new TextRun({ text: latex, italics: true })
   }
 }

@@ -15,6 +15,7 @@ import {
   PanelTop,
   Quote,
   Shapes,
+  Sigma,
   TableProperties,
   ChartColumnBig,
   SquareDashedText
@@ -112,6 +113,7 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
         <CommandButton command="codeBlock" large icon={<Code2 size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Símbolos">
+        <CommandButton command="equation" large icon={<Sigma size={22} />} />
         <SymbolDropdown />
       </RibbonGroup>
       <RibbonGroup label="Comentarios">

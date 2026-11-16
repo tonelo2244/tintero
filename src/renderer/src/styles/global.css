@@ -3528,3 +3528,37 @@ p.writer-outline-block--body::after {
 .writer-content p[data-drop-cap='margin']::first-letter {
   margin-left: -0.75em;
 }
+
+/* Ecuaciones (fase 16): las pinta KaTeX; aquí solo su marco en el texto y el cuadro. */
+.writer-equation {
+  padding: 0 1px;
+  border-radius: 2px;
+  cursor: default;
+}
+.writer-content .writer-equation.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+.writer-equation-dialog__input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.writer-equation-dialog__snippets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+.writer-equation-dialog__snippets button {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.writer-equation-dialog__preview {
+  min-height: 56px;
+  margin: 8px 0;
+  padding: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+}

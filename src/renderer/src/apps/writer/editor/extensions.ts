@@ -11,6 +11,7 @@ import { writerTableExtensions } from './WriterTable'
 import { CharStyle } from './CharStyle'
 import { Field } from './Field'
 import { Chart } from './objects/Chart'
+import { Equation } from './Equation'
 import { Shape } from './objects/Shape'
 import { TextBox } from './objects/TextBox'
 import { WriterImage } from './objects/WriterImage'
@@ -62,6 +63,7 @@ export function createWriterExtensions(): Extensions {
     Field,
     Shape,
     TextBox,
-    Chart
+    Chart,
+    Equation
   ]
 }

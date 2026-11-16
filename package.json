@@ -84,5 +84,8 @@
   "desktopName": "tintero.desktop",
   "allowScripts": {
     "electron-winstaller": true
+  },
+  "dependencies": {
+    "katex": "^0.19.1"
   }
 }

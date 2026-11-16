@@ -205,3 +205,20 @@ describe('letra capital en .docx', () => {
     expect(xml).toContain('rase una vez')
   })
 })
+
+describe('ecuaciones en .docx', () => {
+  it('el LaTeX va como ecuación nativa de Word (m:oMath)', async () => {
+    const { xml } = await exported([
+      paragraph([text('Raíces: '), { type: 'equation', attrs: { latex: 'x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}' } }])
+    ])
+    expect(xml).toContain('<m:oMath>')
+    expect(xml).toContain('<m:f>')
+    expect(xml).toContain('<m:rad>')
+  })
+
+  it('un LaTeX que Word no entendería va como texto, sin perderse', async () => {
+    const { xml } = await exported([paragraph([{ type: 'equation', attrs: { latex: '\\inventado{x}' } }])])
+    expect(xml).not.toContain('<m:oMath>')
+    expect(xml).toContain('\\inventado{x}')
+  })
+})
