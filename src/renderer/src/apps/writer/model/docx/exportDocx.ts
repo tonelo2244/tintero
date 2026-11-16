@@ -117,6 +117,8 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   })
   const document = new Document({
     creator: 'Tintero',
+    // "Pares e impares diferentes" es un ajuste del documento entero en Word (settings.xml).
+    ...(content.evenPages && { evenAndOddHeaderAndFooters: true }),
     // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
     ...(content.hyphenation && { hyphenation: { autoHyphenation: true } }),
     styles: docxStylesFor(content.styles ?? DEFAULT_STYLES, content.numberedHeadings),
@@ -139,22 +141,37 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
       properties: {
         page: pageProperties(plan.setup),
         ...(index > 0 && { type: plan.continuous ? SectionType.CONTINUOUS : SectionType.NEXT_PAGE }),
-        ...(plan.columns > 1 && { column: { count: plan.columns, space: twips(COLUMN_GAP_CM) } })
+        ...(plan.columns > 1 && { column: { count: plan.columns, space: twips(COLUMN_GAP_CM) } }),
+        // "Primera página diferente" (w:titlePg).
+        ...(index === 0 && content.firstPage && { titlePage: true })
       },
       // Solo la primera: en Word, una sección sin encabezado propio usa el de la anterior.
-      ...(index === 0 && {
-        headers: content.header
-          ? { default: new Header({ children: headerFooterParagraphs(content.header) }) }
-          : undefined,
-        footers: content.footer
-          ? { default: new Footer({ children: headerFooterParagraphs(content.footer) }) }
-          : undefined
-      }),
+      ...(index === 0 && headersAndFooters(content)),
       // Word exige al menos un párrafo por sección.
       children: sectionChildren[index].length > 0 ? sectionChildren[index] : [new Paragraph({})]
     }))
   })
   return new Uint8Array(await Packer.toArrayBuffer(document))
+}
+
+/**
+ * Encabezados y pies de la primera sección: el normal y, si están activados, el de la primera
+ * hoja y el de las pares. Una variante activada pero vacía se escribe vacía (si no, Word usaría la normal).
+ */
+function headersAndFooters(content: WriterContent) {
+  const part = (kind: 'header' | 'footer', value: HeaderFooter | undefined) =>
+    kind === 'header'
+      ? new Header({ children: value ? headerFooterParagraphs(value) : [new Paragraph({})] })
+      : new Footer({ children: value ? headerFooterParagraphs(value) : [new Paragraph({})] })
+  const set = (kind: 'header' | 'footer') => {
+    const variants = {
+      ...(content[kind] && { default: part(kind, content[kind]) }),
+      ...(content.firstPage && { first: part(kind, content.firstPage[kind]) }),
+      ...(content.evenPages && { even: part(kind, content.evenPages[kind]) })
+    }
+    return Object.keys(variants).length > 0 ? variants : undefined
+  }
+  return { headers: set('header'), footers: set('footer') }
 }
 
 /** Una sección de Word por escribir: su hoja, sus columnas y si empieza en la misma hoja. */

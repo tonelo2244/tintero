@@ -27,6 +27,8 @@ import type { CaseMode } from './textCase'
 import { canChangeOutlineLevel, canMoveAtCursor, changeOutlineLevel, moveAtCursor } from './outlineEdits'
 import type { ViewMode } from './views'
 import { COLUMNS } from './columns'
+import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './content'
+import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
 
 /**
@@ -56,6 +58,16 @@ export interface WriterUi {
   toggleComments(): void
   headerFooterOpen: boolean
   toggleHeaderFooter(): void
+  /** Encabezado o pie que se está editando sobre la hoja (doble clic en el margen), o null. */
+  headerFooterEditing: { kind: HeaderFooterKind; variant: HeaderFooterVariant; align: HeaderFooterAlign } | null
+  closeHeaderFooterEditing(): void
+  insertHeaderFooterToken(token: string): void
+  setHeaderFooterAlign(align: HeaderFooterAlign): void
+  /** "Primera página diferente" y "Pares e impares diferentes". */
+  differentFirstPage: boolean
+  setDifferentFirstPage(enabled: boolean): void
+  differentEvenPages: boolean
+  setDifferentEvenPages(enabled: boolean): void
   /** Hoja de la sección donde está el cursor (sin secciones, la del documento). */
   pageSetup: PageSetup
   /** El documento tiene saltos de sección (más de un tamaño de hoja). */
@@ -456,6 +468,37 @@ export const WRITER_COMMANDS = {
     // En una tabla o una lista no tiene sentido (ni en Word): el salto es entre bloques del documento.
     isEnabled: ({ editor }) =>
       !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
+  },
+  // --- Encabezado y pie (pestaña contextual, mientras se edita sobre la hoja) ---
+  headerFooterPageNumber: {
+    label: 'Número de página',
+    run: ({ ui }) => ui.insertHeaderFooterToken(PAGE_NUMBER_TOKEN),
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  headerFooterPageCount: {
+    label: 'Total de páginas',
+    run: ({ ui }) => ui.insertHeaderFooterToken(PAGE_COUNT_TOKEN),
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  headerFooterAlign: {
+    label: 'Alinear',
+    run: ({ ui }, align: HeaderFooterAlign) => ui.setHeaderFooterAlign(align),
+    isActive: ({ ui }, align: HeaderFooterAlign) => ui.headerFooterEditing?.align === align,
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  differentFirstPage: {
+    label: 'Primera página diferente',
+    run: ({ ui }) => ui.setDifferentFirstPage(!ui.differentFirstPage),
+    isActive: ({ ui }) => ui.differentFirstPage
+  },
+  differentEvenPages: {
+    label: 'Pares e impares diferentes',
+    run: ({ ui }) => ui.setDifferentEvenPages(!ui.differentEvenPages),
+    isActive: ({ ui }) => ui.differentEvenPages
+  },
+  closeHeaderFooter: {
+    label: 'Cerrar encabezado y pie',
+    run: ({ ui }) => ui.closeHeaderFooterEditing()
   },
   sectionBreak: {
     label: 'Salto de sección',

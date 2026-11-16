@@ -205,6 +205,16 @@ describe('encabezado y pie', () => {
     expect(printPageCss(DEFAULT_PAGE_SETUP)).not.toContain('@top')
   })
 
+  it('primera página y pares distintas: reglas :first y :left que vacían las cajas que no usan', () => {
+    const css = printPageCss(DEFAULT_PAGE_SETUP, undefined, footer, {
+      first: {},
+      even: { footer: { text: 'Par', align: 'left' } }
+    })
+    const first = css.slice(css.indexOf('@page :first'), css.indexOf('@page :left'))
+    expect(first).toContain('@bottom-center { content: none; }')
+    expect(css.slice(css.indexOf('@page :left'))).toContain('@bottom-left { content: "Par";')
+  })
+
   it('la hoja impresa tiene el tamaño, la orientación y los márgenes del documento', () => {
     const landscape = withOrientation(
       { ...DEFAULT_PAGE_SETUP, margins: { top: 1, right: 2, bottom: 3, left: 4 } },

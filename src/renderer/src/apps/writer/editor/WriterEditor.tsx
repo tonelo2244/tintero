@@ -15,6 +15,7 @@ import {
   withPageSetup,
   withStyles,
   writerParts,
+  type HeaderFooterAlign,
   type WriterContent,
   type WriterParts
 } from '../model/content'
@@ -24,6 +25,15 @@ import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
 import { documentSections, type BlockLike } from '../model/sections'
+import {
+  headerFooterForPage,
+  headerFooterOf,
+  VARIANT_LABELS,
+  variantForPage,
+  withHeaderFooterPart,
+  withVariantEnabled,
+  type HeaderFooterKind
+} from '../model/headerFooter'
 import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
 import { isPaginated, showsRuler, type ReadingTheme, type ViewMode } from '../model/views'
 import { multiPageLayout, zoomForPreset, type ZoomPreset } from '../model/zoom'
@@ -56,7 +66,8 @@ import { LayoutTab } from './ribbon/LayoutTab'
 import { OutlineTab } from './ribbon/OutlineTab'
 import { ReviewTab } from './ribbon/ReviewTab'
 import { TableTab } from './ribbon/TableTab'
-import { OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { HEADER_FOOTER_TAB, OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { HeaderFooterTab } from './ribbon/HeaderFooterTab'
 import { ViewTab } from './ribbon/ViewTab'
 import { usePageMetrics } from './usePageMetrics'
 import { useCurrentSection } from './useCurrentSection'
@@ -135,6 +146,30 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   )
   const comments = useWriterComments(editor, parts.comments ?? [], updateParts)
   const [headerFooterOpen, setHeaderFooterOpen] = useState(false)
+  /** Encabezado o pie que se edita sobre la hoja (doble clic en el margen superior o inferior). */
+  const [headerFooterEditing, setHeaderFooterEditing] = useState<{
+    page: number
+    kind: HeaderFooterKind
+    align: HeaderFooterAlign
+  } | null>(null)
+  const editingVariant = headerFooterEditing ? variantForPage(parts, headerFooterEditing.page) : null
+  const editingValue =
+    headerFooterEditing && editingVariant ? headerFooterOf(parts, editingVariant)[headerFooterEditing.kind] : undefined
+  /** Cambia el texto de lo que se edita; vacío, lo quita (el archivo no guarda partes vacías). */
+  const setEditingText = (text: string, align = editingValue?.align ?? headerFooterEditing?.align ?? 'left') => {
+    if (!headerFooterEditing || !editingVariant) return
+    const value = text.trim() === '' ? undefined : { text, align }
+    updateParts((current) => withHeaderFooterPart(current, editingVariant, headerFooterEditing.kind, value))
+  }
+  // Volver al texto del documento cierra el encabezado y pie, como en Word.
+  useEffect(() => {
+    if (!editor || !headerFooterEditing) return
+    const close = () => setHeaderFooterEditing(null)
+    editor.on('focus', close)
+    return () => {
+      editor.off('focus', close)
+    }
+  }, [editor, headerFooterEditing])
 
   const pageSetup = parts.pageSetup ?? DEFAULT_PAGE_SETUP
   const geometry = useMemo(() => pageGeometry(pageSetup), [pageSetup])
@@ -310,6 +345,27 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       closeSidePanels()
       comments.setOpen(!open)
     },
+    headerFooterEditing:
+      headerFooterEditing && editingVariant
+        ? {
+            kind: headerFooterEditing.kind,
+            variant: editingVariant,
+            align: editingValue?.align ?? headerFooterEditing.align
+          }
+        : null,
+    closeHeaderFooterEditing: () => setHeaderFooterEditing(null),
+    insertHeaderFooterToken: (token) => {
+      const text = editingValue?.text ?? ''
+      setEditingText(`${text}${text && !text.endsWith(' ') ? ' ' : ''}${token}`)
+    },
+    setHeaderFooterAlign: (align) => {
+      if (editingValue) setEditingText(editingValue.text, align)
+      else setHeaderFooterEditing((current) => current && { ...current, align })
+    },
+    differentFirstPage: parts.firstPage !== undefined,
+    setDifferentFirstPage: (enabled) => updateParts((current) => withVariantEnabled(current, 'first', enabled)),
+    differentEvenPages: parts.evenPages !== undefined,
+    setDifferentEvenPages: (enabled) => updateParts((current) => withVariantEnabled(current, 'even', enabled)),
     headerFooterOpen,
     toggleHeaderFooter: () => {
       const open = headerFooterOpen
@@ -429,10 +485,17 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const readyModel = ai.status?.state === 'ready' ? ai.status.model : null
   const inTable = toolbar?.table.active ?? false
   const inOutline = viewMode === 'outline'
-  const tabs = visibleTabs(inTable, inOutline)
-  // Si una pestaña contextual desaparece (sales de la tabla o del Esquema), se vuelve a otra.
+  const inHeaderFooter = headerFooterEditing !== null
+  const tabs = visibleTabs(inTable, inOutline, inHeaderFooter)
+  // Si una pestaña contextual desaparece (sales de la tabla, del Esquema o del encabezado), se vuelve a otra.
   const visibleTab =
-    activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab === OUTLINE_TAB.id && !inOutline ? 'view' : activeTab
+    activeTab === TABLE_TAB.id && !inTable
+      ? 'home'
+      : activeTab === OUTLINE_TAB.id && !inOutline
+        ? 'view'
+        : activeTab === HEADER_FOOTER_TAB.id && !inHeaderFooter
+          ? 'insert'
+          : activeTab
 
   const renderRibbon = () => {
     if (!editor || !toolbar) return null
@@ -474,6 +537,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         )
       case TABLE_TAB.id:
         return <TableTab />
+      case HEADER_FOOTER_TAB.id:
+        return <HeaderFooterTab />
       default:
         return <HomeTab state={toolbar} />
     }
@@ -639,7 +704,25 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               )}
               <div
                 ref={pageRef}
-                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''} ${hyphenation ? 'writer-page--hyphenate' : ''}`}
+                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''} ${hyphenation ? 'writer-page--hyphenate' : ''} ${inHeaderFooter ? 'writer-page--header-footer' : ''}`}
+                onDoubleClick={(event) => {
+                  // Doble clic en el margen superior o inferior de una hoja: editar su encabezado o pie.
+                  if (!paginated || multiPage || !pageRef.current) return
+                  const box = pageRef.current.getBoundingClientRect()
+                  const target = headerFooterAt(
+                    sheets,
+                    (event.clientX - box.left) / zoom,
+                    (event.clientY - box.top) / zoom
+                  )
+                  if (!target) return
+                  event.preventDefault()
+                  const current = headerFooterForPage(parts, target.page)[target.kind]
+                  setHeaderFooterEditing({
+                    ...target,
+                    align: current?.align ?? (target.kind === 'header' ? 'left' : 'center')
+                  })
+                  setActiveTab(HEADER_FOOTER_TAB.id)
+                }}
                 style={{
                   ...(paginated && { minHeight: sheetsHeight }),
                   ...pageCssVariables(geometry, pagesAcross, layoutWidth)
@@ -660,16 +743,42 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
                           ...sheetMarginVariables(sheet.geometry)
                         }}
                       >
-                        {parts.header && (
-                          <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
-                            {headerFooterText(parts.header, index + 1, pages.total)}
-                          </div>
-                        )}
-                        {parts.footer && (
-                          <div className={`writer-sheet__footer writer-sheet__part--${parts.footer.align}`}>
-                            {headerFooterText(parts.footer, index + 1, pages.total)}
-                          </div>
-                        )}
+                        {(['header', 'footer'] as const).map((kind) => {
+                          const part = headerFooterForPage(parts, index + 1)[kind]
+                          const editing = headerFooterEditing?.page === index + 1 && headerFooterEditing.kind === kind
+                          const align = editing ? (editingValue?.align ?? headerFooterEditing.align) : part?.align
+                          const className = `writer-sheet__${kind} writer-sheet__part--${align ?? 'left'}`
+                          if (editing) {
+                            const label = `${kind === 'header' ? 'Encabezado' : 'Pie de página'}${
+                              editingVariant && editingVariant !== 'default'
+                                ? ` de ${VARIANT_LABELS[editingVariant]}`
+                                : ''
+                            }`
+                            return (
+                              <div key={kind} className={`${className} writer-sheet__editing`}>
+                                <span className="writer-sheet__editing-label">{label}</span>
+                                <textarea
+                                  autoFocus
+                                  aria-label={label}
+                                  rows={1}
+                                  value={editingValue?.text ?? ''}
+                                  onChange={(event) => setEditingText(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') {
+                                      setHeaderFooterEditing(null)
+                                      editor?.commands.focus()
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )
+                          }
+                          return part ? (
+                            <div key={kind} className={className}>
+                              {headerFooterText(part, index + 1, pages.total)}
+                            </div>
+                          ) : null
+                        })}
                       </div>
                     ))}
                   </div>
@@ -678,7 +787,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               </div>
             </div>
             {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
-            <style>{printPageCss(sectionSetups, parts.header, parts.footer)}</style>
+            <style>
+              {printPageCss(sectionSetups, parts.header, parts.footer, {
+                first: parts.firstPage,
+                even: parts.evenPages
+              })}
+            </style>
             {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
             <style>{documentCss}</style>
           </div>
@@ -721,6 +835,22 @@ function pageCssVariables(
     '--multi-column-height': px(contentHeight + columnSlack),
     '--multi-row-gap': px(pitch - contentHeight - columnSlack)
   } as CSSProperties
+}
+
+/** Encabezado o pie de la hoja bajo un punto de `.writer-page` (px sin zoom), o null si cae en el texto. */
+function headerFooterAt(sheets: SheetBox[], x: number, y: number): { page: number; kind: HeaderFooterKind } | null {
+  const index = sheets.findIndex(
+    (sheet) =>
+      y >= sheet.top &&
+      y <= sheet.top + sheet.geometry.height &&
+      x >= sheet.left &&
+      x <= sheet.left + sheet.geometry.width
+  )
+  if (index < 0) return null
+  const { top, geometry } = sheets[index]
+  if (y < top + geometry.margins.top) return { page: index + 1, kind: 'header' }
+  if (y > top + geometry.height - geometry.margins.bottom) return { page: index + 1, kind: 'footer' }
+  return null
 }
 
 /** Márgenes de una hoja concreta: los leen su encabezado y su pie (cada sección tiene los suyos). */

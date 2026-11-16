@@ -121,14 +121,40 @@ export function readComments(root: Element | null, createId: () => string): Docx
 
 /** Relación del encabezado/pie por defecto de la última sección (la que manda en casi todos los documentos). */
 export function defaultHeaderFooterIds(documentRoot: Element): { header: string | null; footer: string | null } {
+  return headerFooterIds(documentRoot, 'default')
+}
+
+/**
+ * Relaciones del encabezado y el pie de un tipo (`default`, `first`, `even`). Se buscan en la
+ * primera sección que los tenga: las demás, en Word, heredan los de la anterior.
+ */
+export function headerFooterIds(
+  documentRoot: Element,
+  type: 'default' | 'first' | 'even'
+): { header: string | null; footer: string | null } {
   const sections = descendants(documentRoot, 'sectPr')
-  const section = sections.at(-1)
   const reference = (name: string): string | null => {
-    const references = childElements(section, name)
-    const chosen = references.find((ref) => attr(ref, 'type') === 'default') ?? references[0]
-    return relationAttr(chosen, 'id')
+    for (const section of type === 'default' ? [...sections].reverse() : sections) {
+      const references = childElements(section, name)
+      const chosen =
+        references.find((ref) => attr(ref, 'type') === type) ?? (type === 'default' ? references[0] : undefined)
+      if (chosen) return relationAttr(chosen, 'id')
+    }
+    return null
   }
   return { header: reference('headerReference'), footer: reference('footerReference') }
+}
+
+/** "Primera página diferente": `w:titlePg` en la primera sección. */
+export function hasTitlePage(documentRoot: Element): boolean {
+  const flag = child(descendants(documentRoot, 'sectPr')[0] ?? null, 'titlePg')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
+}
+
+/** "Pares e impares diferentes": `w:evenAndOddHeaders` en settings.xml. */
+export function hasEvenAndOddHeaders(settingsRoot: Element | null): boolean {
+  const flag = child(settingsRoot, 'evenAndOddHeaders')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
 }
 
 /**

@@ -93,6 +93,23 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     expect(blocks(content.doc)[1].attrs?.count).toBe(2)
   })
 
+  it('conserva primera página y pares distintas (w:titlePg, w:evenAndOddHeaders)', async () => {
+    const footer = { text: 'Página {página}', align: 'center' as const }
+    const bytes = await exportDocx({
+      doc: { type: 'doc', content: [paragraph([text('Hola')])] },
+      footer,
+      firstPage: {},
+      evenPages: { footer: { text: 'Par {página}', align: 'left' } }
+    })
+    const zip = await JSZip.loadAsync(bytes)
+    expect(await zip.file('word/document.xml')!.async('string')).toContain('<w:titlePg/>')
+    expect(await zip.file('word/settings.xml')!.async('string')).toContain('<w:evenAndOddHeaders/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    expect(content.footer).toEqual(footer)
+    expect(content.firstPage).toEqual({})
+    expect(content.evenPages).toEqual({ footer: { text: 'Par {página}', align: 'left' } })
+  })
+
   it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {
     const { content } = await roundTrip([paragraph([text('Hola')])])
     expect(content.pageSetup).toBeUndefined()

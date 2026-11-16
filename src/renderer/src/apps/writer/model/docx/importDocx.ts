@@ -4,10 +4,13 @@ import mammoth from 'mammoth'
 import type { ImportResult } from '@/core/appModule'
 import { createId } from '@/core/ids'
 import { parseXml, readRelationships, relsPathFor } from '@/core/office/xml'
-import type { HeaderFooter, WriterContent } from '../content'
+import type { HeaderFooter, HeaderFooterSet, WriterContent } from '../content'
 import { annotateDocumentXml, applyAnnotations, type DocxAnnotations } from './directFormatting'
 import {
   defaultHeaderFooterIds,
+  hasEvenAndOddHeaders,
+  hasTitlePage,
+  headerFooterIds,
   readAutoHyphenation,
   readComments,
   readHeaderFooter,
@@ -101,6 +104,8 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
   if (parts?.styles && !isDefaultStyles(parts.styles.styles)) content.styles = parts.styles.styles
   if (parts?.styles?.numberedHeadings) content.numberedHeadings = true
   if (parts?.hyphenation) content.hyphenation = true
+  if (parts?.firstPage) content.firstPage = parts.firstPage
+  if (parts?.evenPages) content.evenPages = parts.evenPages
   if (parts && parts.comments.length > 0) content.comments = parts.comments.map(({ comment }) => comment)
   return { content, warnings: describeLosses(lost) }
 }
@@ -117,6 +122,9 @@ interface DocxParts {
   styles: DocxStyleImport | null
   /** `w:autoHyphenation` de word/settings.xml (fase 15). */
   hyphenation: boolean
+  /** Primera página y pares distintas (fase 15); null si no están activadas. */
+  firstPage: HeaderFooterSet | null
+  evenPages: HeaderFooterSet | null
 }
 
 /**
@@ -146,6 +154,16 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
     const target = relationId ? rels.get(relationId)?.target : undefined
     return target ? parseOptionalXml(await readText(target)) : null
   }
+  const settingsRoot = parseOptionalXml(await readText('word/settings.xml'))
+  const readVariant = async (type: 'first' | 'even'): Promise<HeaderFooterSet> => {
+    const ids = headerFooterIds(documentRoot, type)
+    const set: HeaderFooterSet = {}
+    const header = readHeaderFooter(await readPart(ids.header))
+    if (header) set.header = header
+    const footer = readHeaderFooter(await readPart(ids.footer))
+    if (footer) set.footer = footer
+    return set
+  }
   const commentsTarget = [...rels.values()].find((rel) => rel.type.endsWith('/comments'))?.target
 
   return {
@@ -155,7 +173,9 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
     footer: readHeaderFooter(await readPart(footer)),
     pageSetup: readPageSetup(documentRoot),
     styles: readDocxStyles(stylesXml, usedStyleIds(documentRoot)),
-    hyphenation: readAutoHyphenation(parseOptionalXml(await readText('word/settings.xml'))),
+    hyphenation: readAutoHyphenation(settingsRoot),
+    firstPage: hasTitlePage(documentRoot) ? await readVariant('first') : null,
+    evenPages: hasEvenAndOddHeaders(settingsRoot) ? await readVariant('even') : null,
     comments: commentsTarget
       ? readComments(parseOptionalXml(await readText(commentsTarget)), () => createId('comment'))
       : []

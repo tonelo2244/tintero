@@ -1,4 +1,4 @@
-import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooter } from './content'
+import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooter, type HeaderFooterSet } from './content'
 import { cssPageSize, DEFAULT_PAGE_SETUP, pageGeometry, type PageSetup } from './pageSetup'
 
 /**
@@ -222,23 +222,43 @@ const MARGIN_BOX: Record<'header' | 'footer', Record<HeaderFooter['align'], stri
  * es una hoja con nombre (`@page tintero-section-N`) que usan sus bloques (clase `writer-section-N`,
  * que pone la paginación). Chromium cambia de hoja entre bloques con distinto nombre.
  */
-export function printPageCss(setup: PageSetup | PageSetup[], header?: HeaderFooter, footer?: HeaderFooter): string {
+export function printPageCss(
+  setup: PageSetup | PageSetup[],
+  header?: HeaderFooter,
+  footer?: HeaderFooter,
+  variants: { first?: HeaderFooterSet; even?: HeaderFooterSet } = {}
+): string {
   const setups = Array.isArray(setup) ? setup : [setup]
   const box = (kind: 'header' | 'footer', part?: HeaderFooter) => {
     if (!part || part.text.trim() === '') return ''
     return `${MARGIN_BOX[kind][part.align]} { content: ${cssContent(part.text)}; font: 10pt Calibri, Carlito, 'Segoe UI', Arial, sans-serif; color: #555; white-space: pre-wrap; }`
   }
+  /** En una variante, las cajas que no usa se vacían: si no, se vería la del encabezado normal. */
+  const variantBoxes = (set: HeaderFooterSet) =>
+    (['header', 'footer'] as const)
+      .flatMap((kind) =>
+        (['left', 'center', 'right'] as const).map((align) =>
+          set[kind]?.align === align ? box(kind, set[kind]) : `${MARGIN_BOX[kind][align]} { content: none; }`
+        )
+      )
+      .join(' ')
   const rule = (page: PageSetup) => {
     const { top, right, bottom, left } = page.margins
     const margin = `${top}cm ${right}cm ${bottom}cm ${left}cm`
     return `{ size: ${cssPageSize(page)}; margin: ${margin}; ${box('header', header)} ${box('footer', footer)} }`
   }
+  // "Primera página diferente" es la primera hoja impresa; las pares son las de la izquierda.
+  const variantRules = (name: string) =>
+    [
+      variants.first && name === '' ? `@page :first { ${variantBoxes(variants.first)} }` : '',
+      variants.even ? `@page ${name}:left { ${variantBoxes(variants.even)} }` : ''
+    ].join(' ')
   return setups
-    .map((page, index) =>
-      index === 0
-        ? `@page ${rule(page)}`
-        : `@page tintero-section-${index} ${rule(page)} .writer-section-${index} { page: tintero-section-${index}; }`
-    )
+    .map((page, index) => {
+      if (index === 0) return `@page ${rule(page)} ${variantRules('')}`
+      const name = `tintero-section-${index}`
+      return `@page ${name} ${rule(page)} ${variantRules(name)} .writer-section-${index} { page: ${name}; }`
+    })
     .join('\n')
 }
 

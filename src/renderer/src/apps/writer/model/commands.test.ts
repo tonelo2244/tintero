@@ -35,6 +35,14 @@ function setup(html: string) {
     toggleComments: () => calls.push('toggleComments'),
     headerFooterOpen: false,
     toggleHeaderFooter: () => calls.push('toggleHeaderFooter'),
+    headerFooterEditing: null,
+    closeHeaderFooterEditing: () => calls.push('closeHeaderFooter'),
+    insertHeaderFooterToken: (token) => calls.push(`token:${token}`),
+    setHeaderFooterAlign: (align) => calls.push(`align:${align}`),
+    differentFirstPage: false,
+    setDifferentFirstPage: (enabled) => calls.push(`first:${enabled}`),
+    differentEvenPages: false,
+    setDifferentEvenPages: (enabled) => calls.push(`even:${enabled}`),
     get pageSetup() {
       return pageSetup
     },
