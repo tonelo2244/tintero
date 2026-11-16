@@ -66,6 +66,9 @@ export interface WriterUi {
   stylesPanelOpen: boolean
   toggleStylesPanel(): void
   numberedHeadings: boolean
+  /** Guiones automáticos (Disposición > Guiones). */
+  hyphenation: boolean
+  setHyphenation(enabled: boolean): void
   setNumberedHeadings(numbered: boolean): void
   openTabStopsDialog(): void
   /** Vista y navegación (fase 14). */
@@ -478,6 +481,11 @@ export const WRITER_COMMANDS = {
     label: 'Orientación',
     run: ({ ui }, orientation: PageOrientation) => ui.setPageSetup(withOrientation(ui.pageSetup, orientation)),
     isActive: ({ ui }, orientation: PageOrientation) => ui.pageSetup.orientation === orientation
+  },
+  hyphenation: {
+    label: 'Guiones',
+    run: ({ ui }, enabled: boolean) => ui.setHyphenation(enabled),
+    isActive: ({ ui }, enabled: boolean) => ui.hyphenation === enabled
   },
   paperSize: {
     label: 'Tamaño',

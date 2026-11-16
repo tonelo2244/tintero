@@ -158,3 +158,9 @@ export function readPageSetup(documentRoot: Element): PageSetup | null {
     }
   })
 }
+
+/** `w:autoHyphenation` de settings.xml: Disposición > Guiones > Automático. */
+export function readAutoHyphenation(settingsRoot: Element | null): boolean {
+  const flag = child(settingsRoot, 'autoHyphenation')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
+}

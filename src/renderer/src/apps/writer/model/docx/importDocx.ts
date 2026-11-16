@@ -6,7 +6,14 @@ import { createId } from '@/core/ids'
 import { parseXml, readRelationships, relsPathFor } from '@/core/office/xml'
 import type { HeaderFooter, WriterContent } from '../content'
 import { annotateDocumentXml, applyAnnotations, type DocxAnnotations } from './directFormatting'
-import { defaultHeaderFooterIds, readComments, readHeaderFooter, readPageSetup, type DocxComment } from './docxParts'
+import {
+  defaultHeaderFooterIds,
+  readAutoHyphenation,
+  readComments,
+  readHeaderFooter,
+  readPageSetup,
+  type DocxComment
+} from './docxParts'
 import { isDefaultPageSetup, type PageSetup } from '../pageSetup'
 import { isDefaultStyles } from '../styles'
 import {
@@ -93,6 +100,7 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
   if (parts?.pageSetup && !isDefaultPageSetup(parts.pageSetup)) content.pageSetup = parts.pageSetup
   if (parts?.styles && !isDefaultStyles(parts.styles.styles)) content.styles = parts.styles.styles
   if (parts?.styles?.numberedHeadings) content.numberedHeadings = true
+  if (parts?.hyphenation) content.hyphenation = true
   if (parts && parts.comments.length > 0) content.comments = parts.comments.map(({ comment }) => comment)
   return { content, warnings: describeLosses(lost) }
 }
@@ -107,6 +115,8 @@ interface DocxParts {
   pageSetup: PageSetup | null
   /** Estilos de word/styles.xml (fase 13). */
   styles: DocxStyleImport | null
+  /** `w:autoHyphenation` de word/settings.xml (fase 15). */
+  hyphenation: boolean
 }
 
 /**
@@ -145,6 +155,7 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
     footer: readHeaderFooter(await readPart(footer)),
     pageSetup: readPageSetup(documentRoot),
     styles: readDocxStyles(stylesXml, usedStyleIds(documentRoot)),
+    hyphenation: readAutoHyphenation(parseOptionalXml(await readText('word/settings.xml'))),
     comments: commentsTarget
       ? readComments(parseOptionalXml(await readText(commentsTarget)), () => createId('comment'))
       : []

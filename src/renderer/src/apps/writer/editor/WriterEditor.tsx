@@ -10,6 +10,7 @@ import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import {
   withHeaderFooter,
+  withHyphenation,
   withNumberedHeadings,
   withPageSetup,
   withStyles,
@@ -150,10 +151,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     [updateParts]
   )
   const documentCss = useMemo(() => stylesCss(styles, numberedHeadings), [styles, numberedHeadings])
-  // Un estilo más grande cambia la altura de los párrafos: hay que volver a repartir las páginas.
+  const hyphenation = parts.hyphenation ?? false
+  // Un estilo más grande o partir palabras cambia la altura de los párrafos: hay que volver a repartir.
   useEffect(() => {
     editor?.storage.pagination.requestLayout?.()
-  }, [editor, documentCss])
+  }, [editor, documentCss, hyphenation])
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false)
   /** Cuadro de estilo abierto: `null` cerrado; `{ styleId: undefined }` crea uno nuevo. */
   const [styleDialog, setStyleDialog] = useState<{ styleId?: string } | null>(null)
@@ -293,6 +295,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     },
     numberedHeadings,
     setNumberedHeadings: (numbered) => updateParts((current) => withNumberedHeadings(current, numbered)),
+    hyphenation,
+    setHyphenation: (enabled) => updateParts((current) => withHyphenation(current, enabled)),
     openTabStopsDialog: () => {
       closeSidePanels()
       setTabStopsOpen(true)
@@ -595,7 +599,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               )}
               <div
                 ref={pageRef}
-                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''}`}
+                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''} ${hyphenation ? 'writer-page--hyphenate' : ''}`}
                 style={{
                   ...(paginated && {
                     minHeight: Math.ceil(pages.total / pagesAcross) * geometry.pitch - geometry.gap

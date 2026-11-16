@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 // @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
@@ -35,6 +36,14 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     const bytes = await exportDocx({ doc: { type: 'doc', content: [paragraph([text('Hola')])] }, pageSetup })
     const { content } = await importDocx(bytes, createWriterExtensions())
     expect(content.pageSetup).toEqual(pageSetup)
+  })
+
+  it('conserva los guiones automáticos (w:autoHyphenation)', async () => {
+    const bytes = await exportDocx({ doc: { type: 'doc', content: [paragraph([text('Hola')])] }, hyphenation: true })
+    const settings = await (await JSZip.loadAsync(bytes)).file('word/settings.xml')!.async('string')
+    expect(settings).toContain('<w:autoHyphenation/>')
+    expect((await importDocx(bytes, createWriterExtensions())).content.hyphenation).toBe(true)
+    expect((await roundTrip([paragraph([text('Hola')])])).content.hyphenation).toBeUndefined()
   })
 
   it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {

@@ -43,6 +43,8 @@ export interface WriterContent {
   styles?: WriterStyle[]
   /** Lista multinivel ligada a los títulos: 1, 1.1, 1.1.1… */
   numberedHeadings?: boolean
+  /** Guiones automáticos al final de renglón (fase 15). Sin él, no se parten palabras. */
+  hyphenation?: boolean
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -56,6 +58,7 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.pageSetup) parts.pageSetup = content.pageSetup
   if (content.styles) parts.styles = content.styles
   if (content.numberedHeadings) parts.numberedHeadings = true
+  if (content.hyphenation) parts.hyphenation = true
   return parts
 }
 
@@ -68,6 +71,11 @@ export function withStyles(parts: WriterParts, styles: WriterStyle[]): WriterPar
 export function withNumberedHeadings(parts: WriterParts, numbered: boolean): WriterParts {
   const { numberedHeadings: _previous, ...rest } = parts
   return numbered ? { ...rest, numberedHeadings: true } : rest
+}
+
+export function withHyphenation(parts: WriterParts, hyphenation: boolean): WriterParts {
+  const { hyphenation: _previous, ...rest } = parts
+  return hyphenation ? { ...rest, hyphenation: true } : rest
 }
 
 /** Cambia la configuración de página. La de por defecto no se guarda: el archivo queda como en la v3. */
@@ -104,6 +112,7 @@ export function parseWriterContent(raw: unknown): WriterContent {
   const styles = normalizeStyles(candidate.styles)
   if (styles && !isDefaultStyles(styles)) content.styles = styles
   if (candidate.numberedHeadings === true) content.numberedHeadings = true
+  if (candidate.hyphenation === true) content.hyphenation = true
   return content
 }
 

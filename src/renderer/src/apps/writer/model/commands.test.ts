@@ -57,6 +57,8 @@ function setup(html: string) {
     setNumberedHeadings: (value) => {
       numbered = value
     },
+    hyphenation: false,
+    setHyphenation: (enabled) => calls.push(`hyphenation:${enabled}`),
     openTabStopsDialog: () => calls.push('tabStopsDialog'),
     viewMode: 'print',
     setViewMode: (mode) => calls.push(`view:${mode}`),

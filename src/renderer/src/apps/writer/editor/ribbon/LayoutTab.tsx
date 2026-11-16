@@ -5,7 +5,8 @@ import {
   Scaling,
   Settings2,
   StickyNote,
-  TableColumnsSplit
+  TableColumnsSplit,
+  WrapText
 } from 'lucide-react'
 import { Dropdown, MenuItem, RibbonGroup } from '@/ui/Ribbon'
 import { formatCm, marginPresetOf, MARGIN_PRESETS, paperSizeOf, PAPER_SIZES } from '../../model/pageSetup'
@@ -151,6 +152,18 @@ export function LayoutTab({ state }: LayoutTabProps) {
       </RibbonGroup>
       <RibbonGroup label="Saltos">
         <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
+        <Dropdown label="Guiones" large trigger={<WrapText size={22} />}>
+          {(close) => (
+            <>
+              <CommandMenuItem command="hyphenation" arg={false} onDone={close}>
+                Ninguno
+              </CommandMenuItem>
+              <CommandMenuItem command="hyphenation" arg={true} onDone={close}>
+                Automático
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
       </RibbonGroup>
     </>
   )

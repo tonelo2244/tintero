@@ -108,6 +108,8 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const children = converter.blocks(content.doc.content ?? [])
   const document = new Document({
     creator: 'Tintero',
+    // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
+    ...(content.hyphenation && { hyphenation: { autoHyphenation: true } }),
     styles: docxStylesFor(content.styles ?? DEFAULT_STYLES, content.numberedHeadings),
     comments: { children: comments.map(commentOptions) },
     numbering: {

@@ -908,6 +908,11 @@ button {
   break-before: column;
 }
 
+/* Disposición > Guiones > Automático: el editor va con lang="es" y Chromium parte con su diccionario. */
+.writer-page--hyphenate .writer-content {
+  hyphens: auto;
+}
+
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
 .writer-content hr.writer-page-break {
   position: relative;
