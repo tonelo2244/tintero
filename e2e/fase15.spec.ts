@@ -51,6 +51,22 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   await page.getByRole('tab', { name: 'Insertar' }).click()
   await page.getByRole('button', { name: 'Tabla' }).first().click()
   await page.getByRole('button', { name: 'Tabla de 2 columnas por 2 filas' }).click()
+  console.log(
+    'DBGA',
+    await editor.evaluate((dom) =>
+      [...dom.children]
+        .slice(8)
+        .map((c) =>
+          c.outerHTML
+            .replace(/<col[^>]*>|style="[^"]*"|<br[^>]*>/g, '')
+            .replace(
+              /Este párrafo es largo a propósito para que cruce el final de la hoja y se tenga que partir por renglones. /g,
+              '~'
+            )
+        )
+        .join('\n')
+    )
+  )
   await page.keyboard.insertText('Nombre')
   await page.keyboard.press('Tab')
   await page.keyboard.insertText('Valor')
