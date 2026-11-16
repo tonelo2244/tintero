@@ -70,9 +70,29 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
     minúsculas**, **ordenar párrafos**, pegar solo texto y Seleccionar (todo, el párrafo).
   - .docx de ida y vuelta: `styles.xml` (integrados por nombre y los propios que se usan), `w:shd`,
     `w:pBdr`, `w:tabs`, `w:rStyle`, viñetas y formatos de número. Corpus Word y LibreOffice.
+- **Texto, vista y navegación** (fase 14):
+  - **Panel de navegación** (Vista o Ctrl/Cmd+Alt+N): árbol de títulos que se pliega, clic para
+    saltar, **arrastrar un título mueve su sección entera** (un solo paso de deshacer) y pestaña
+    **Páginas** con miniaturas de cada hoja.
+  - **Vistas**: Diseño de impresión, **Borrador** (sin hojas), **Esquema** (pestaña propia: subir y
+    bajar de nivel, mover secciones con Alt+Mayús+flechas, plegar, mostrar hasta un nivel) y
+    **Modo lectura** (sin cinta, columna cómoda, colores claro, sepia u oscuro; Esc para salir).
+    También desde la barra de estado.
+  - **Zoom**: 50–200 %, 100 %, **Una página** y **Ancho de página**; el zoom libre baja al 25 %.
+  - **Dividir**: una segunda vista del mismo documento con su propio cursor; lo que se escribe en
+    una aparece en la otra y Deshacer es común.
+  - Nueva pestaña **Revisar**: **Contar palabras** (páginas, palabras, caracteres con y sin
+    espacios, párrafos y líneas; de la selección si la hay; también al pulsar el recuento de la
+    barra de estado o con Ctrl/Cmd+Mayús+G), **Leer en voz alta** con las voces del sistema,
+    resaltando la frase, con pausa, frase anterior y siguiente, velocidad y voz, y los comentarios.
+  - La **Regla** pasa de Disposición a Vista > Mostrar, como en Word.
 
 ### Corregido
 
+- Texto: el salto de página (Ctrl/Cmd+Intro) se quedaba seleccionado en algunos documentos y lo
+  primero que escribías lo borraba.
+- Texto: la barra de estado decía «Página 1» con el cursor en la primera línea de la página 2, y no
+  se actualizaba cuando la paginación bajaba el párrafo del cursor a la hoja siguiente.
 - Hojas: «Ajustar texto» no partía las líneas en pantalla (una regla CSS posterior lo anulaba).
 
 ### Cambiado
