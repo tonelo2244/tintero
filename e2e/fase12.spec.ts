@@ -31,7 +31,8 @@ test('Texto: página horizontal con márgenes estrechos, salto de página y sang
   await editor.getByText('Segunda hoja').click()
   const leftIndent = page.getByRole('slider', { name: 'Sangría izquierda' })
   await leftIndent.focus()
-  for (let step = 0; step < 4; step++) await leftIndent.press('ArrowRight')
+  // Como una persona: el foco se queda en la marca entre pulsación y pulsación.
+  for (let step = 0; step < 4; step++) await page.keyboard.press('ArrowRight')
   await expect(leftIndent).toHaveAttribute('aria-valuenow', '1')
   await expect(editor.locator('p', { hasText: 'Segunda hoja' })).toHaveAttribute('style', /margin-left: 1cm/)
   // El primer bloque de la segunda hoja empieza justo debajo de su margen superior (1,27 cm).

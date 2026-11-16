@@ -697,8 +697,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
                   onMarginsChange={(margins) => setSectionSetup(withMargins(sectionSetup, margins))}
                   tabStops={toolbar?.paragraph.tabStops ?? []}
                   onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
+                  // Sin focus(): con las flechas, el foco se queda en la marca de la regla para el paso siguiente.
                   onIndentsChange={(indents) =>
-                    editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
+                    editor?.chain().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
                   }
                 />
               )}

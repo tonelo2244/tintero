@@ -47,7 +47,7 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   await page.keyboard.insertText(LONG_SENTENCE.repeat(30))
   await page.keyboard.press('Enter')
 
-  // Una tabla con fila de encabezado y muchas filas.
+  // Una tabla con fila de encabezado y filas de sobra para pasar de hoja aunque empiece arriba.
   await page.getByRole('tab', { name: 'Insertar' }).click()
   await page.getByRole('button', { name: 'Tabla' }).first().click()
   await page.getByRole('button', { name: 'Tabla de 2 columnas por 2 filas' }).click()
@@ -58,11 +58,11 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   await page.getByRole('button', { name: 'Fila de encabezado' }).click()
   await expect(editor.locator('th')).toHaveCount(2)
   await editor.locator('td').first().click()
-  for (let row = 1; row <= 45; row++) {
+  for (let row = 1; row <= 70; row++) {
     await page.keyboard.insertText(`Fila ${row}`)
     await page.keyboard.press('Tab')
     await page.keyboard.insertText(String(row * 10))
-    if (row < 45) await page.keyboard.press('Tab')
+    if (row < 70) await page.keyboard.press('Tab')
   }
 
   // El párrafo largo se parte (un hueco dentro de él) y la tabla repite su encabezado en cada hoja.
