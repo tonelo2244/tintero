@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type MouseEvent as ReactMouseEvent
+} from 'react'
 import { ChevronDown } from 'lucide-react'
 
 /** Grupo de controles con etiqueta inferior ("Fuente", "Párrafo", ...). */
@@ -69,13 +77,35 @@ interface DropdownProps {
   children: (close: () => void) => ReactNode
 }
 
-/** Botón con menú desplegable. Se cierra al hacer clic fuera o pulsar Escape. */
+/**
+ * Botón con menú desplegable. Se cierra al hacer clic fuera o pulsar Escape.
+ *
+ * El menú va con `position: fixed` en las coordenadas del botón: la cinta tiene `overflow` (para
+ * desplazarse en ventanas estrechas) y recortaría un menú posicionado dentro de ella.
+ */
 export function Dropdown({ label, trigger, large, showLabel, disabled, children }: DropdownProps) {
   const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<CSSProperties | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Antes de pintar: bajo el botón y sin salirse de la ventana por la derecha.
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return
+    const anchor = rootRef.current.getBoundingClientRect()
+    const width = menuRef.current?.offsetWidth ?? 0
+    const left = Math.max(4, Math.min(anchor.left, window.innerWidth - width - 4))
+    setPosition({ position: 'fixed', top: anchor.bottom + 4, left })
+  }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setPosition(null)
+      return
+    }
+    // Si la ventana cambia de tamaño o se desplaza la cinta, el menú ya no estaría bajo su botón.
+    const close = () => setOpen(false)
+    window.addEventListener('resize', close)
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
@@ -87,6 +117,7 @@ export function Dropdown({ label, trigger, large, showLabel, disabled, children 
     return () => {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
     }
   }, [open])
 
@@ -107,7 +138,12 @@ export function Dropdown({ label, trigger, large, showLabel, disabled, children 
         <ChevronDown size={10} className="dropdown__chevron" />
       </button>
       {open && (
-        <div className="dropdown__menu" onMouseDown={(event) => event.preventDefault()}>
+        <div
+          ref={menuRef}
+          className="dropdown__menu"
+          style={position ?? { position: 'fixed', visibility: 'hidden' }}
+          onMouseDown={(event) => event.preventDefault()}
+        >
           {children(() => setOpen(false))}
         </div>
       )}

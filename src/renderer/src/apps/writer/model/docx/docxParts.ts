@@ -1,4 +1,4 @@
-import { attr, childElements, descendants, path, relationAttr } from '@/core/office/xml'
+import { attr, child, childElements, descendants, path, relationAttr } from '@/core/office/xml'
 import {
   PAGE_COUNT_TOKEN,
   PAGE_NUMBER_TOKEN,
@@ -6,6 +6,9 @@ import {
   type HeaderFooterAlign,
   type WriterComment
 } from '../content'
+import { DEFAULT_PAGE_SETUP, normalizePageSetup, type PageSetup } from '../pageSetup'
+
+const TWIPS_PER_CM = 1440 / 2.54
 
 /**
  * Partes del .docx que mammoth no lee: encabezado, pie y el contenido de los comentarios.
@@ -126,4 +129,32 @@ export function defaultHeaderFooterIds(documentRoot: Element): { header: string 
     return relationAttr(chosen, 'id')
   }
   return { header: reference('headerReference'), footer: reference('footerReference') }
+}
+
+/**
+ * Tamaño, orientación y márgenes de la última sección (`w:pgSz`, `w:pgMar`, en twips). Un documento
+ * con varias secciones se queda con la última: las secciones llegan en la fase 15.
+ */
+export function readPageSetup(documentRoot: Element): PageSetup | null {
+  const section = descendants(documentRoot, 'sectPr').at(-1)
+  const size = child(section ?? null, 'pgSz')
+  const cm = (element: Element | null, name: string) => {
+    const value = Number(attr(element, name))
+    return Number.isFinite(value) && attr(element, name) !== null ? value / TWIPS_PER_CM : undefined
+  }
+  const width = cm(size, 'w')
+  const height = cm(size, 'h')
+  if (width === undefined || height === undefined) return null
+  const margins = child(section ?? null, 'pgMar')
+  const orientation = attr(size, 'orient') === 'landscape' || width > height ? 'landscape' : 'portrait'
+  return normalizePageSetup({
+    size: { width, height },
+    orientation,
+    margins: {
+      top: Math.abs(cm(margins, 'top') ?? DEFAULT_PAGE_SETUP.margins.top),
+      right: cm(margins, 'right'),
+      bottom: Math.abs(cm(margins, 'bottom') ?? DEFAULT_PAGE_SETUP.margins.bottom),
+      left: cm(margins, 'left')
+    }
+  })
 }

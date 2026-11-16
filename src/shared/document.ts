@@ -14,8 +14,11 @@ export const FILE_FORMAT_ID = 'tintero'
  *      nuevos y opcionales, así que un archivo de la versión 2 se lee tal cual (no hay migración);
  *      subir la versión sirve para lo contrario: que un Tintero anterior, que no sabría pintar un
  *      grupo, diga "versión más nueva" en lugar de abrir la presentación a medias.
+ *   4. Texto: configuración de página (`pageSetup`: tamaño, orientación y márgenes) y saltos de
+ *      página. Igual que en la 3, campos opcionales sin migración: un documento sin `pageSetup` es
+ *      A4 con 2,5 cm, que es lo que siempre fue.
  */
-export const FILE_FORMAT_VERSION = 3
+export const FILE_FORMAT_VERSION = 4
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

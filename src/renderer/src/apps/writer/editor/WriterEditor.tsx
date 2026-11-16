@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import { MessagesSquare, Presentation } from 'lucide-react'
 import type { EditorProps } from '@/core/appModule'
@@ -8,17 +8,29 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
-import { withHeaderFooter, writerParts, type WriterContent, type WriterParts } from '../model/content'
-import { headerFooterText, PAGE, PAGE_PITCH, printPageCss } from '../model/pageLayout'
+import { withHeaderFooter, withPageSetup, writerParts, type WriterContent, type WriterParts } from '../model/content'
+import type { CommandContext, WriterUi } from '../model/commands'
+import { runCommand } from '../model/commands'
+import { headerFooterText, printPageCss } from '../model/pageLayout'
+import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
+import { CommandShortcuts } from './CommandShortcuts'
 import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { HeaderFooterPanel } from './HeaderFooterPanel'
+import { PageSetupDialog } from './PageSetupDialog'
 import { Pagination } from './Pagination'
 import { PresentationPanel } from './PresentationPanel'
+import { Ruler } from './Ruler'
+import { WriterCommandsProvider } from './ribbon/commandContext'
+import { HomeTab } from './ribbon/HomeTab'
+import { InsertTab } from './ribbon/InsertTab'
+import { LayoutTab } from './ribbon/LayoutTab'
+import { TableTab } from './ribbon/TableTab'
+import { TABLE_TAB, visibleTabs } from './ribbon/tabs'
 import { usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
@@ -26,22 +38,14 @@ import { useAskDocuments } from './useAskDocuments'
 import { useWritingAssistant } from './useWritingAssistant'
 import { useWriterComments } from './useWriterComments'
 import { WriterAssistantTab } from './WriterAssistantTab'
-import { WriterHomeTab, WriterInsertTab } from './WriterRibbon'
-import { WriterTableTab } from './WriterTableTab'
 import { WriterStatusBar } from './WriterStatusBar'
-
-const TABS = [
-  { id: 'home', label: 'Inicio' },
-  { id: 'insert', label: 'Insertar' },
-  { id: 'assistant', label: 'Asistente' }
-]
-/** Pestaña contextual: solo existe mientras el cursor está dentro de una tabla. */
-const TABLE_TAB = { id: 'table', label: 'Tabla' }
 
 export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
   const [activeTab, setActiveTab] = useState('home')
   const [zoom, setZoom] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
+  const [showRuler, setShowRuler] = useState(true)
+  const [pageSetupOpen, setPageSetupOpen] = useState(false)
   const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
   /*
    * Encabezado, pie y comentarios no son parte del estado de Tiptap. Se guardan aquí y se mandan
@@ -50,14 +54,26 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [parts, setParts] = useState<WriterParts>(() => writerParts(initialContent))
   const partsRef = useRef(parts)
 
-  // La paginación solo hace falta en pantalla: no cambia el esquema, así que no va en la lista común.
-  const extensions = useMemo(() => [...createWriterExtensions(), Pagination], [])
+  /** El contexto de los comandos cambia en cada render; los atajos de teclado leen siempre el último. */
+  const commandContextRef = useRef<CommandContext | null>(null)
+  // Paginación y atajos solo hacen falta en pantalla: no cambian el esquema, así que no van en la lista común.
+  const extensions = useMemo(
+    () => [
+      ...createWriterExtensions(),
+      Pagination,
+      CommandShortcuts.configure({ getContext: () => commandContextRef.current })
+    ],
+    []
+  )
   const editor = useEditor({
     extensions,
     content: initialContent.doc,
     autofocus: 'end',
     editorProps: {
-      attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' }
+      attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' },
+      // Al seguir el cursor, que no quede debajo de la regla (pegada arriba del lienzo).
+      scrollMargin: { top: 48, bottom: 24, left: 0, right: 0 },
+      scrollThreshold: { top: 48, bottom: 24, left: 0, right: 0 }
     },
     onUpdate: ({ editor: current }) => onChange({ ...partsRef.current, doc: current.getJSON() })
   })
@@ -74,6 +90,17 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const comments = useWriterComments(editor, parts.comments ?? [], updateParts)
   const [headerFooterOpen, setHeaderFooterOpen] = useState(false)
 
+  const pageSetup = parts.pageSetup ?? DEFAULT_PAGE_SETUP
+  const geometry = useMemo(() => pageGeometry(pageSetup), [pageSetup])
+  const setPageSetup = useCallback(
+    (next: PageSetup) => updateParts((current) => withPageSetup(current, next)),
+    [updateParts]
+  )
+  // La paginación reparte con el alto útil de la hoja del documento.
+  useEffect(() => {
+    editor?.commands.setPageGeometry(geometry)
+  }, [editor, geometry])
+
   const toolbar = useWriterToolbarState(editor)
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
   const ai = useAiStatus()
@@ -87,11 +114,41 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
 
-  // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja).
+  /** Lo que los comandos pueden pedir a esta pantalla (paneles, buscar, configuración de página). */
+  const ui: WriterUi = {
+    showMarks,
+    toggleMarks: () => setShowMarks((value) => !value),
+    openFind,
+    addComment: comments.add,
+    commentsOpen: comments.open,
+    toggleComments: () => {
+      setHeaderFooterOpen(false) // los paneles van en el mismo sitio
+      setPageSetupOpen(false)
+      comments.setOpen(!comments.open)
+    },
+    headerFooterOpen,
+    toggleHeaderFooter: () => {
+      comments.setOpen(false)
+      setPageSetupOpen(false)
+      setHeaderFooterOpen((open) => !open)
+    },
+    pageSetup,
+    setPageSetup,
+    openPageSetupDialog: () => {
+      comments.setOpen(false)
+      setHeaderFooterOpen(false)
+      setPageSetupOpen(true)
+    }
+  }
+  const commandContext: CommandContext | null = editor ? { editor, ui } : null
+  commandContextRef.current = commandContext
+
+  // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja): los mismos comandos que la cinta.
   useEffect(
     () =>
       platform.onMenuCommand((command) => {
-        if (command === 'find' || command === 'replace') openFind(command)
+        const context = commandContextRef.current
+        if (context && (command === 'find' || command === 'replace')) runCommand(context, command)
       }),
     []
   )
@@ -153,7 +210,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   const readyModel = ai.status?.state === 'ready' ? ai.status.model : null
   const inTable = toolbar?.table.active ?? false
-  const tabs = inTable ? [...TABS, TABLE_TAB] : TABS
+  const tabs = visibleTabs(inTable)
   // Si el cursor sale de la tabla con su pestaña abierta, se vuelve a Inicio (la pestaña desaparece).
   const visibleTab = activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab
 
@@ -161,24 +218,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     if (!editor || !toolbar) return null
     switch (visibleTab) {
       case 'insert':
-        return (
-          <WriterInsertTab
-            editor={editor}
-            hasSelection={hasSelection ?? false}
-            commentCount={comments.count}
-            commentsOpen={comments.open}
-            onAddComment={comments.add}
-            onToggleComments={() => {
-              setHeaderFooterOpen(false) // los dos paneles van en el mismo sitio
-              comments.setOpen(!comments.open)
-            }}
-            headerFooterOpen={headerFooterOpen}
-            onToggleHeaderFooter={() => {
-              comments.setOpen(false)
-              setHeaderFooterOpen((open) => !open)
-            }}
-          />
-        )
+        return <InsertTab commentCount={comments.count} />
+      case 'layout':
+        return <LayoutTab showRuler={showRuler} onToggleRuler={() => setShowRuler((value) => !value)} />
       case 'assistant':
         return (
           <WriterAssistantTab
@@ -205,17 +247,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           />
         )
       case TABLE_TAB.id:
-        return <WriterTableTab editor={editor} state={toolbar} />
+        return <TableTab />
       default:
-        return (
-          <WriterHomeTab
-            editor={editor}
-            state={toolbar}
-            showMarks={showMarks}
-            onToggleMarks={() => setShowMarks((value) => !value)}
-            onFind={openFind}
-          />
-        )
+        return <HomeTab state={toolbar} />
     }
   }
 
@@ -235,7 +269,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       tabs={tabs}
       activeTab={visibleTab}
       onTabChange={setActiveTab}
-      ribbon={renderRibbon()}
+      ribbon={
+        commandContext && <WriterCommandsProvider value={commandContext}>{renderRibbon()}</WriterCommandsProvider>
+      }
       statusBar={
         <WriterStatusBar
           currentPage={pages.current}
@@ -278,6 +314,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           onClose={() => comments.setOpen(false)}
         />
       )}
+      {pageSetupOpen && (
+        <PageSetupDialog pageSetup={pageSetup} onApply={setPageSetup} onClose={() => setPageSetupOpen(false)} />
+      )}
       {headerFooterOpen && (
         <HeaderFooterPanel
           header={parts.header}
@@ -300,14 +339,29 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         }}
       >
         <div className="writer-zoom" style={{ zoom }}>
+          {showRuler && (
+            <Ruler
+              pageSetup={pageSetup}
+              indents={toolbar?.indents ?? null}
+              zoom={zoom}
+              onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+              onIndentsChange={(indents) =>
+                editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
+              }
+            />
+          )}
           <div
             className={`writer-page ${showMarks ? 'show-marks' : ''}`}
-            style={{ minHeight: pages.total * PAGE_PITCH - PAGE.gap }}
+            style={{ minHeight: pages.total * geometry.pitch - geometry.gap, ...pageCssVariables(geometry) }}
           >
             {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
             <div className="writer-sheets" aria-hidden>
               {Array.from({ length: pages.total }, (_, index) => (
-                <div key={index} className="writer-sheet" style={{ top: index * PAGE_PITCH, height: PAGE.height }}>
+                <div
+                  key={index}
+                  className="writer-sheet"
+                  style={{ top: index * geometry.pitch, height: geometry.height }}
+                >
                   {parts.header && (
                     <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
                       {headerFooterText(parts.header, index + 1, pages.total)}
@@ -324,9 +378,25 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             <EditorContent editor={editor} />
           </div>
         </div>
-        {/* Impresión y PDF: hoja A4 con los mismos márgenes que en pantalla, y encabezado y pie. */}
-        <style>{printPageCss(parts.header, parts.footer)}</style>
+        {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
+        <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
       </div>
     </EditorLayout>
   )
+}
+
+/**
+ * Medidas de la hoja como variables CSS: la hoja, el área de texto, el encabezado y el pie las
+ * leen en global.css. Un solo sitio decide las medidas (model/pageSetup.ts); el CSS solo las usa.
+ */
+function pageCssVariables(geometry: ReturnType<typeof pageGeometry>): CSSProperties {
+  const px = (value: number) => `${value.toFixed(2)}px`
+  return {
+    '--page-width': px(geometry.width),
+    '--page-content-height': px(geometry.contentHeight),
+    '--margin-top': px(geometry.margins.top),
+    '--margin-right': px(geometry.margins.right),
+    '--margin-bottom': px(geometry.margins.bottom),
+    '--margin-left': px(geometry.margins.left)
+  } as CSSProperties
 }

@@ -18,10 +18,11 @@ from datetime import datetime
 from pathlib import Path
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
+from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK, WD_COLOR_INDEX
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt, RGBColor
+from docx.shared import Cm, Pt, RGBColor
 from openpyxl import Workbook
 from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, FormulaRule
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -143,6 +144,27 @@ def powerpoint_presentation(path):
     presentation.save(path)
 
 
+def word_page_layout(path):
+    """Fase 12: carta apaisada con márgenes propios, salto de página y sangrías."""
+    document = Document()
+    section = document.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width, section.page_height = Cm(27.94), Cm(21.59)
+    section.top_margin = section.bottom_margin = Cm(2)
+    section.left_margin, section.right_margin = Cm(3), Cm(1.5)
+
+    document.add_paragraph("Primera hoja")
+    indented = document.add_paragraph("Sangría izquierda y primera línea")
+    indented.paragraph_format.left_indent = Cm(2)
+    indented.paragraph_format.first_line_indent = Cm(1)
+    hanging = document.add_paragraph("Sangría francesa")
+    hanging.paragraph_format.left_indent = Cm(1.27)
+    hanging.paragraph_format.first_line_indent = Cm(-1.27)
+    document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+    document.add_paragraph("Segunda hoja")
+    document.save(path)
+
+
 def libreoffice_copy(source, target, extension):
     """Abre el archivo con LibreOffice y lo vuelve a guardar: otro programa, otro XML."""
     with tempfile.TemporaryDirectory() as folder:
@@ -156,9 +178,11 @@ def libreoffice_copy(source, target, extension):
 
 if __name__ == "__main__":
     word_document(HERE / "word-formato-directo.docx")
+    word_page_layout(HERE / "word-pagina.docx")
     excel_workbook(HERE / "excel-formato.xlsx")
     powerpoint_presentation(HERE / "powerpoint-tema.pptx")
     libreoffice_copy(HERE / "word-formato-directo.docx", HERE / "libreoffice-formato-directo.docx", "docx")
+    libreoffice_copy(HERE / "word-pagina.docx", HERE / "libreoffice-pagina.docx", "docx")
     libreoffice_copy(HERE / "excel-formato.xlsx", HERE / "libreoffice-formato.xlsx", "xlsx")
     libreoffice_copy(HERE / "powerpoint-tema.pptx", HERE / "libreoffice-tema.pptx", "pptx")
     print("Corpus regenerado en", HERE)

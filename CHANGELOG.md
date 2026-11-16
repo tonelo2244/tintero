@@ -45,6 +45,17 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
   - **Texto**: hojas A4 reales en pantalla (cada bloque baja a la hoja siguiente si no cabe) con
     encabezado y pie, número de página y total (Insertar → Encabezado y pie de página). Imprimir
     y exportar a PDF cortan en los mismos sitios y llevan el encabezado y el pie.
+- **Texto, cimientos de la cinta y la página** (fase 12):
+  - Pestaña **Disposición**: márgenes (Normal, Estrecho, Moderado, Ancho o personalizados),
+    orientación vertical u horizontal y tamaño de papel (A4, A5, Carta, Legal o personalizado).
+    La pantalla, la impresión, el PDF y el .docx (`w:sectPr`) usan la misma configuración.
+  - **Salto de página** (Insertar o Disposición → Salto de página, o Ctrl/Cmd+Intro); se
+    importa y exporta en .docx.
+  - **Regla** sobre la hoja: arrastrar los márgenes o la sangría izquierda y la de primera línea
+    (también francesa); con el foco, las flechas mueven cada marca 0,25 cm.
+  - Registro de comandos (`model/commands.ts`): la cinta, los atajos y el menú nativo ejecutan
+    los mismos comandos. Cada pestaña de la cinta vive en su archivo (`editor/ribbon/`).
+  - .docx: se importan la sangría izquierda, la de primera línea y la francesa.
 
 ### Corregido
 
@@ -52,6 +63,8 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 4 (configuración de página y saltos de página en Texto). Un documento
+  sin configuración es A4 con 2,5 cm, como antes.
 - Formato de archivo versión 3 (por los grupos de Diapositivas). Los archivos anteriores se abren
   igual; un Tintero anterior avisa de que el archivo es de una versión más nueva.
 - Diapositivas: orden, grupos, alineación y giro pasan a un único menú **Organizar** en Inicio.

@@ -113,9 +113,28 @@ describe('exportDocx', () => {
     expect(xml).toContain('<w:tblHeader/>')
     expect(xml).toContain('<w:gridSpan w:val="2"/>')
     expect(xml).toContain('<w:vMerge w:val="restart"/>')
-    // 200 px -> 3000 twips; el resto del ancho útil (9070) va a la segunda columna.
+    // 200 px -> 3000 twips; el resto del ancho útil (9071) va a la segunda columna.
     expect(xml).toContain('<w:gridCol w:w="3000"/>')
-    expect(xml).toContain('<w:gridCol w:w="6070"/>')
+    expect(xml).toContain('<w:gridCol w:w="6071"/>')
     expect(xml).toContain('w:fill="F2F2F2"')
+  })
+
+  it('escribe la configuración de página en w:sectPr, ya girada en horizontal', async () => {
+    const bytes = await exportDocx({
+      doc: { type: 'doc', content: [] },
+      pageSetup: {
+        size: { width: 21, height: 29.7 },
+        orientation: 'landscape',
+        margins: { top: 1, right: 2, bottom: 1, left: 2 }
+      }
+    })
+    const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml')!.async('string')
+    expect(xml).toContain('<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>')
+    expect(xml).toContain('w:top="567" w:right="1134" w:bottom="567" w:left="1134"')
+  })
+
+  it('el salto de página es un w:br de tipo página', async () => {
+    const xml = await documentXml([paragraph([text('Uno')]), { type: 'pageBreak' }, paragraph([text('Dos')])])
+    expect(xml).toContain('<w:br w:type="page"/>')
   })
 })

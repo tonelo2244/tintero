@@ -1,4 +1,5 @@
 import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooter } from './content'
+import { cssPageSize, DEFAULT_PAGE_SETUP, pageGeometry, type PageSetup } from './pageSetup'
 
 /**
  * Paginación de Texto: en qué bloque empieza cada página. Es lógica pura (cajas medidas -> saltos),
@@ -6,21 +7,8 @@ import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooter } from './conten
  * (editor/Pagination.ts) mide los bloques, llama a `paginate` y aplica el resultado.
  */
 
-const PX_PER_CM = 96 / 2.54
-
-/** Hoja A4 (21 x 29,7 cm) con márgenes de 2,5 cm, los mismos que `@page` al imprimir. */
-export const PAGE = {
-  width: 21 * PX_PER_CM,
-  height: 29.7 * PX_PER_CM,
-  margin: 2.5 * PX_PER_CM,
-  /** Separación gris entre hojas en pantalla (no existe al imprimir). */
-  gap: 24
-} as const
-
-/** Alto útil de una hoja: lo que cabe entre los márgenes. */
-export const PAGE_CONTENT_HEIGHT = PAGE.height - 2 * PAGE.margin
-/** Distancia en pantalla del principio de una hoja al de la siguiente. */
-export const PAGE_PITCH = PAGE.height + PAGE.gap
+/** Hoja por defecto (A4 con 2,5 cm). Las funciones reciben la geometría del documento; esto es su valor por omisión. */
+export const DEFAULT_GEOMETRY = pageGeometry(DEFAULT_PAGE_SETUP)
 
 /**
  * Holgura: un bloque que acaba a menos de esto del final de la hoja pasa a la siguiente. Evita que
@@ -32,6 +20,8 @@ const SAFETY_PX = 2
 export interface MeasuredBlock {
   top: number
   bottom: number
+  /** Va detrás de un salto de página: empieza hoja nueva aunque quepa en la actual. */
+  breakBefore?: boolean
 }
 
 /** Un bloque que debe empezar hoja nueva y cuánto hay que bajarlo para que lo haga. */
@@ -48,13 +38,17 @@ export interface PageLayout {
 
 /**
  * Reparte los bloques en hojas. Coordenadas: 0 es el principio del área de texto de la primera
- * hoja; la hoja `n` tiene su área de texto en [n·PAGE_PITCH, n·PAGE_PITCH + PAGE_CONTENT_HEIGHT).
+ * hoja; la hoja `n` tiene su área de texto en [n·pitch, n·pitch + contentHeight).
  *
  * Un bloque que no cabe entero en lo que queda de hoja empieza en la siguiente (no se parten
  * párrafos: es la opción "conservar líneas juntas" de Word aplicada a todo). Un bloque más alto
  * que una hoja entera empieza arriba de una y se sale por abajo: es el caso raro que no cubrimos.
  */
-export function paginate(blocks: MeasuredBlock[], pitch = PAGE_PITCH, contentHeight = PAGE_CONTENT_HEIGHT): PageLayout {
+export function paginate(
+  blocks: MeasuredBlock[],
+  pitch = DEFAULT_GEOMETRY.pitch,
+  contentHeight = DEFAULT_GEOMETRY.contentHeight
+): PageLayout {
   const breaks: PageBreak[] = []
   let added = 0
   let lastBottom = 0
@@ -65,8 +59,10 @@ export function paginate(blocks: MeasuredBlock[], pitch = PAGE_PITCH, contentHei
     const pageStart = page * pitch
     const pageEnd = pageStart + contentHeight - SAFETY_PX
     const startsInGap = top >= pageEnd
-    const overflows = bottom > pageEnd && top > pageStart + SAFETY_PX
-    if (startsInGap || overflows) {
+    const atPageStart = top <= pageStart + SAFETY_PX
+    const overflows = bottom > pageEnd && !atPageStart
+    const forced = block.breakBefore === true && !atPageStart
+    if (startsInGap || overflows || forced) {
       const shift = (page + 1) * pitch - top
       breaks.push({ index, shift })
       added += shift
@@ -78,7 +74,7 @@ export function paginate(blocks: MeasuredBlock[], pitch = PAGE_PITCH, contentHei
 }
 
 /** En qué hoja (desde 1) cae una altura medida desde el principio del área de texto. */
-export function pageAt(y: number, pageCount: number, pitch = PAGE_PITCH): number {
+export function pageAt(y: number, pageCount: number, pitch = DEFAULT_GEOMETRY.pitch): number {
   return Math.min(pageCount, Math.max(1, Math.floor(y / pitch) + 1))
 }
 
@@ -97,12 +93,14 @@ const MARGIN_BOX: Record<'header' | 'footer', Record<HeaderFooter['align'], stri
  * hoja. Chromium numera las páginas con `counter(page)` y `counter(pages)`: así el número es el de
  * la hoja impresa, sin que tengamos que adivinarlo.
  */
-export function printPageCss(header?: HeaderFooter, footer?: HeaderFooter): string {
+export function printPageCss(setup: PageSetup, header?: HeaderFooter, footer?: HeaderFooter): string {
   const box = (kind: 'header' | 'footer', part?: HeaderFooter) => {
     if (!part || part.text.trim() === '') return ''
     return `${MARGIN_BOX[kind][part.align]} { content: ${cssContent(part.text)}; font: 10pt Calibri, Carlito, 'Segoe UI', Arial, sans-serif; color: #555; white-space: pre-wrap; }`
   }
-  return `@page { size: A4; margin: 2.5cm; ${box('header', header)} ${box('footer', footer)} }`
+  const { top, right, bottom, left } = setup.margins
+  const margin = `${top}cm ${right}cm ${bottom}cm ${left}cm`
+  return `@page { size: ${cssPageSize(setup)}; margin: ${margin}; ${box('header', header)} ${box('footer', footer)} }`
 }
 
 /** Texto con marcadores -> valor de `content` de CSS: cadenas escapadas y contadores. */
