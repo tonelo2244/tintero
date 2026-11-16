@@ -2,17 +2,27 @@ import { Extension } from '@tiptap/core'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
-import { paginate, type MeasuredBlock } from '../model/pageLayout'
+import { DEFAULT_GEOMETRY, paginate, type MeasuredBlock } from '../model/pageLayout'
+import type { PageGeometry } from '../model/pageSetup'
 
 declare module '@tiptap/core' {
   interface Storage {
     pagination: PaginationStorage
+  }
+  interface Commands<ReturnType> {
+    pagination: {
+      /** Cambia el tamaño útil de la hoja (configuración de página) y vuelve a repartir los bloques. */
+      setPageGeometry: (geometry: PageGeometry) => ReturnType
+    }
   }
 }
 
 export interface PaginationStorage {
   /** Hojas que ocupa el documento según la última medición. */
   pageCount: number
+  geometry: PageGeometry
+  /** Lo rellena la vista del plugin: pide un reparto nuevo en el siguiente fotograma. */
+  requestLayout: (() => void) | null
 }
 
 const paginationKey = new PluginKey<DecorationSet>('pagination')
@@ -37,7 +47,17 @@ export const Pagination = Extension.create<object, PaginationStorage>({
   name: 'pagination',
 
   addStorage() {
-    return { pageCount: 1 }
+    return { pageCount: 1, geometry: DEFAULT_GEOMETRY, requestLayout: null }
+  },
+
+  addCommands() {
+    return {
+      setPageGeometry: (geometry) => () => {
+        this.storage.geometry = geometry
+        this.storage.requestLayout?.()
+        return true
+      }
+    }
   },
 
   addProseMirrorPlugins() {
@@ -73,6 +93,7 @@ export const Pagination = Extension.create<object, PaginationStorage>({
           resize.observe(view.dom)
           // Imágenes que terminan de cargar y fuentes que llegan tarde cambian el alto de los bloques.
           view.dom.addEventListener('load', schedule, true)
+          storage.requestLayout = schedule
           void document.fonts?.ready.then(schedule)
           schedule()
           return {
@@ -81,6 +102,7 @@ export const Pagination = Extension.create<object, PaginationStorage>({
             },
             destroy: () => {
               cancelAnimationFrame(frame)
+              storage.requestLayout = null
               resize.disconnect()
               view.dom.removeEventListener('load', schedule, true)
             }
@@ -94,16 +116,30 @@ export const Pagination = Extension.create<object, PaginationStorage>({
 interface Unit {
   pos: number
   node: ProseMirrorNode
+  /** Va justo detrás de un salto de página. */
+  breakBefore: boolean
 }
 
-/** Bloques que pueden abrir una hoja, en orden: los de primer nivel y los elementos de las listas. */
+/**
+ * Bloques que pueden abrir una hoja, en orden: los de primer nivel y los elementos de las listas.
+ * Los saltos de página no son unidades (no ocupan sitio): marcan la unidad siguiente.
+ */
 function collectUnits(doc: ProseMirrorNode): Unit[] {
   const units: Unit[] = []
+  let breakBefore = false
   doc.forEach((node, offset) => {
+    if (node.type.name === 'pageBreak') {
+      breakBefore = true
+      return
+    }
     if (SPLITTABLE.has(node.type.name)) {
-      node.forEach((item, itemOffset) => units.push({ pos: offset + 1 + itemOffset, node: item }))
+      node.forEach((item, itemOffset) => {
+        units.push({ pos: offset + 1 + itemOffset, node: item, breakBefore })
+        breakBefore = false
+      })
     } else {
-      units.push({ pos: offset, node })
+      units.push({ pos: offset, node, breakBefore })
+      breakBefore = false
     }
   })
   return units
@@ -127,7 +163,7 @@ function layout(view: EditorView, storage: PaginationStorage): void {
     measured.push({ ...unit, top: (box.top - origin.top) / scale, bottom: (box.bottom - origin.top) / scale })
   }
 
-  const { breaks, pageCount } = paginate(measured)
+  const { breaks, pageCount } = paginate(measured, storage.geometry.pitch, storage.geometry.contentHeight)
   const decorations = breaks.map(({ index, shift }) => {
     const block = measured[index]
     // El margen nuevo sustituye al hueco que había con el bloque anterior (márgenes colapsados).
