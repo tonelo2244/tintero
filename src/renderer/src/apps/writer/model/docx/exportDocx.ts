@@ -1,5 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  DropCapType,
+  FrameAnchorType,
+  FrameWrap,
+  LineRuleType,
   Bookmark,
   BorderStyle,
   ColumnBreak,
@@ -64,6 +68,8 @@ import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
 import { chartRun, imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
+import { DEFAULT_FONT_SIZE_PT } from '../../constants'
+import { DROP_CAP_LINES, isDropCapMode, splitDropCap, type DropCapMode } from '../dropCap'
 import { isBandedRow, parseCellBorders, tableStyle, type CellSide, type TableStyle } from '../tableStyles'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
@@ -259,8 +265,15 @@ class DocxConverter {
 
   private block(node: JSONContent, list?: ListContext): DocxBlock[] {
     switch (node.type) {
-      case 'paragraph':
-        return [this.paragraph(node, list)]
+      case 'paragraph': {
+        const dropCap = isDropCapMode(node.attrs?.dropCap) ? splitDropCap(node.content ?? []) : null
+        if (!dropCap || list) return [this.paragraph(node, list)]
+        // Como Word: la letra va en su propio párrafo, un marco que ocupa tres renglones del siguiente.
+        return [
+          this.dropCapParagraph(node.attrs?.dropCap, dropCap.letter),
+          this.paragraph({ ...node, content: dropCap.rest }, list)
+        ]
+      }
       case 'heading':
         return [this.paragraph(node, list)]
       case 'bulletList': {
@@ -326,6 +339,29 @@ class DocxConverter {
         // Nodo desconocido (extensión futura): mejor conservar su texto que perderlo.
         return node.content ? this.blocks(node.content, list) : []
     }
+  }
+
+  /** El marco con la letra capital (`w:framePr w:dropCap`), del tamaño de sus renglones. */
+  private dropCapParagraph(mode: DropCapMode, letter: JSONContent): Paragraph {
+    const lineTwips = Math.round(DEFAULT_FONT_SIZE_PT * 1.15 * 20)
+    return new Paragraph({
+      frame: {
+        type: 'absolute',
+        position: { x: 0, y: 0 },
+        anchor: { horizontal: FrameAnchorType.TEXT, vertical: FrameAnchorType.TEXT },
+        wrap: FrameWrap.AROUND,
+        dropCap: mode === 'margin' ? DropCapType.MARGIN : DropCapType.DROP,
+        lines: DROP_CAP_LINES
+      },
+      spacing: { line: lineTwips * DROP_CAP_LINES, lineRule: LineRuleType.EXACT, before: 0, after: 0 },
+      children: [
+        new TextRun({
+          text: letter.text,
+          ...runOptions(letter.marks ?? []),
+          size: Math.round(DEFAULT_FONT_SIZE_PT * 1.15 * DROP_CAP_LINES * 2 * 0.95)
+        })
+      ]
+    })
   }
 
   /** Formato que se añade a cada texto (el del encabezado de un estilo de tabla, mientras se escribe). */

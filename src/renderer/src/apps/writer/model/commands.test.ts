@@ -310,6 +310,26 @@ describe('comandos de Vista y Revisar (fase 14)', () => {
 })
 
 describe('comandos de Insertar (fase 16)', () => {
+  it('portada al principio (una sola) y letra capital', () => {
+    const { context, editor, calls } = setup('<p>Texto</p>')
+    editor.commands.setTextSelection(3)
+    runCommand(context, 'coverPage')
+    expect(editor.state.doc.child(0).attrs.blockStyle).toBe('title')
+    expect(editor.state.doc.child(4).type.name).toBe('pageBreak')
+    expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe(
+      'Título del documento'
+    )
+    expect(calls.at(-1)).toBe('dialog:author')
+    expect(commandState(context, 'coverPage').enabled).toBe(false)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size - 2)
+    runCommand(context, 'dropCap', 'drop')
+    expect(editor.state.doc.lastChild?.attrs.dropCap).toBe('drop')
+    expect(commandState(context, 'dropCap', 'drop').active).toBe(true)
+    runCommand(context, 'dropCap', null)
+    expect(editor.state.doc.lastChild?.attrs.dropCap).toBeNull()
+  })
+
   it('convertir texto en tabla, estilo de tabla, sombreado y bordes de celda', () => {
     const { context, editor } = setup('<p>Nombre; Edad</p><p>Ana; 30</p><p>fuera</p>')
     editor.commands.setTextSelection({ from: 2, to: 20 })

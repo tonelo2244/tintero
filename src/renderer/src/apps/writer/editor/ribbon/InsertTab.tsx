@@ -1,6 +1,8 @@
 import type { ChangeEvent } from 'react'
 import {
+  BookOpenText,
   Bookmark,
+  CaseUpper,
   Braces,
   CalendarDays,
   Link2,
@@ -22,6 +24,7 @@ import { readImageFile } from '@/ui/readImageFile'
 import { TableGridPicker } from '@/ui/TableGridPicker'
 import { runCommand } from '../../model/commands'
 import { FIELD_KINDS } from '../../model/fields'
+import { DROP_CAP_MODES } from '../../model/dropCap'
 import { SymbolDropdown } from '../SymbolPicker'
 import { SHAPE_KINDS } from '../objects/Shape'
 import { SHAPE_LABELS, ShapeIcon } from '@/apps/slides/editor/ElementContent'
@@ -43,6 +46,7 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
   return (
     <>
       <RibbonGroup label="Páginas">
+        <CommandButton command="coverPage" large icon={<BookOpenText size={22} />} />
         <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Tablas">
@@ -76,6 +80,17 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
       <RibbonGroup label="Elementos">
         <CommandButton command="horizontalRule" large icon={<Minus size={22} />} />
         <CommandButton command="insertDate" large icon={<CalendarDays size={22} />} />
+        <Dropdown label="Letra capital" large trigger={<CaseUpper size={22} />}>
+          {(close) => (
+            <>
+              {DROP_CAP_MODES.map(({ mode, label }) => (
+                <CommandMenuItem key={label} command="dropCap" arg={mode} onDone={close}>
+                  {label}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
         <Dropdown label="Campo" large trigger={<Braces size={22} />}>
           {(close) => (
             <>

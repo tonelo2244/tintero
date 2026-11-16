@@ -196,3 +196,12 @@ describe('estilos de tabla en .docx', () => {
     expect(xml).not.toContain('w:val="single"')
   })
 })
+
+describe('letra capital en .docx', () => {
+  it('la letra va en su marco de Word (framePr dropCap) y el resto, en el párrafo', async () => {
+    const { xml } = await exported([paragraph([text('Érase una vez')], { dropCap: 'drop' })])
+    expect(xml).toMatch(/<w:framePr [^>]*w:dropCap="drop"[^>]*w:lines="3"/)
+    expect(xml).toMatch(/<w:t xml:space="preserve">É<\/w:t>/)
+    expect(xml).toContain('rase una vez')
+  })
+})

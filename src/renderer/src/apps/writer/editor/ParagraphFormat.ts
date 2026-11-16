@@ -1,5 +1,6 @@
 import { Extension, type CommandProps } from '@tiptap/core'
 import { BORDER_CSS, INDENT_STEP_CM, type ParagraphBorder, type TabStop } from '../model/paragraphFormat'
+import { isDropCapMode, type DropCapMode } from '../model/dropCap'
 
 const MAX_INDENT = 8
 /**
@@ -28,6 +29,8 @@ declare module '@tiptap/core' {
       setIndentCm: (cm: number) => ReturnType
       /** Sangría de primera línea en centímetros; negativa es sangría francesa. */
       setFirstLineIndent: (cm: number | null) => ReturnType
+      /** Letra capital del párrafo del cursor (null la quita). */
+      setDropCap: (mode: DropCapMode | null) => ReturnType
     }
   }
 }
@@ -136,6 +139,14 @@ export const ParagraphFormat = Extension.create({
       {
         types: ['paragraph'],
         attributes: {
+          dropCap: {
+            default: null,
+            parseHTML: (element) => {
+              const mode = element.getAttribute('data-drop-cap')
+              return isDropCapMode(mode) ? mode : null
+            },
+            renderHTML: (attributes) => (attributes.dropCap ? { 'data-drop-cap': attributes.dropCap } : {})
+          },
           blockStyle: {
             default: null,
             // Como en las suites clásicas: tras un Título, Enter vuelve a "Normal".
@@ -208,6 +219,10 @@ export const ParagraphFormat = Extension.create({
           const headings = commands.updateAttributes('heading', { firstLineIndent })
           return paragraphs || headings
         },
+      setDropCap:
+        (mode) =>
+        ({ commands }) =>
+          commands.updateAttributes('paragraph', { dropCap: mode }),
       setSpacing:
         (spacing) =>
         ({ commands }) => {

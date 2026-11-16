@@ -31,6 +31,8 @@ import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './c
 import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
 import { longDate, type FieldKind } from './fields'
+import type { DropCapMode } from './dropCap'
+import { coverPageContent, startsWithCoverPage } from './coverPage'
 import { tableStyle, type CellBorderAction, type TableStyleId } from './tableStyles'
 import type { ShapeKind } from '@/apps/slides/model/types'
 import { placementOf, resizeKeepingRatio, type ArrangeAction, type ObjectAlign, type WrapMode } from './floating'
@@ -457,6 +459,24 @@ export const WRITER_COMMANDS = {
   replace: { label: 'Reemplazar', run: ({ ui }) => ui.openFind('replace') },
 
   // --- Insertar ---
+  coverPage: {
+    label: 'Portada',
+    run: ({ editor, ui }) => {
+      // Va siempre al principio, como en Word, con el título seleccionado para escribir el de verdad.
+      editor.chain().focus().insertContentAt(0, coverPageContent()).run()
+      const titleSize = editor.state.doc.firstChild?.content.size ?? 0
+      editor.commands.setTextSelection({ from: 1, to: 1 + titleSize })
+      if (!ui.documentAuthor) ui.openDialog('author')
+    },
+    isEnabled: ({ editor }) => !startsWithCoverPage(editor.getJSON())
+  },
+  dropCap: {
+    label: 'Letra capital',
+    run: (context, mode: DropCapMode | null) => chain(context).setDropCap(mode).run(),
+    isActive: ({ editor }, mode: DropCapMode | null) =>
+      editor.isActive('paragraph') && (editor.getAttributes('paragraph').dropCap ?? null) === mode,
+    isEnabled: ({ editor }) => editor.isActive('paragraph')
+  },
   textToTable: {
     label: 'Convertir texto en tabla',
     run: (context) => chain(context).convertTextToTable().run(),

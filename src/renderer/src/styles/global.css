@@ -3516,3 +3516,15 @@ p.writer-outline-block--body::after {
 .writer-content table[data-table-style='banded'] tr:nth-child(even) > td {
   background: #f2f2f2;
 }
+
+/* Letra capital (fase 16): tres renglones de alto. "En margen" la saca a la izquierda del texto. */
+.writer-content p[data-drop-cap]::first-letter {
+  float: left;
+  /* Alto de la mayúscula (≈0,7 em) = dos renglones más el alto de la mayúscula del texto. */
+  font-size: 4.6em;
+  line-height: 0.74;
+  padding: 0.05em 0.06em 0 0;
+}
+.writer-content p[data-drop-cap='margin']::first-letter {
+  margin-left: -0.75em;
+}
