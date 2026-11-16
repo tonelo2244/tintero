@@ -13,6 +13,8 @@ declare module '@tiptap/core' {
     pagination: {
       /** Cambia el tamaño útil de la hoja (configuración de página) y vuelve a repartir los bloques. */
       setPageGeometry: (geometry: PageGeometry) => ReturnType
+      /** Enciende o apaga las hojas (las vistas Borrador, Esquema y Lectura van sin paginar). */
+      setPaginationEnabled: (enabled: boolean) => ReturnType
     }
   }
 }
@@ -21,6 +23,10 @@ export interface PaginationStorage {
   /** Hojas que ocupa el documento según la última medición. */
   pageCount: number
   geometry: PageGeometry
+  /** Sin paginar, el texto va seguido (vistas Borrador, Esquema y Lectura). */
+  enabled: boolean
+  /** Posición en el documento del primer bloque de cada hoja (la 1 empieza en 0): miniaturas y "ir a la página". */
+  pageStarts: number[]
   /** Lo rellena la vista del plugin: pide un reparto nuevo en el siguiente fotograma. */
   requestLayout: (() => void) | null
 }
@@ -47,13 +53,19 @@ export const Pagination = Extension.create<object, PaginationStorage>({
   name: 'pagination',
 
   addStorage() {
-    return { pageCount: 1, geometry: DEFAULT_GEOMETRY, requestLayout: null }
+    return { pageCount: 1, geometry: DEFAULT_GEOMETRY, enabled: true, pageStarts: [0], requestLayout: null }
   },
 
   addCommands() {
     return {
       setPageGeometry: (geometry) => () => {
         this.storage.geometry = geometry
+        this.storage.requestLayout?.()
+        return true
+      },
+      setPaginationEnabled: (enabled) => () => {
+        if (this.storage.enabled === enabled) return true
+        this.storage.enabled = enabled
         this.storage.requestLayout?.()
         return true
       }
@@ -152,6 +164,15 @@ function layout(view: EditorView, storage: PaginationStorage): void {
     view.dispatch(view.state.tr.setMeta(paginationKey, DecorationSet.empty).setMeta('addToHistory', false))
   }
 
+  if (!storage.enabled) {
+    // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
+    const changed = storage.pageCount !== 1
+    storage.pageCount = 1
+    storage.pageStarts = [0]
+    if (changed) view.dispatch(view.state.tr.setMeta('addToHistory', false))
+    return
+  }
+
   const origin = view.dom.getBoundingClientRect()
   // Con zoom, getBoundingClientRect da píxeles de pantalla; offsetHeight, píxeles del documento.
   const scale = view.dom.offsetHeight > 0 ? origin.height / view.dom.offsetHeight : 1
@@ -173,6 +194,7 @@ function layout(view: EditorView, storage: PaginationStorage): void {
       style: `margin-top: ${(gap + shift).toFixed(2)}px`
     })
   })
+  storage.pageStarts = [0, ...breaks.map(({ index }) => measured[index].pos)]
   // Sin saltos antes ni ahora y con las mismas hojas no hay nada que avisar: nos ahorramos la transacción.
   if (!hadBreaks && decorations.length === 0 && storage.pageCount === pageCount) return
   // Antes de despachar: quien lea las hojas al recibir la transacción (la barra de estado) ve el valor nuevo.
