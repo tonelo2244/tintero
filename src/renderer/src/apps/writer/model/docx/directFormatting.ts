@@ -2,6 +2,7 @@ import { attr, child, descendants, path } from '@/core/office/xml'
 import { cssFontFamilyFor } from '@/ui/fonts'
 import type { PageSetup } from '../pageSetup'
 import { readSectionSetup } from './docxParts'
+import { MAX_COLUMNS } from '../columns'
 import {
   BULLET_STYLES,
   INDENT_STEP_CM,
@@ -70,11 +71,15 @@ export interface DocxParagraphFormat {
    * la sección siguiente (fase 15).
    */
   nextSection?: PageSetup
+  /** El párrafo cierra una sección con estas columnas (`w:cols`): sus bloques van en columnas. */
+  sectionEnd?: { columns: number }
 }
 
 export interface DocxAnnotations {
   formats: DocxRunFormat[]
   paragraphs: DocxParagraphFormat[]
+  /** Columnas de la última sección (la del cuerpo, que no cierra ningún párrafo). */
+  lastSectionColumns?: number
 }
 
 const TWIPS_PER_CM = 1440 / 2.54
@@ -145,12 +150,15 @@ export function annotateDocumentXml(
   for (const paragraph of descendants(root, 'p')) {
     const format = readParagraphFormat(child(paragraph, 'pPr'), listFormats)
     const sectionIndex = sections.indexOf(child(child(paragraph, 'pPr'), 'sectPr') as Element)
-    const nextSection = sectionIndex >= 0 ? readSectionSetup(sections[sectionIndex + 1] ?? null) : null
+    // Una sección "continua" sigue en la misma hoja: no es un salto de sección de Tintero.
+    const next = sections[sectionIndex + 1] ?? null
+    const nextSection = sectionIndex >= 0 && !isContinuous(next) ? readSectionSetup(next) : null
     if (nextSection) format.nextSection = nextSection
+    if (sectionIndex >= 0) format.sectionEnd = { columns: columnCount(sections[sectionIndex]) }
     if (Object.keys(format).length === 0) continue
     let firstText = descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
     // Word suele cerrar la sección en un párrafo vacío: se le da un texto vacío para llevar la marca.
-    if (!firstText && nextSection) firstText = appendEmptyRun(paragraph)
+    if (!firstText && format.sectionEnd) firstText = appendEmptyRun(paragraph)
     if (!firstText) continue // párrafo vacío: ni alineación ni sangría se notan
     const id = paragraphs.push(format) - 1
     firstText.textContent = `${marker('p', String(id))}${firstText.textContent ?? ''}`
@@ -160,7 +168,46 @@ export function annotateDocumentXml(
     insertMarkerRun(start, marker('c', attr(start, 'id') ?? ''))
   for (const end of descendants(root, 'commentRangeEnd')) insertMarkerRun(end, marker('C', attr(end, 'id') ?? ''))
 
-  return { xml: new XMLSerializer().serializeToString(document), annotations: { formats, paragraphs } }
+  const annotations: DocxAnnotations = { formats, paragraphs }
+  const lastColumns = columnCount(sections.at(-1) ?? null)
+  if (lastColumns > 1) annotations.lastSectionColumns = lastColumns
+  return { xml: new XMLSerializer().serializeToString(document), annotations }
+}
+
+function isContinuous(section: Element | null): boolean {
+  return attr(child(section, 'type'), 'val') === 'continuous'
+}
+
+/** Columnas de una sección (`w:cols w:num`); 1 si no dice nada. */
+function columnCount(section: Element | null): number {
+  const count = Number(attr(child(section, 'cols'), 'num'))
+  return Number.isFinite(count) && count > 1 ? Math.min(MAX_COLUMNS, Math.round(count)) : 1
+}
+
+/**
+ * Mete en un bloque de columnas los bloques de cada sección de Word que tenga columnas. Las
+ * secciones las delimitan las marcas `hr[data-docx-section-end]` que deja applyParagraphFormat.
+ */
+function groupSectionColumns(body: HTMLElement, lastSectionColumns: number): void {
+  let pending: Element[] = []
+  const wrap = (columns: number) => {
+    if (columns > 1 && pending.length > 0) {
+      const container = body.ownerDocument.createElement('div')
+      container.setAttribute('data-columns', String(columns))
+      pending[0].before(container)
+      container.append(...pending)
+    }
+    pending = []
+  }
+  for (const element of [...body.children]) {
+    if (element.matches('hr[data-docx-section-end]')) {
+      wrap(Number(element.getAttribute('data-columns')) || 1)
+      element.remove()
+    } else if (!element.matches('hr[data-section-break]')) {
+      pending.push(element)
+    }
+  }
+  wrap(lastSectionColumns)
 }
 
 /** Añade `<w:r><w:t/></w:r>` al párrafo y devuelve el `w:t`. */
@@ -448,6 +495,9 @@ export function applyAnnotations(
     if (STRAY_MARKERS.test(text.data)) text.data = text.data.replace(MARKER, '').replace(STRAY_MARKERS, '')
     STRAY_MARKERS.lastIndex = 0
   }
+  if (annotations.lastSectionColumns || body.querySelector('hr[data-docx-section-end]')) {
+    groupSectionColumns(body, annotations.lastSectionColumns ?? 1)
+  }
   return losses
 }
 
@@ -479,6 +529,13 @@ function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): 
     sectionBreak.setAttribute('data-section-break', '')
     sectionBreak.setAttribute('data-page-setup', JSON.stringify(format.nextSection))
     block.after(sectionBreak)
+  }
+  // Fin de sección de Word: marca temporal para agrupar las columnas (groupSectionColumns la quita).
+  if (format.sectionEnd && block.parentElement === block.ownerDocument.body) {
+    const end = block.ownerDocument.createElement('hr')
+    end.setAttribute('data-docx-section-end', '')
+    end.setAttribute('data-columns', String(format.sectionEnd.columns))
+    block.after(end)
   }
 }
 

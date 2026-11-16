@@ -13,6 +13,7 @@ import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
 import { SectionBreak } from './SectionBreak'
+import { ColumnBreak, Columns } from './Columns'
 import { ParagraphFormat } from './ParagraphFormat'
 import { SearchAndReplace } from './SearchAndReplace'
 import { Tab } from './Tab'
@@ -44,6 +45,8 @@ export function createWriterExtensions(): Extensions {
     ParagraphFormat,
     PageBreak,
     SectionBreak,
+    Columns,
+    ColumnBreak,
     Tab,
     CharStyle,
     FormatPainter,

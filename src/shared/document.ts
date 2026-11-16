@@ -20,8 +20,11 @@ export const FILE_FORMAT_ID = 'tintero'
  *   5. Texto: estilos del documento (`styles`, `numberedHeadings`), tabuladores y nuevos atributos
  *      de párrafo (espaciado, bordes, sombreado, topes) y de lista (viñeta, formato de número).
  *      Sin migración: un documento sin `styles` usa los de partida, que reproducen su aspecto.
+ *   6. Texto: saltos de sección con su propia hoja (`sectionBreak`), bloques de columnas
+ *      (`columns`, `columnBreak`) y guiones automáticos (`hyphenation`). Sin migración: son nodos
+ *      y campos nuevos; un Tintero anterior no sabría pintarlos y por eso dirá "versión más nueva".
  */
-export const FILE_FORMAT_VERSION = 5
+export const FILE_FORMAT_VERSION = 6
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

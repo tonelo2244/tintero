@@ -1,4 +1,5 @@
 import {
+  Columns2,
   SeparatorHorizontal,
   RectangleHorizontal,
   RectangleVertical,
@@ -17,13 +18,20 @@ import type { WriterToolbarState } from '../useWriterToolbarState'
 import { CommandButton, CommandMenuItem } from './CommandButton'
 import { useCommandContext } from './commandContext'
 
+/** Disposición > Columnas: con texto seleccionado, se aplica a esos párrafos; si no, al del cursor. */
+const COLUMN_CHOICES = [
+  { count: 1, label: 'Una' },
+  { count: 2, label: 'Dos' },
+  { count: 3, label: 'Tres' }
+]
+
 interface LayoutTabProps {
   state: WriterToolbarState
 }
 
 /**
  * Pestaña Disposición: configurar página y saltos (fase 12), y sangrías y espaciado con valores
- * exactos y tabulaciones (fase 13), y saltos de sección y guiones (fase 15). La regla se
+ * exactos y tabulaciones (fase 13), y columnas, saltos de sección y guiones (fase 15). La regla se
  * enciende desde Vista > Mostrar, como en Word (fase 14).
  */
 export function LayoutTab({ state }: LayoutTabProps) {
@@ -111,6 +119,17 @@ export function LayoutTab({ state }: LayoutTabProps) {
             </>
           )}
         </Dropdown>
+        <Dropdown label="Columnas" large trigger={<Columns2 size={22} />}>
+          {(close) => (
+            <>
+              {COLUMN_CHOICES.map(({ count, label }) => (
+                <CommandMenuItem key={count} command="columns" arg={count} onDone={close}>
+                  {label}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
         <CommandButton command="pageSetupDialog" icon={<Settings2 size={16} />} />
       </RibbonGroup>
       <RibbonGroup label="Párrafo">
@@ -158,6 +177,12 @@ export function LayoutTab({ state }: LayoutTabProps) {
                 <span className="layout-option">
                   <b>Página</b>
                   <small>Lo de detrás empieza en la hoja siguiente</small>
+                </span>
+              </CommandMenuItem>
+              <CommandMenuItem command="columnBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Columna</b>
+                  <small>Lo de detrás empieza en la columna siguiente</small>
                 </span>
               </CommandMenuItem>
               <CommandMenuItem command="sectionBreak" onDone={close}>

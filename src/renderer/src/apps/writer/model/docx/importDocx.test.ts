@@ -68,6 +68,31 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     expect(blocks(content.doc)[1].attrs?.pageSetup).toEqual(landscape)
   })
 
+  it('un bloque de columnas es una sección continua con w:cols y vuelve como bloque de columnas', async () => {
+    const bytes = await exportDocx({
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph([text('Título')]),
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [paragraph([text('Uno')]), { type: 'columnBreak' }, paragraph([text('Dos')])]
+          },
+          paragraph([text('Final')])
+        ]
+      }
+    })
+    const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml')!.async('string')
+    expect(xml).toContain('<w:type w:val="continuous"/>')
+    expect(xml).toMatch(/<w:cols [^>]*w:num="2"/)
+    expect(xml).toContain('<w:br w:type="column"/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    const types = blocks(content.doc).map((block) => block.type)
+    expect(types).toEqual(['paragraph', 'columns', 'paragraph'])
+    expect(blocks(content.doc)[1].attrs?.count).toBe(2)
+  })
+
   it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {
     const { content } = await roundTrip([paragraph([text('Hola')])])
     expect(content.pageSetup).toBeUndefined()

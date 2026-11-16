@@ -913,6 +913,38 @@ button {
   hyphens: auto;
 }
 
+/* Columnas (Disposición > Columnas): equilibradas si caben en la hoja; si no, una fila por hoja. */
+.writer-content .writer-columns {
+  column-count: var(--columns, 2);
+  column-gap: 1.25cm;
+  margin: 0 0 8pt;
+}
+.writer-content .writer-columns > :first-child {
+  margin-top: 0;
+}
+.writer-content .writer-columns--paged {
+  column-fill: auto;
+  column-height: var(--column-height);
+  column-wrap: wrap;
+  row-gap: var(--column-row-gap);
+  margin-bottom: 0;
+}
+.show-marks .writer-content .writer-columns {
+  outline: 1px dashed #c5d3ee;
+  outline-offset: 2px;
+}
+/* Salto de columna: lo de detrás va a la columna siguiente. */
+.writer-content hr.writer-column-break {
+  border: 0;
+  height: 0;
+  margin: 0;
+  break-after: column;
+}
+.show-marks .writer-content hr.writer-column-break,
+.writer-content hr.writer-column-break.ProseMirror-selectednode {
+  border-top: 1px dotted #8aa4d6;
+}
+
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
 .writer-content hr.writer-page-break,
 .writer-content hr.writer-section-break {
@@ -2667,6 +2699,12 @@ p.writer-outline-block--body::after {
   .writer-content > .writer-section-block {
     left: 0 !important;
     width: auto !important;
+  }
+  /* Al imprimir, las columnas por hojas siguen solas de una hoja a la siguiente. */
+  .writer-content .writer-columns--paged {
+    column-height: auto;
+    column-wrap: nowrap;
+    row-gap: normal;
   }
   .writer-sheets,
   .writer-section-break,

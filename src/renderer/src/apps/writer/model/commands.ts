@@ -26,6 +26,7 @@ import { findStyle, isBuiltInStyle, removeStyle, upsertStyle, type WriterStyle }
 import type { CaseMode } from './textCase'
 import { canChangeOutlineLevel, canMoveAtCursor, changeOutlineLevel, moveAtCursor } from './outlineEdits'
 import type { ViewMode } from './views'
+import { COLUMNS } from './columns'
 import type { ZoomPreset } from './zoom'
 
 /**
@@ -464,6 +465,18 @@ export const WRITER_COMMANDS = {
     isEnabled: ({ editor }) =>
       !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
   },
+  columnBreak: {
+    label: 'Salto de columna',
+    run: (context) => chain(context).setColumnBreak().run(),
+    // Solo tiene sentido dentro de un bloque de columnas.
+    isEnabled: ({ editor }) => columnsAtCursor(editor) > 1 && !editor.isActive('table')
+  },
+  columns: {
+    label: 'Columnas',
+    run: (context, count: number) => chain(context).setColumns(count).run(),
+    isActive: ({ editor }, count: number) => columnsAtCursor(editor) === count,
+    isEnabled: ({ editor }) => !editor.isActive('table')
+  },
   addComment: {
     label: 'Comentario',
     run: ({ ui }) => ui.addComment(),
@@ -673,4 +686,14 @@ export function isInHeaderRow(editor: Editor): boolean {
     }
   }
   return false
+}
+
+/** Columnas del bloque donde está el cursor (1 si no está en un bloque de columnas). */
+export function columnsAtCursor(editor: Editor): number {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === COLUMNS) return Number(node.attrs.count) || 2
+  }
+  return 1
 }

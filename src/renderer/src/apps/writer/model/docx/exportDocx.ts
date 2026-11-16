@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import {
   BorderStyle,
+  ColumnBreak,
   CommentRangeEnd,
   CommentRangeStart,
   CommentReference,
@@ -56,7 +57,8 @@ import {
 import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
 import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
-import { documentSections, SECTION_BREAK } from '../sections'
+import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
+import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
@@ -106,19 +108,12 @@ interface ListContext {
 export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const comments = content.comments ?? []
   const pageSetup = content.pageSetup ?? DEFAULT_PAGE_SETUP
-  // Un grupo de bloques por sección: el salto de sección (fase 15) es una sección nueva de Word.
-  const { setups, sectionOf } = documentSections(
-    (content.doc.content ?? []).map((block) => ({ type: block.type ?? '', attrs: block.attrs })),
-    pageSetup
-  )
-  const groups = setups.map((): JSONContent[] => [])
-  ;(content.doc.content ?? []).forEach((block, index) => {
-    if (block.type !== SECTION_BREAK) groups[sectionOf[index]].push(block)
-  })
+  // Secciones de Word: una por salto de sección y otra por cada bloque de columnas (fase 15).
+  const plans = planDocxSections(content.doc.content ?? [], pageSetup)
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
-  const sectionChildren = groups.map((blocks, index) => {
-    converter.setContentWidth(contentWidthCm(setups[index]))
-    return converter.blocks(blocks)
+  const sectionChildren = plans.map((plan) => {
+    converter.setContentWidth(contentWidthCm(plan.setup))
+    return converter.blocks(plan.blocks)
   })
   const document = new Document({
     creator: 'Tintero',
@@ -140,10 +135,11 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
         ...(content.numberedHeadings ? [{ reference: HEADINGS_NUMBERING_REFERENCE, levels: headingLevels() }] : [])
       ]
     },
-    sections: setups.map((setup, index) => ({
+    sections: plans.map((plan, index) => ({
       properties: {
-        page: pageProperties(setup),
-        ...(index > 0 && { type: SectionType.NEXT_PAGE })
+        page: pageProperties(plan.setup),
+        ...(index > 0 && { type: plan.continuous ? SectionType.CONTINUOUS : SectionType.NEXT_PAGE }),
+        ...(plan.columns > 1 && { column: { count: plan.columns, space: twips(COLUMN_GAP_CM) } })
       },
       // Solo la primera: en Word, una sección sin encabezado propio usa el de la anterior.
       ...(index === 0 && {
@@ -159,6 +155,46 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
     }))
   })
   return new Uint8Array(await Packer.toArrayBuffer(document))
+}
+
+/** Una sección de Word por escribir: su hoja, sus columnas y si empieza en la misma hoja. */
+interface DocxSectionPlan {
+  setup: PageSetup
+  columns: number
+  /** Continúa en la misma hoja (las columnas) en vez de empezar otra (el salto de sección). */
+  continuous: boolean
+  blocks: JSONContent[]
+}
+
+/**
+ * Reparte los bloques de primer nivel en secciones de Word. En Word las columnas son de la
+ * sección, así que un bloque de columnas se escribe como una sección continua con `w:cols`, entre
+ * otras dos continuas. Las secciones continuas vacías se quitan (en Word serían un renglón en blanco).
+ */
+export function planDocxSections(blocks: JSONContent[], documentSetup: PageSetup): DocxSectionPlan[] {
+  const plans: DocxSectionPlan[] = [{ setup: documentSetup, columns: 1, continuous: false, blocks: [] }]
+  const current = () => plans[plans.length - 1]
+  for (const block of blocks) {
+    if (block.type === SECTION_BREAK) {
+      const setup = sectionBreakSetup({ type: SECTION_BREAK, attrs: block.attrs }, current().setup)
+      plans.push({ setup, columns: 1, continuous: false, blocks: [] })
+    } else if (block.type === COLUMNS) {
+      const { setup } = current()
+      plans.push({
+        setup,
+        columns: normalizeColumnCount(block.attrs?.count),
+        continuous: true,
+        blocks: block.content ?? []
+      })
+      plans.push({ setup, columns: 1, continuous: true, blocks: [] })
+    } else {
+      current().blocks.push(block)
+    }
+  }
+  const kept = plans.filter((plan, index) => plan.blocks.length > 0 || (index > 0 && !plan.continuous))
+  if (kept.length === 0) return [plans[0]]
+  // La primera sección del documento no "continúa" nada.
+  return [{ ...kept[0], continuous: false }, ...kept.slice(1)]
 }
 
 /** Recorre el árbol de nodos. Guarda estado (listas abiertas) por eso es una clase y no funciones sueltas. */
@@ -239,6 +275,13 @@ class DocxConverter {
       case 'pageBreak':
         // Como hace Word con Ctrl+Intro: un párrafo que solo contiene el salto.
         return [new Paragraph({ children: [new PageBreak()] })]
+      case COLUMN_BREAK:
+        return [new Paragraph({ children: [new ColumnBreak()] })]
+      case COLUMNS:
+        // Solo dentro de otra cosa (una lista): las de primer nivel ya son secciones de Word.
+        return this.blocks(node.content ?? [])
+      case SECTION_BREAK:
+        return []
       case 'table':
         return [this.table(node, this.contentWidthTwips)]
       default:

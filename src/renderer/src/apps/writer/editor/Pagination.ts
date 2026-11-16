@@ -5,6 +5,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { paginateSections, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, type PageGeometry, type PageSetup } from '../model/pageSetup'
 import { documentSections, SECTION_BREAK } from '../model/sections'
+import { COLUMNS } from '../model/columns'
 
 declare module '@tiptap/core' {
   interface Storage {
@@ -277,6 +278,27 @@ function columnCount(table: ProseMirrorNode): number {
   return Math.max(1, columns)
 }
 
+/**
+ * Bloques de columnas más altos que una hoja: con las columnas equilibradas no se pueden repartir
+ * entre hojas, así que pasan a llenarse columna a columna con el alto del área de texto, en filas
+ * separadas por el hueco entre hojas (CSS `column-wrap`, ver global.css). Cada fila cae en una hoja.
+ */
+function pagedColumns(measured: MeasuredUnit[], sections: SectionLayout): Decoration[] {
+  return measured
+    .filter((unit) => unit.node.type.name === COLUMNS)
+    .filter(
+      (unit) => unit.bottom - unit.top > (sections.geometries[unit.section] ?? sections.geometries[0]).contentHeight
+    )
+    .map((unit) => {
+      const geometry = sections.geometries[unit.section] ?? sections.geometries[0]
+      const rowGap = geometry.margins.bottom + geometry.gap + geometry.margins.top
+      return Decoration.node(unit.pos, unit.pos + unit.node.nodeSize, {
+        class: 'writer-columns--paged',
+        style: `--column-height: ${geometry.contentHeight.toFixed(2)}px; --column-row-gap: ${rowGap.toFixed(2)}px`
+      })
+    })
+}
+
 /** Mide, reparte y aplica los saltos, y anota el número de hojas. */
 function layout(view: EditorView, storage: PaginationStorage): void {
   const hadDecorations = paginationKey.getState(view.state) !== DecorationSet.empty
@@ -305,10 +327,17 @@ function layout(view: EditorView, storage: PaginationStorage): void {
     }
 
     // 1. Sin saltos, pero cada sección ya con su ancho (el ancho cambia el alto de los párrafos).
-    const sectionDecos = sectionDecorations(view, sections)
+    let sectionDecos = sectionDecorations(view, sections)
     if (hadDecorations || sectionDecos.length > 0) replaceDecorations(sectionDecos)
-    // 2. Medir y repartir.
-    const measured = measureUnits(view, sections)
+    // 2. Medir y repartir. Un bloque de columnas que no cabe en una hoja pasa a ir por hojas (una
+    //    fila de columnas por hoja): se marca y se vuelve a medir, porque cambia de alto.
+    let measured = measureUnits(view, sections)
+    const paged = pagedColumns(measured, sections)
+    if (paged.length > 0) {
+      sectionDecos = [...sectionDecos, ...paged]
+      replaceDecorations(sectionDecos)
+      measured = measureUnits(view, sections)
+    }
     const formats = sections.geometries.map((geometry) => ({
       contentHeight: geometry.contentHeight,
       marginTop: geometry.margins.top,
@@ -363,6 +392,8 @@ function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[]
     const top = (tableDom instanceof HTMLElement ? tableDom : dom).getBoundingClientRect().top
     const block: MeasuredUnit = { ...unit, top: toY(top), bottom: toY(dom.getBoundingClientRect().bottom) }
     if (unit.node.type.name.startsWith('heading')) block.keepWithNext = true
+    // Las columnas por hojas empiezan hoja: así cada fila de columnas cae en una.
+    if (dom.classList.contains('writer-columns--paged')) block.breakBefore = true
     if (unit.table) {
       const isHeader = unit.table.header !== null && unit.firstRow
       if (isHeader) block.keepWithNext = true
@@ -387,7 +418,8 @@ function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[]
  * por trozo de texto y renglón. Los que se solapan en vertical son el mismo renglón.
  */
 function measureLines(view: EditorView, unit: Unit, toY: (screenY: number) => number): Line[] {
-  if (unit.node.isAtom) return []
+  // En columnas, los renglones de una columna se solapan con los de la otra: no se parte por renglones.
+  if (unit.node.isAtom || unit.node.type.name === COLUMNS) return []
   const lines: Line[] = []
   const visit = (textblock: ProseMirrorNode, textblockPos: number) => {
     const dom = view.nodeDOM(textblockPos)
