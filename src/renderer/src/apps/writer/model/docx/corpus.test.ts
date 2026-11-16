@@ -54,3 +54,30 @@ describe.each(['word-formato-directo.docx', 'libreoffice-formato-directo.docx'])
     expect(markAttrs(commented, 'comment')?.commentId).toBe(content.comments?.[0].id)
   })
 })
+
+describe.each(['word-pagina.docx', 'libreoffice-pagina.docx'])('corpus: %s (fase 12)', (name) => {
+  it('lee el papel, la orientación y los márgenes de w:sectPr', async () => {
+    const { content } = await importDocx(fixture(name), createWriterExtensions())
+    expect(content.pageSetup).toEqual({
+      size: { width: 21.59, height: 27.94 },
+      orientation: 'landscape',
+      margins: { top: 2, right: 1.5, bottom: 2, left: 3 }
+    })
+  })
+
+  it('convierte el salto de página en su nodo, sin párrafos vacíos alrededor', async () => {
+    const { content } = await importDocx(fixture(name), createWriterExtensions())
+    const types = (content.doc.content ?? []).map((block) => block.type)
+    const texts = (content.doc.content ?? []).map(textOf)
+    expect(types.filter((type) => type === 'pageBreak')).toHaveLength(1)
+    expect(texts[types.indexOf('pageBreak') + 1]).toBe('Segunda hoja')
+  })
+
+  it('lee la sangría izquierda, la de primera línea y la francesa', async () => {
+    const { content } = await importDocx(fixture(name), createWriterExtensions())
+    const indented = findBlock(content.doc, 'Sangría izquierda y primera línea')?.attrs
+    expect(indented?.indent * 1.27).toBeCloseTo(2, 2)
+    expect(indented?.firstLineIndent).toBe(1)
+    expect(findBlock(content.doc, 'Sangría francesa')?.attrs).toMatchObject({ indent: 1, firstLineIndent: -1.27 })
+  })
+})

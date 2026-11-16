@@ -3,6 +3,7 @@ import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
 import { cssColorToHex } from '@/core/office/cssValues'
 import { createWriterExtensions } from '../../editor/extensions'
+import { DEFAULT_PAGE_SETUP, withMargins, withOrientation } from '../pageSetup'
 import { exportDocx } from './exportDocx'
 import { describeLosses, importDocx } from './importDocx'
 
@@ -23,6 +24,43 @@ const blocks = (doc: JSONContent) => doc.content ?? []
 const marksOf = (node: JSONContent | undefined) => (node?.content?.[0]?.marks ?? []).map((mark) => mark.type)
 
 describe('importDocx (ida y vuelta con exportDocx)', () => {
+  it('conserva tamaño de papel, orientación y márgenes (w:sectPr)', async () => {
+    const pageSetup = withMargins(
+      withOrientation({ ...DEFAULT_PAGE_SETUP, size: { width: 21.59, height: 27.94 } }, 'landscape'),
+      {
+        top: 1.27,
+        left: 3
+      }
+    )
+    const bytes = await exportDocx({ doc: { type: 'doc', content: [paragraph([text('Hola')])] }, pageSetup })
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    expect(content.pageSetup).toEqual(pageSetup)
+  })
+
+  it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {
+    const { content } = await roundTrip([paragraph([text('Hola')])])
+    expect(content.pageSetup).toBeUndefined()
+  })
+
+  it('conserva los saltos de página sin añadir párrafos vacíos', async () => {
+    const { content } = await roundTrip([
+      paragraph([text('Hoja 1')]),
+      { type: 'pageBreak' },
+      paragraph([text('Hoja 2')])
+    ])
+    expect(blocks(content.doc).map((block) => block.type)).toEqual(['paragraph', 'pageBreak', 'paragraph'])
+  })
+
+  it('conserva la sangría izquierda, la de primera línea y la francesa', async () => {
+    const { content } = await roundTrip([
+      paragraph([text('Sangrado')], { indent: 1.5, firstLineIndent: 0.75 }),
+      paragraph([text('Francesa')], { indent: 1, firstLineIndent: -1.27 })
+    ])
+    const [indented, hanging] = blocks(content.doc)
+    expect(indented.attrs).toMatchObject({ indent: 1.5, firstLineIndent: 0.75 })
+    expect(hanging.attrs).toMatchObject({ indent: 1, firstLineIndent: -1.27 })
+  })
+
   it('conserva títulos y estilos de párrafo', async () => {
     const { content } = await roundTrip([
       paragraph([text('Informe')], { blockStyle: 'title' }),

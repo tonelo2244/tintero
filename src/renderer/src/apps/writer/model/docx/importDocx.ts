@@ -6,7 +6,8 @@ import { createId } from '@/core/ids'
 import { parseXml, readRelationships, relsPathFor } from '@/core/office/xml'
 import type { HeaderFooter, WriterContent } from '../content'
 import { annotateDocumentXml, applyAnnotations, type DocxAnnotations } from './directFormatting'
-import { defaultHeaderFooterIds, readComments, readHeaderFooter, type DocxComment } from './docxParts'
+import { defaultHeaderFooterIds, readComments, readHeaderFooter, readPageSetup, type DocxComment } from './docxParts'
+import { isDefaultPageSetup, type PageSetup } from '../pageSetup'
 
 /**
  * Importación de .docx en dos pasos:
@@ -34,7 +35,9 @@ const STYLE_MAP = [
   "p[style-name='Heading 5'] => h3:fresh",
   "p[style-name='Heading 6'] => h3:fresh",
   // Por defecto mammoth descarta el subrayado; aquí lo conservamos.
-  'u => u'
+  'u => u',
+  // Salto de página (Ctrl+Intro en Word): pasa a ser el nodo pageBreak del editor.
+  "br[type='page'] => hr.page-break"
 ]
 
 /** Clases que pone el mapa de estilos -> atributo `data-style` que lee la extensión ParagraphFormat. */
@@ -79,6 +82,7 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
   const content: WriterContent = { doc: generateJSON(html, extensions) as WriterContent['doc'] }
   if (parts?.header) content.header = parts.header
   if (parts?.footer) content.footer = parts.footer
+  if (parts?.pageSetup && !isDefaultPageSetup(parts.pageSetup)) content.pageSetup = parts.pageSetup
   if (parts && parts.comments.length > 0) content.comments = parts.comments.map(({ comment }) => comment)
   return { content, warnings: describeLosses(lost) }
 }
@@ -90,6 +94,7 @@ interface DocxParts {
   header: HeaderFooter | null
   footer: HeaderFooter | null
   comments: DocxComment[]
+  pageSetup: PageSetup | null
 }
 
 /**
@@ -112,7 +117,8 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
   zip.file(WORD_DOCUMENT, xml)
 
   const rels = readRelationships(parseOptionalXml(await readText(relsPathFor(WORD_DOCUMENT))), WORD_DOCUMENT)
-  const { header, footer } = defaultHeaderFooterIds(parseXml(documentXml))
+  const documentRoot = parseXml(documentXml)
+  const { header, footer } = defaultHeaderFooterIds(documentRoot)
   const readPart = async (relationId: string | null): Promise<Element | null> => {
     const target = relationId ? rels.get(relationId)?.target : undefined
     return target ? parseOptionalXml(await readText(target)) : null
@@ -124,6 +130,7 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
     annotations,
     header: readHeaderFooter(await readPart(header)),
     footer: readHeaderFooter(await readPart(footer)),
+    pageSetup: readPageSetup(documentRoot),
     comments: commentsTarget
       ? readComments(parseOptionalXml(await readText(commentsTarget)), () => createId('comment'))
       : []
@@ -149,9 +156,27 @@ export function prepareHtml(html: string, transform?: (body: HTMLElement) => voi
     })
   }
   dom.querySelectorAll('img[src=""]').forEach((image) => image.remove())
+  normalizePageBreaks(dom.body)
   // mammoth añade enlaces de vuelta en las notas al pie ("↑"); en el editor no llevan a ningún sitio.
   dom.querySelectorAll('a[href^="#"]').forEach((link) => link.replaceWith(...link.childNodes))
   return dom.body.innerHTML
+}
+
+/**
+ * El salto de Word vive dentro de un párrafo (`<w:p><w:r><w:br w:type="page"/></w:r></w:p>`), así
+ * que mammoth escribe `<p><hr></p>` y el navegador lo deja en `<p></p><hr><p></p>`. Esos dos párrafos
+ * vacíos no existían en el documento: se quitan. El salto queda como `<hr data-page-break>`.
+ */
+function normalizePageBreaks(body: HTMLElement): void {
+  body.querySelectorAll('hr.page-break').forEach((hr) => {
+    hr.removeAttribute('class')
+    hr.setAttribute('data-page-break', '')
+    for (const sibling of [hr.previousElementSibling, hr.nextElementSibling]) {
+      if (sibling?.tagName === 'P' && sibling.childNodes.length === 0) sibling.remove()
+    }
+    // Un salto dentro de una tabla o una lista no tiene sentido en el editor: se descarta.
+    if (hr.parentElement !== body) hr.remove()
+  })
 }
 
 export function describeLosses(lost: LostFormatting): string[] {

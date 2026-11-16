@@ -36,9 +36,23 @@ export interface DocxRunFormat {
   highlight?: string
 }
 
+/** Formato de párrafo que mammoth no lee. Sangrías en centímetros. */
+export interface DocxParagraphFormat {
+  align?: DocxAlignment
+  /** Sangría izquierda. */
+  indentLeft?: number
+  /** Primera línea respecto a la izquierda; negativa es francesa. */
+  firstLine?: number
+  /** `w:pageBreakBefore`: el párrafo empieza hoja nueva. */
+  pageBreakBefore?: boolean
+}
+
 export interface DocxAnnotations {
   formats: DocxRunFormat[]
+  paragraphs: DocxParagraphFormat[]
 }
+
+const TWIPS_PER_CM = 1440 / 2.54
 
 const ALIGNMENTS: Record<string, DocxAlignment> = {
   center: 'center',
@@ -85,6 +99,7 @@ export function annotateDocumentXml(
   const root = document.documentElement
   const defaults = stylesXml ? readDefaultFormat(new DOMParser().parseFromString(stylesXml, 'application/xml')) : {}
   const formats: DocxRunFormat[] = []
+  const paragraphs: DocxParagraphFormat[] = []
 
   for (const run of descendants(root, 'r')) {
     const format = withoutDefaults(readRunFormat(child(run, 'rPr')), defaults)
@@ -96,16 +111,19 @@ export function annotateDocumentXml(
   }
 
   for (const paragraph of descendants(root, 'p')) {
-    const alignment = ALIGNMENTS[attr(path(paragraph, 'pPr', 'jc'), 'val') ?? '']
-    const firstText = alignment && descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
-    if (firstText) firstText.textContent = `${marker('p', alignment)}${firstText.textContent ?? ''}`
+    const format = readParagraphFormat(child(paragraph, 'pPr'))
+    if (Object.keys(format).length === 0) continue
+    const firstText = descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
+    if (!firstText) continue // párrafo vacío: ni alineación ni sangría se notan
+    const id = paragraphs.push(format) - 1
+    firstText.textContent = `${marker('p', String(id))}${firstText.textContent ?? ''}`
   }
 
   for (const start of descendants(root, 'commentRangeStart'))
     insertMarkerRun(start, marker('c', attr(start, 'id') ?? ''))
   for (const end of descendants(root, 'commentRangeEnd')) insertMarkerRun(end, marker('C', attr(end, 'id') ?? ''))
 
-  return { xml: new XMLSerializer().serializeToString(document), annotations: { formats } }
+  return { xml: new XMLSerializer().serializeToString(document), annotations: { formats, paragraphs } }
 }
 
 /** Párrafo al que pertenece un texto (un cuadro de texto puede tener párrafos dentro de otro). */
@@ -136,6 +154,29 @@ function insertMarkerRun(anchor: Element, text: string): void {
   let next = anchor.nextElementSibling
   while (next && next.localName !== 'p') next = next.nextElementSibling
   if (next) next.insertBefore(run, next.firstChild)
+}
+
+function readParagraphFormat(properties: Element | null): DocxParagraphFormat {
+  if (!properties) return {}
+  const format: DocxParagraphFormat = {}
+  const align = ALIGNMENTS[attr(child(properties, 'jc'), 'val') ?? '']
+  if (align) format.align = align
+  const indent = child(properties, 'ind')
+  // Sin redondear aquí: la izquierda se pasa luego a pasos de 1,27 cm y un redondeo previo se notaría.
+  const cm = (name: string) => {
+    const value = Number(attr(indent, name))
+    return Number.isFinite(value) && value !== 0 ? value / TWIPS_PER_CM : null
+  }
+  const round2 = (value: number | null) => (value === null ? null : Math.round(value * 100) / 100)
+  const left = cm('left') ?? cm('start')
+  if (left !== null && left > 0) format.indentLeft = left
+  const firstLine = round2(cm('firstLine'))
+  const hanging = round2(cm('hanging'))
+  if (hanging !== null) format.firstLine = -hanging
+  else if (firstLine !== null) format.firstLine = firstLine
+  const pageBreak = child(properties, 'pageBreakBefore')
+  if (pageBreak && !['0', 'false', 'off'].includes(attr(pageBreak, 'val') ?? '')) format.pageBreakBefore = true
+  return format
 }
 
 function readRunFormat(properties: Element | null): DocxRunFormat {
@@ -225,9 +266,10 @@ export function applyAnnotations(
       if (kind === 'r') format = annotations.formats[Number(payload)] ?? null
       else if (kind === 'R') format = null
       else if (kind === 'p') {
+        const format = annotations.paragraphs[Number(payload)]
         const block = node.parentElement?.closest(ALIGNABLE_BLOCKS)
-        if (block instanceof HTMLElement) block.style.textAlign = payload
-        else losses.alignedParagraphs++
+        if (format && block instanceof HTMLElement) applyParagraphFormat(block, format)
+        else if (format?.align) losses.alignedParagraphs++
       } else if (kind === 'c') {
         const id = commentIds.get(payload)
         if (id) openComments.push(id)
@@ -249,6 +291,25 @@ export function applyAnnotations(
     STRAY_MARKERS.lastIndex = 0
   }
   return losses
+}
+
+/** Paso de la sangría del editor (ver editor/ParagraphFormat.ts): se guarda en pasos de 1,27 cm. */
+const INDENT_STEP_CM = 1.27
+
+function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): void {
+  if (format.align) block.style.textAlign = format.align
+  // En las listas, la sangría la pone la propia lista (numbering.xml): aplicarla otra vez la duplicaría.
+  const inList = block.closest('li') !== null
+  if (!inList && format.indentLeft) {
+    block.setAttribute('data-indent', String(Math.round((format.indentLeft / INDENT_STEP_CM) * 1000) / 1000))
+  }
+  if (!inList && format.firstLine) block.style.textIndent = `${format.firstLine}cm`
+  // Solo entre bloques del documento: en una tabla o una lista no hay hoja nueva que empezar.
+  if (format.pageBreakBefore && block.parentElement === block.ownerDocument.body) {
+    const pageBreak = block.ownerDocument.createElement('hr')
+    pageBreak.setAttribute('data-page-break', '')
+    block.before(pageBreak)
+  }
 }
 
 function wrapSegment(

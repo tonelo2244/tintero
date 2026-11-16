@@ -12,7 +12,9 @@ import {
   HeadingLevel,
   ImageRun,
   Packer,
+  PageBreak,
   PageNumber,
+  PageOrientation,
   Paragraph,
   ShadingType,
   Table,
@@ -41,17 +43,15 @@ import {
   docxStyles,
   halfPoints,
   numberedLevels,
-  numberedListReference,
-  TWIPS_PER_CM
+  numberedListReference
 } from './docxStyles'
+import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
-/** A4 con márgenes de 2,5 cm, igual que la hoja del editor. */
-const PAGE = { width: 11906, height: 16838, margin: Math.round(2.5 * TWIPS_PER_CM) }
-/** Ancho útil de la página en píxeles (16 cm a 96 ppp): las imágenes más anchas se reducen. */
-const MAX_IMAGE_WIDTH_PX = 605
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
-const CONTENT_WIDTH_TWIPS = PAGE.width - 2 * PAGE.margin
+const PX_PER_CM = 96 / 2.54
+/** Exacto (1 pulgada = 1440 twips): con 567 redondeado, un A4 saldría 16840 en vez de los 16838 de Word. */
+const twips = (cm: number) => Math.round((cm * 1440) / 2.54)
 /** Mismo gris que las celdas de encabezado en el editor. */
 const HEADER_CELL_FILL = 'F2F2F2'
 const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'BFBFBF' }
@@ -90,7 +90,8 @@ interface ListContext {
  */
 export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const comments = content.comments ?? []
-  const converter = new DocxConverter(comments, content.doc)
+  const pageSetup = content.pageSetup ?? DEFAULT_PAGE_SETUP
+  const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
   const children = converter.blocks(content.doc.content ?? [])
   const document = new Document({
     creator: 'Tintero',
@@ -107,12 +108,7 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
     },
     sections: [
       {
-        properties: {
-          page: {
-            size: { width: PAGE.width, height: PAGE.height },
-            margin: { top: PAGE.margin, bottom: PAGE.margin, left: PAGE.margin, right: PAGE.margin }
-          }
-        },
+        properties: { page: pageProperties(pageSetup) },
         headers: content.header
           ? { default: new Header({ children: headerFooterParagraphs(content.header) }) }
           : undefined,
@@ -140,8 +136,13 @@ class DocxConverter {
    */
   private readonly pendingCommentTexts = new Map<string, number>()
   private readonly totalCommentTexts = new Map<string, number>()
+  /** Ancho útil de la hoja: lo que ocupan las tablas y lo máximo que puede medir una imagen. */
+  private readonly contentWidthTwips: number
+  private readonly maxImageWidthPx: number
 
-  constructor(comments: WriterComment[], doc: JSONContent) {
+  constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
+    this.contentWidthTwips = twips(contentWidthCm)
+    this.maxImageWidthPx = Math.round(contentWidthCm * PX_PER_CM)
     this.commentNumbers = new Map(comments.map((comment, index) => [comment.id, index]))
     countCommentTexts(doc, this.totalCommentTexts)
     for (const [id, count] of this.totalCommentTexts) this.pendingCommentTexts.set(id, count)
@@ -185,8 +186,11 @@ class DocxConverter {
         ]
       case 'image':
         return [new Paragraph({ children: this.inline(node, []) })]
+      case 'pageBreak':
+        // Como hace Word con Ctrl+Intro: un párrafo que solo contiene el salto.
+        return [new Paragraph({ children: [new PageBreak()] })]
       case 'table':
-        return [this.table(node, CONTENT_WIDTH_TWIPS)]
+        return [this.table(node, this.contentWidthTwips)]
       default:
         // Nodo desconocido (extensión futura): mejor conservar su texto que perderlo.
         return node.content ? this.blocks(node.content, list) : []
@@ -282,8 +286,8 @@ class DocxConverter {
       options.numbering = { reference: list.reference, level: list.level, instance: list.instance }
     } else if (continuationLevel !== undefined) {
       options.indent = { left: INDENT_STEP_TWIPS * (continuationLevel + 1) }
-    } else if (attrs.indent > 0) {
-      options.indent = { left: INDENT_STEP_TWIPS * attrs.indent }
+    } else if (attrs.indent > 0 || attrs.firstLineIndent) {
+      options.indent = paragraphIndent(attrs.indent, attrs.firstLineIndent)
     }
 
     const lineHeight = Number(attrs.lineHeight)
@@ -299,7 +303,7 @@ class DocxConverter {
   private inline(node: JSONContent, marks: NonNullable<JSONContent['marks']>): ParagraphChild[] {
     if (node.type === 'hardBreak') return [new TextRun({ break: 1 })]
     if (node.type === 'image') {
-      const image = imageRun(node)
+      const image = imageRun(node, this.maxImageWidthPx)
       return image ? [image] : []
     }
     if (node.type !== 'text' || !node.text) return []
@@ -380,7 +384,43 @@ export function runOptions(marks: NonNullable<JSONContent['marks']>): MutableRun
   return options
 }
 
-function imageRun(node: JSONContent): ImageRun | null {
+/** Sangría izquierda (en pasos de 1,27 cm) y de primera línea (cm, negativa = francesa) en twips. */
+function paragraphIndent(
+  steps: unknown,
+  firstLineCm: unknown
+): { left?: number; firstLine?: number; hanging?: number } {
+  const indent: { left?: number; firstLine?: number; hanging?: number } = {}
+  const left = Math.round(INDENT_STEP_TWIPS * (Number(steps) || 0))
+  if (left > 0) indent.left = left
+  const firstLine = Number(firstLineCm) || 0
+  if (firstLine > 0) indent.firstLine = twips(firstLine)
+  if (firstLine < 0) indent.hanging = twips(-firstLine)
+  return indent
+}
+
+/** Configuración de página -> `w:sectPr`. La librería gira el tamaño ella misma con la orientación. */
+function pageProperties(setup: PageSetup) {
+  const { margins } = setup
+  return {
+    size: {
+      width: twips(setup.size.width),
+      height: twips(setup.size.height),
+      orientation: setup.orientation === 'landscape' ? PageOrientation.LANDSCAPE : PageOrientation.PORTRAIT
+    },
+    margin: {
+      top: twips(margins.top),
+      bottom: twips(margins.bottom),
+      left: twips(margins.left),
+      right: twips(margins.right)
+    }
+  }
+}
+
+function contentWidthCm(setup: PageSetup): number {
+  return orientedSize(setup).width - setup.margins.left - setup.margins.right
+}
+
+function imageRun(node: JSONContent, maxWidthPx: number): ImageRun | null {
   const decoded = typeof node.attrs?.src === 'string' ? decodeImageDataUrl(node.attrs.src) : null
   if (!decoded) return null // imagen enlazada o formato que Word no entiende (SVG, WebP)
   const declaredWidth = Number(node.attrs?.width)
@@ -388,12 +428,12 @@ function imageRun(node: JSONContent): ImageRun | null {
   const size =
     declaredWidth > 0 && declaredHeight > 0
       ? { width: declaredWidth, height: declaredHeight }
-      : (imageSize(decoded) ?? { width: MAX_IMAGE_WIDTH_PX, height: Math.round(MAX_IMAGE_WIDTH_PX * 0.75) })
+      : (imageSize(decoded) ?? { width: maxWidthPx, height: Math.round(maxWidthPx * 0.75) })
   const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
   return new ImageRun({
     type: decoded.kind,
     data: decoded.bytes,
-    transformation: fitWidth(size, MAX_IMAGE_WIDTH_PX),
+    transformation: fitWidth(size, maxWidthPx),
     altText: { name: alt || 'Imagen', description: alt, title: alt }
   })
 }
