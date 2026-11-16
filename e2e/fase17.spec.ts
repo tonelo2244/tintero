@@ -59,6 +59,9 @@ test('Texto: notas al pie en su hoja, notas al final y tabla de contenido', asyn
   await page.getByRole('tab', { name: 'Referencias' }).click()
   await page.getByRole('button', { name: 'Insertar nota al pie' }).click()
   const noteDialog = page.getByRole('dialog', { name: 'Nota al pie 1' })
+  // El cuadro conserva el foco aunque el editor lo recupere un fotograma después (focus() de Tiptap).
+  await page.waitForTimeout(100)
+  await expect(noteDialog.getByLabel('Texto de la nota')).toBeFocused()
   await noteDialog.getByLabel('Texto de la nota').fill('La primera nota, al pie de la hoja.')
   await noteDialog.getByRole('button', { name: 'Aceptar' }).click()
   await expect(editor.locator('sup.writer-note-ref')).toHaveText('1')

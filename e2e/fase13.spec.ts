@@ -70,10 +70,11 @@ test('Texto: modificar un estilo cambia todos sus párrafos y se guarda con el d
   const tab = editor.locator('.writer-tab')
   await expect(tab).toHaveClass(/writer-tab--dotted/)
   // El "5" acaba justo en los 8 cm desde el margen izquierdo del texto.
+  // El ancho de la tabulación se calcula en el siguiente fotograma: se espera a que lo tenga.
+  await expect.poll(async () => (await tab.boundingBox())?.width ?? 0).toBeGreaterThan(50)
   const paragraphBox = await editor.locator('p', { hasText: 'Introducción' }).boundingBox()
   const tabBox = await tab.boundingBox()
   expect(tabBox!.x + tabBox!.width - paragraphBox!.x).toBeLessThan((8 * 96) / 2.54)
-  expect(tabBox!.width).toBeGreaterThan(50)
 
   const filePath = join(tintero.workDir, 'Estilos.tdoc')
   await tintero.answerNextSaveDialog(filePath)

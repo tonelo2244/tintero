@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from 'react'
+import { useEffect, useRef, type FormEvent, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 
 interface WriterDialogProps {
@@ -19,6 +19,19 @@ interface WriterDialogProps {
  * la cabecera cada uno. Esc cierra.
  */
 export function WriterDialog({ title, icon, onClose, onSubmit, actions, className, children }: WriterDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // El comando que abre el cuadro suele llevar `focus()` de Tiptap, que devuelve el foco al editor
+  // en el siguiente fotograma (requestAnimationFrame): le quitaría el foco al primer campo y lo que
+  // se escribiera iría al documento. Un fotograma pedido después corre detrás y lo devuelve al campo.
+  useEffect(() => {
+    const dialog = dialogRef.current
+    const field = dialog?.contains(document.activeElement) ? (document.activeElement as HTMLElement) : null
+    if (!dialog || !field) return
+    const frame = requestAnimationFrame(() => {
+      if (document.activeElement?.closest('.ProseMirror') && !dialog.contains(document.activeElement)) field.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
   const body = (
     <>
       {children}
@@ -31,6 +44,7 @@ export function WriterDialog({ title, icon, onClose, onSubmit, actions, classNam
   }
   return (
     <div
+      ref={dialogRef}
       className={`writer-comments writer-page-setup ${className ?? ''}`}
       role="dialog"
       aria-label={title}
