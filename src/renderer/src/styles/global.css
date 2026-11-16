@@ -923,6 +923,40 @@ button {
   background: rgba(47, 90, 168, 0.18);
   outline: none;
 }
+/* Topes de tabulación: una "L" en la parte baja de la regla (como en Word); centrado y decimal, una "T". */
+.writer-ruler__tab {
+  position: absolute;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  margin-left: -1px;
+  padding: 0;
+  border: 0;
+  border-left: 2px solid #333;
+  border-bottom: 2px solid #333;
+  background: none;
+  cursor: pointer;
+}
+.writer-ruler__tab--right {
+  margin-left: -6px;
+  border-left: 0;
+  border-right: 2px solid #333;
+}
+.writer-ruler__tab--center,
+.writer-ruler__tab--decimal {
+  margin-left: -4px;
+  border-left: 0;
+  background: linear-gradient(#333, #333) center / 2px 100% no-repeat;
+}
+.writer-ruler__tab--decimal::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 1px;
+  width: 2px;
+  height: 2px;
+  background: #333;
+}
 .writer-ruler__marker {
   position: absolute;
   width: 0;
@@ -1429,7 +1463,7 @@ button {
 .style-gallery {
   display: flex;
   gap: 4px;
-  max-width: 640px;
+  max-width: 320px;
   overflow-x: auto;
   padding: 2px;
 }

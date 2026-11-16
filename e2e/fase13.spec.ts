@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import JSZip from 'jszip'
 import { createBlank, expect, test } from './support/tintero'
 
 /** Fase 13: estilos de verdad (galería, modificar, nuevo), numeración de títulos y tabulaciones. */
@@ -64,6 +65,8 @@ test('Texto: modificar un estilo cambia todos sus párrafos y se guarda con el d
   await page.keyboard.press('End')
   await page.keyboard.press('Tab')
   await page.keyboard.insertText('5')
+  // La regla enseña el tope del párrafo del cursor.
+  await expect(page.getByRole('button', { name: 'Quitar el tope de 8 cm' })).toBeVisible()
   const tab = editor.locator('.writer-tab')
   await expect(tab).toHaveClass(/writer-tab--dotted/)
   // El "5" acaba justo en los 8 cm desde el margen izquierdo del texto.
@@ -81,5 +84,26 @@ test('Texto: modificar un estilo cambia todos sus párrafos y se guarda con el d
   const styles = saved.content.styles as { id: string; props: Record<string, unknown> }[]
   expect(styles.find((style) => style.id === 'heading-1')?.props.fontSize).toBe(20)
   expect(styles.find((style) => style.id === 'custom-nota')?.props.italic).toBe(true)
+
+  // .docx: los estilos van a styles.xml (Heading 1 con 20 pt = 40 medios puntos) y el tope a w:tabs.
+  const docxPath = join(tintero.workDir, 'Estilos.docx')
+  await tintero.answerNextSaveDialog(docxPath)
+  await page.getByRole('button', { name: 'Exportar' }).click()
+  await page.getByRole('menuitem', { name: 'Documento de Word (.docx)' }).click()
+  await expect
+    .poll(() =>
+      readFile(docxPath).then(
+        (bytes) => bytes.length,
+        () => 0
+      )
+    )
+    .toBeGreaterThan(0)
+  const zip = await JSZip.loadAsync(await readFile(docxPath))
+  const stylesXml = await zip.file('word/styles.xml')!.async('string')
+  expect(stylesXml).toMatch(/w:styleId="Heading1"[\s\S]*?<w:sz w:val="40"\/>/)
+  expect(stylesXml).toContain('<w:name w:val="Nota"/>')
+  const documentXml = await zip.file('word/document.xml')!.async('string')
+  expect(documentXml).toContain('<w:pStyle w:val="customnota"/>')
+  expect(documentXml).toMatch(/<w:tab w:val="right" w:pos="\d+" w:leader="dot"\/>/)
   if (process.env.SCREENSHOTS) await page.screenshot({ path: 'test-results/fase13-estilos.png' })
 })

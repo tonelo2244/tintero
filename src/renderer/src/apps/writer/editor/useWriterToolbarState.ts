@@ -1,6 +1,7 @@
 import { useEditorState, type Editor } from '@tiptap/react'
 import { isInHeaderRow } from '../model/commands'
 import { activeCharStyleId, activeParagraphStyleId } from '../model/paragraphStyles'
+import type { TabStop } from '../model/paragraphFormat'
 import type { ParagraphIndents } from '../model/ruler'
 import { INDENT_STEP_CM } from './ParagraphFormat'
 
@@ -67,7 +68,7 @@ function paragraphAttrs(editor: Editor) {
     spaceAfter: (attrs.spaceAfter as number | null | undefined) ?? null,
     indentRight: (attrs.indentRight as number | null | undefined) ?? null,
     border: (attrs.border as string | null | undefined) ?? null,
-    tabStops: (attrs.tabStops as unknown[] | null | undefined)?.length ?? 0
+    tabStops: (attrs.tabStops as TabStop[] | null | undefined) ?? []
   }
 }
 

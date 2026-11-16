@@ -422,6 +422,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               indents={toolbar?.indents ?? null}
               zoom={zoom}
               onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+              tabStops={toolbar?.paragraph.tabStops ?? []}
+              onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
               onIndentsChange={(indents) =>
                 editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
               }
