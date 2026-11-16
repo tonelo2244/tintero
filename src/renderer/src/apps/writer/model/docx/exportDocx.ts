@@ -1,6 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
 import {
-  AlignmentType,
   BorderStyle,
   CommentRangeEnd,
   CommentRangeStart,
@@ -17,6 +16,9 @@ import {
   PageOrientation,
   Paragraph,
   ShadingType,
+  Tab,
+  TabStopType,
+  LeaderType,
   Table,
   TableCell,
   TableRow,
@@ -37,21 +39,26 @@ import {
   type WriterContent
 } from '../content'
 import {
-  BULLET_LIST_REFERENCE,
+  ALIGNMENT,
   bulletLevels,
+  bulletListReference,
   DOCX_STYLE,
-  docxStyles,
+  docxStyleId,
+  docxStylesFor,
   halfPoints,
+  HEADINGS_NUMBERING_REFERENCE,
+  headingLevels,
   numberedLevels,
-  numberedListReference
+  numberedListReference,
+  twips
 } from './docxStyles'
+import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
+import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
 const PX_PER_CM = 96 / 2.54
-/** Exacto (1 pulgada = 1440 twips): con 567 redondeado, un A4 saldría 16840 en vez de los 16838 de Word. */
-const twips = (cm: number) => Math.round((cm * 1440) / 2.54)
 /** Mismo gris que las celdas de encabezado en el editor. */
 const HEADER_CELL_FILL = 'F2F2F2'
 const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'BFBFBF' }
@@ -62,21 +69,27 @@ type DocxBlock = Paragraph | Table
 const HEADING_BY_LEVEL = {
   1: HeadingLevel.HEADING_1,
   2: HeadingLevel.HEADING_2,
-  3: HeadingLevel.HEADING_3
+  3: HeadingLevel.HEADING_3,
+  4: HeadingLevel.HEADING_4,
+  5: HeadingLevel.HEADING_5,
+  6: HeadingLevel.HEADING_6
 } as const
 
-const ALIGNMENT = {
-  left: AlignmentType.LEFT,
-  center: AlignmentType.CENTER,
-  right: AlignmentType.RIGHT,
-  justify: AlignmentType.JUSTIFIED
-} as const
-
-const STYLE_BY_BLOCK_STYLE: Record<string, string> = {
-  subtitle: DOCX_STYLE.subtitle,
-  quote: DOCX_STYLE.quote,
-  'no-spacing': DOCX_STYLE.noSpacing
+/** Bordes de párrafo: el mismo gris que en pantalla (paragraphFormat.ts). */
+const PARAGRAPH_LINE = { style: BorderStyle.SINGLE, size: 6, color: '595959', space: 1 }
+const PARAGRAPH_BORDERS: Record<ParagraphBorder, IParagraphOptions['border']> = {
+  bottom: { bottom: PARAGRAPH_LINE },
+  top: { top: PARAGRAPH_LINE },
+  left: { left: { ...PARAGRAPH_LINE, size: 18, space: 4 } },
+  box: { top: PARAGRAPH_LINE, bottom: PARAGRAPH_LINE, left: PARAGRAPH_LINE, right: PARAGRAPH_LINE }
 }
+
+const TAB_TYPE = {
+  left: TabStopType.LEFT,
+  center: TabStopType.CENTER,
+  right: TabStopType.RIGHT,
+  decimal: TabStopType.DECIMAL
+} as const
 
 interface ListContext {
   reference: string
@@ -95,15 +108,20 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const children = converter.blocks(content.doc.content ?? [])
   const document = new Document({
     creator: 'Tintero',
-    styles: docxStyles,
+    styles: docxStylesFor(content.styles ?? DEFAULT_STYLES, content.numberedHeadings),
     comments: { children: comments.map(commentOptions) },
     numbering: {
       config: [
-        { reference: BULLET_LIST_REFERENCE, levels: bulletLevels() },
-        ...[...converter.numberedListStarts].map((start) => ({
-          reference: numberedListReference(start),
-          levels: numberedLevels(start)
-        }))
+        { reference: bulletListReference(), levels: bulletLevels() },
+        ...[...converter.bulletStyles].map((bulletId) => ({
+          reference: bulletListReference(bulletId),
+          levels: bulletLevels(bulletId)
+        })),
+        ...[...converter.numberedLists.values()].map(({ start, format }) => ({
+          reference: numberedListReference(start, format),
+          levels: numberedLevels(start, format)
+        })),
+        ...(content.numberedHeadings ? [{ reference: HEADINGS_NUMBERING_REFERENCE, levels: headingLevels() }] : [])
       ]
     },
     sections: [
@@ -127,7 +145,9 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
 class DocxConverter {
   /** Cada lista nueva reinicia su numeración con una "instancia" distinta. */
   private nextListInstance = 1
-  readonly numberedListStarts = new Set<number>()
+  /** Viñetas de la biblioteca que usa el documento (cada una es una definición de lista en Word). */
+  readonly bulletStyles = new Set<string>()
+  readonly numberedLists = new Map<string, { start: number; format: NumberFormat }>()
   /** Word numera los comentarios; nosotros usamos ids de texto. */
   private readonly commentNumbers: Map<string, number>
   /**
@@ -158,12 +178,17 @@ class DocxConverter {
         return [this.paragraph(node, list)]
       case 'heading':
         return [this.paragraph(node, list)]
-      case 'bulletList':
-        return this.list(node, BULLET_LIST_REFERENCE, list)
+      case 'bulletList': {
+        const bulletId = (node.attrs?.bulletStyle as string | null) ?? undefined
+        if (bulletId) this.bulletStyles.add(bulletId)
+        return this.list(node, bulletListReference(bulletId), list)
+      }
       case 'orderedList': {
         const start = Number(node.attrs?.start) || 1
-        this.numberedListStarts.add(start)
-        return this.list(node, numberedListReference(start), list)
+        const format = (node.attrs?.numberFormat as NumberFormat | null) ?? 'decimal'
+        const reference = numberedListReference(start, format)
+        this.numberedLists.set(reference, { start, format })
+        return this.list(node, reference, list)
       }
       case 'listItem':
         return this.blocks(node.content ?? [], list)
@@ -272,11 +297,11 @@ class DocxConverter {
     }
 
     if (node.type === 'heading') {
-      options.heading = HEADING_BY_LEVEL[attrs.level as 1 | 2 | 3] ?? HeadingLevel.HEADING_1
+      options.heading = HEADING_BY_LEVEL[attrs.level as keyof typeof HEADING_BY_LEVEL] ?? HeadingLevel.HEADING_1
     } else if (attrs.blockStyle === 'title') {
       options.heading = HeadingLevel.TITLE
-    } else if (attrs.blockStyle && STYLE_BY_BLOCK_STYLE[attrs.blockStyle]) {
-      options.style = STYLE_BY_BLOCK_STYLE[attrs.blockStyle]
+    } else if (typeof attrs.blockStyle === 'string' && attrs.blockStyle) {
+      options.style = docxStyleId(attrs.blockStyle)
     }
 
     const alignment = ALIGNMENT[attrs.textAlign as keyof typeof ALIGNMENT]
@@ -290,8 +315,28 @@ class DocxConverter {
       options.indent = paragraphIndent(attrs.indent, attrs.firstLineIndent)
     }
 
+    const indentRight = Number(attrs.indentRight)
+    if (indentRight > 0) options.indent = { ...options.indent, right: twips(indentRight) }
+
+    const spacing: { before?: number; after?: number; line?: number } = {}
     const lineHeight = Number(attrs.lineHeight)
-    if (lineHeight > 0) options.spacing = { line: Math.round(240 * lineHeight) }
+    if (lineHeight > 0) spacing.line = Math.round(240 * lineHeight)
+    if (typeof attrs.spaceBefore === 'number') spacing.before = Math.round(attrs.spaceBefore * 20)
+    if (typeof attrs.spaceAfter === 'number') spacing.after = Math.round(attrs.spaceAfter * 20)
+    if (Object.keys(spacing).length > 0) options.spacing = spacing
+
+    const shading = cssColorToHex(attrs.shading)
+    if (shading) options.shading = { type: ShadingType.CLEAR, fill: shading, color: 'auto' }
+    const border = PARAGRAPH_BORDERS[attrs.border as ParagraphBorder]
+    if (border) options.border = border
+    const tabStops = (attrs.tabStops as TabStop[] | null) ?? []
+    if (tabStops.length > 0) {
+      options.tabStops = tabStops.map((stop) => ({
+        type: TAB_TYPE[stop.align],
+        position: twips(stop.position),
+        leader: stop.leader === 'dot' ? LeaderType.DOT : undefined
+      }))
+    }
 
     return new Paragraph(options)
   }
@@ -302,6 +347,7 @@ class DocxConverter {
 
   private inline(node: JSONContent, marks: NonNullable<JSONContent['marks']>): ParagraphChild[] {
     if (node.type === 'hardBreak') return [new TextRun({ break: 1 })]
+    if (node.type === 'tab') return [new TextRun({ ...runOptions(marks), children: [new Tab()] })]
     if (node.type === 'image') {
       const image = imageRun(node, this.maxImageWidthPx)
       return image ? [image] : []
@@ -361,6 +407,9 @@ export function runOptions(marks: NonNullable<JSONContent['marks']>): MutableRun
         break
       case 'link':
         options.style = 'Hyperlink'
+        break
+      case 'charStyle':
+        if (typeof attrs.styleId === 'string') options.style = docxStyleId(attrs.styleId)
         break
       case 'highlight': {
         // Word solo tiene 16 colores de resaltado; el sombreado admite cualquier color.
