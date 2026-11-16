@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/core'
+import { TextSelection } from '@tiptap/pm/state'
 import { nextFontSize } from '@/ui/fonts'
 import { DEFAULT_FONT_SIZE_PT } from '../constants'
 import {
@@ -10,7 +11,19 @@ import {
   type PageOrientation
 } from './pageSetup'
 import type { PageSetup } from './pageSetup'
-import { PARAGRAPH_STYLES } from './paragraphStyles'
+import {
+  canContinueNumbering,
+  changeSelectionCase,
+  clearAbsorbedFormatting,
+  selectionStyleProps,
+  setNumberingContinuation,
+  sortSelectedParagraphs
+} from './documentEdits'
+import type { NumberFormat, ParagraphBorder, TabStop } from './paragraphFormat'
+import { BULLET_STYLES } from './paragraphFormat'
+import { activeParagraphStyleId, applyStyle, isStyleActive } from './paragraphStyles'
+import { findStyle, isBuiltInStyle, removeStyle, upsertStyle, type WriterStyle } from './styles'
+import type { CaseMode } from './textCase'
 
 /**
  * Registro de comandos de Texto (el patrón Command, el mismo que usan VS Code o los editores serios).
@@ -42,6 +55,16 @@ export interface WriterUi {
   pageSetup: PageSetup
   setPageSetup(setup: PageSetup): void
   openPageSetupDialog(): void
+  /** Estilos del documento (fase 13). */
+  styles: WriterStyle[]
+  setStyles(styles: WriterStyle[]): void
+  /** Abre el cuadro para modificar un estilo, o para crear uno nuevo si no se indica. */
+  openStyleDialog(styleId?: string): void
+  stylesPanelOpen: boolean
+  toggleStylesPanel(): void
+  numberedHeadings: boolean
+  setNumberedHeadings(numbered: boolean): void
+  openTabStopsDialog(): void
 }
 
 export interface CommandContext {
@@ -87,10 +110,28 @@ async function paste({ editor }: CommandContext): Promise<void> {
   }
 }
 
+/** Pegado especial: el texto del portapapeles sin ningún formato (como Ctrl+Mayús+V). */
+async function pasteText({ editor }: CommandContext): Promise<void> {
+  const text = await navigator.clipboard.readText()
+  editor.chain().focus().insertContent(text.replace(/\r\n?/g, '\n').split('\n').map(textParagraph)).run()
+}
+
+const textParagraph = (line: string) => ({
+  type: 'paragraph',
+  content: line ? [{ type: 'text', text: line }] : []
+})
+
+/** Atributo del bloque donde está el cursor (párrafo o título). */
+const blockAttr = (editor: Editor, name: string): unknown => editor.state.selection.$from.parent.attrs[name] ?? null
+
+const withoutUndefined = <T extends object>(value: T): Partial<T> =>
+  Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as Partial<T>
+
 /** `satisfies` comprueba la forma de cada comando sin perder el tipo de su argumento. */
 export const WRITER_COMMANDS = {
   // --- Portapapeles ---
   paste: { label: 'Pegar', shortcut: 'Ctrl/Cmd+V', run: (context) => void paste(context) },
+  pasteText: { label: 'Pegar solo texto', run: (context) => void pasteText(context) },
   cut: { label: 'Cortar', shortcut: 'Ctrl/Cmd+X', run: () => document.execCommand('cut') },
   copy: { label: 'Copiar', shortcut: 'Ctrl/Cmd+C', run: () => document.execCommand('copy') },
 
@@ -193,15 +234,169 @@ export const WRITER_COMMANDS = {
     run: (context, value: string) => chain(context).setLineHeight(value).run(),
     isActive: ({ editor }, value: string) => editor.getAttributes('paragraph').lineHeight === value
   },
+  spaceBefore: {
+    label: 'Espacio antes del párrafo',
+    run: (context, pt: number | null) => chain(context).setSpacing({ before: pt }).run()
+  },
+  spaceAfter: {
+    label: 'Espacio después del párrafo',
+    run: (context, pt: number | null) => chain(context).setSpacing({ after: pt }).run()
+  },
+  toggleSpaceBefore: {
+    label: 'Agregar espacio antes del párrafo',
+    run: (context) =>
+      chain(context)
+        .setSpacing({ before: blockAttr(context.editor, 'spaceBefore') ? null : 12 })
+        .run(),
+    isActive: ({ editor }) => !!blockAttr(editor, 'spaceBefore')
+  },
+  toggleSpaceAfter: {
+    label: 'Quitar espacio después del párrafo',
+    run: (context) =>
+      chain(context)
+        .setSpacing({ after: blockAttr(context.editor, 'spaceAfter') === 0 ? null : 0 })
+        .run(),
+    isActive: ({ editor }) => blockAttr(editor, 'spaceAfter') === 0
+  },
+  indentLeftCm: {
+    label: 'Sangría izquierda',
+    run: (context, cm: number) => chain(context).setIndentCm(cm).run()
+  },
+  indentRightCm: {
+    label: 'Sangría derecha',
+    run: (context, cm: number) => chain(context).setIndentRight(cm).run()
+  },
+  shading: {
+    label: 'Sombreado',
+    run: (context, color: string | null) => chain(context).setShading(color).run()
+  },
+  paragraphBorder: {
+    label: 'Bordes',
+    run: (context, border: ParagraphBorder | 'none') => chain(context).setParagraphBorder(border).run(),
+    isActive: ({ editor }, border: ParagraphBorder | 'none') => (blockAttr(editor, 'border') ?? 'none') === border
+  },
+  tabStopsDialog: { label: 'Tabulaciones…', run: ({ ui }) => ui.openTabStopsDialog() },
+  tabStops: {
+    label: 'Tabulaciones',
+    run: (context, stops: TabStop[]) => chain(context).setTabStops(stops).run()
+  },
+  bulletStyle: {
+    label: 'Biblioteca de viñetas',
+    run: (context, bulletId: string) => {
+      const run = chain(context)
+      if (!context.editor.isActive('bulletList')) run.toggleBulletList()
+      // La de siempre (disc) no se guarda: el archivo queda como antes.
+      run.updateAttributes('bulletList', { bulletStyle: bulletId === BULLET_STYLES[0].id ? null : bulletId }).run()
+    },
+    isActive: ({ editor }, bulletId: string) =>
+      editor.isActive('bulletList') &&
+      (editor.getAttributes('bulletList').bulletStyle ?? BULLET_STYLES[0].id) === bulletId
+  },
+  numberFormat: {
+    label: 'Formato de número',
+    run: (context, format: NumberFormat) => {
+      const run = chain(context)
+      if (!context.editor.isActive('orderedList')) run.toggleOrderedList()
+      run.updateAttributes('orderedList', { numberFormat: format === 'decimal' ? null : format }).run()
+    },
+    isActive: ({ editor }, format: NumberFormat) =>
+      editor.isActive('orderedList') && (editor.getAttributes('orderedList').numberFormat ?? 'decimal') === format
+  },
+  restartNumbering: {
+    label: 'Reiniciar en 1',
+    run: ({ editor }) => setNumberingContinuation(editor, 'restart'),
+    isEnabled: ({ editor }) => editor.isActive('orderedList')
+  },
+  continueNumbering: {
+    label: 'Continuar numeración',
+    run: ({ editor }) => setNumberingContinuation(editor, 'continue'),
+    isEnabled: ({ editor }) => canContinueNumbering(editor)
+  },
+  numberedHeadings: {
+    label: 'Numerar los títulos (1, 1.1, 1.1.1)',
+    run: ({ ui }) => ui.setNumberedHeadings(!ui.numberedHeadings),
+    isActive: ({ ui }) => ui.numberedHeadings
+  },
+  sortParagraphs: {
+    label: 'Ordenar',
+    run: ({ editor }, order: 'asc' | 'desc') => sortSelectedParagraphs(editor, order === 'desc'),
+    isEnabled: ({ editor }) => editor.state.selection.$from.index(0) !== editor.state.selection.$to.index(0)
+  },
+  changeCase: {
+    label: 'Cambiar mayúsculas y minúsculas',
+    run: ({ editor }, mode: CaseMode) => changeSelectionCase(editor, mode),
+    isEnabled: ({ editor }) => !editor.state.selection.empty
+  },
+  formatPainter: {
+    label: 'Copiar formato',
+    run: ({ editor }, sticky: boolean) =>
+      editor.storage.formatPainter.copied && !sticky
+        ? editor.commands.cancelFormatPainter()
+        : editor.chain().focus().copyFormat(sticky).run(),
+    isActive: ({ editor }) => !!editor.storage.formatPainter?.copied
+  },
+
+  // --- Estilos ---
   applyStyle: {
     label: 'Aplicar estilo',
-    run: ({ editor }, styleId: string) => PARAGRAPH_STYLES.find((style) => style.id === styleId)?.apply(editor),
-    isActive: ({ editor }, styleId: string) =>
-      PARAGRAPH_STYLES.find((style) => style.id === styleId)?.isActive(editor) ?? false
+    run: ({ editor, ui }, styleId: string) => {
+      const style = findStyle(ui.styles, styleId)
+      if (style) applyStyle(editor, style)
+    },
+    isActive: ({ editor, ui }, styleId: string) => {
+      const style = findStyle(ui.styles, styleId)
+      return !!style && isStyleActive(editor, style)
+    }
+  },
+  modifyStyle: { label: 'Modificar…', run: ({ ui }, styleId: string) => ui.openStyleDialog(styleId) },
+  newStyle: { label: 'Nuevo estilo…', run: ({ ui }) => ui.openStyleDialog() },
+  updateStyleFromSelection: {
+    label: 'Actualizar para que coincida con la selección',
+    run: ({ editor, ui }, styleId: string) => {
+      const style = findStyle(ui.styles, styleId)
+      if (!style) return
+      const props = selectionStyleProps(editor)
+      // Un estilo de carácter no tiene formato de párrafo.
+      const absorbed =
+        style.type === 'character'
+          ? {
+              fontFamily: props.fontFamily,
+              fontSize: props.fontSize,
+              color: props.color,
+              bold: props.bold,
+              italic: props.italic,
+              underline: props.underline
+            }
+          : props
+      ui.setStyles(upsertStyle(ui.styles, { ...style, props: { ...style.props, ...withoutUndefined(absorbed) } }))
+      if (style.type === 'paragraph' && activeParagraphStyleId(editor) === style.id) clearAbsorbedFormatting(editor)
+    }
+  },
+  deleteStyle: {
+    label: 'Eliminar estilo',
+    run: ({ ui }, styleId: string) => ui.setStyles(removeStyle(ui.styles, styleId)),
+    isEnabled: (_context, styleId: string) => !isBuiltInStyle(styleId)
+  },
+  toggleStylesPanel: {
+    label: 'Panel de estilos',
+    run: ({ ui }) => ui.toggleStylesPanel(),
+    isActive: ({ ui }) => ui.stylesPanelOpen
   },
 
   // --- Edición ---
   find: { label: 'Buscar', shortcut: 'Ctrl/Cmd+F', run: ({ ui }) => ui.openFind('find') },
+  selectAll: { label: 'Seleccionar todo', shortcut: 'Ctrl/Cmd+A', run: (context) => chain(context).selectAll().run() },
+  selectParagraph: {
+    label: 'Seleccionar el párrafo',
+    run: (context) =>
+      chain(context)
+        .command(({ tr, state }) => {
+          const { $from } = state.selection
+          tr.setSelection(TextSelection.create(tr.doc, $from.start(), $from.end()))
+          return true
+        })
+        .run()
+  },
   replace: { label: 'Reemplazar', run: ({ ui }) => ui.openFind('replace') },
 
   // --- Insertar ---

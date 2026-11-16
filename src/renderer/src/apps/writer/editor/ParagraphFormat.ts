@@ -1,5 +1,5 @@
 import { Extension, type CommandProps } from '@tiptap/core'
-import type { BlockStyle } from '../model/paragraphStyles'
+import { BORDER_CSS, INDENT_STEP_CM, type ParagraphBorder, type TabStop } from '../model/paragraphFormat'
 
 const MAX_INDENT = 8
 /**
@@ -7,7 +7,7 @@ const MAX_INDENT = 8
  * puede poner cualquier valor, así que un paso puede ser fraccionario: 0,5 pasos = 0,635 cm. Se
  * mantiene el atributo de siempre para que los archivos anteriores se sigan leyendo igual.
  */
-export const INDENT_STEP_CM = 1.27
+export { INDENT_STEP_CM }
 const BLOCK_TYPES = ['paragraph', 'heading']
 
 declare module '@tiptap/core' {
@@ -16,7 +16,14 @@ declare module '@tiptap/core' {
       indent: () => ReturnType
       outdent: () => ReturnType
       setLineHeight: (lineHeight: string | null) => ReturnType
-      setBlockStyle: (blockStyle: BlockStyle | null) => ReturnType
+      /** Estilo de párrafo que no es un título (null = Normal). */
+      setBlockStyle: (blockStyle: string | null) => ReturnType
+      /** Espacio antes y después del párrafo, en puntos (null = el del estilo). */
+      setSpacing: (spacing: { before?: number | null; after?: number | null }) => ReturnType
+      setIndentRight: (cm: number | null) => ReturnType
+      setShading: (color: string | null) => ReturnType
+      setParagraphBorder: (border: ParagraphBorder | 'none' | null) => ReturnType
+      setTabStops: (stops: TabStop[] | null) => ReturnType
       /** Sangría izquierda exacta en centímetros (la regla); se guarda en pasos de 1,27 cm. */
       setIndentCm: (cm: number) => ReturnType
       /** Sangría de primera línea en centímetros; negativa es sangría francesa. */
@@ -60,6 +67,69 @@ export const ParagraphFormat = Extension.create({
             parseHTML: (element) => element.style.lineHeight || null,
             renderHTML: (attributes) =>
               attributes.lineHeight ? { style: `line-height: ${attributes.lineHeight}` } : {}
+          },
+          // Solo se leen valores en pt: la paginación pone margin-top en px como decoración, y al
+          // copiar y pegar un párrafo no debe convertirse en "espacio antes".
+          spaceBefore: {
+            default: null,
+            parseHTML: (element) => parseUnit(element.style.marginTop, 'pt'),
+            renderHTML: (attributes) =>
+              attributes.spaceBefore !== null ? { style: `margin-top: ${attributes.spaceBefore}pt` } : {}
+          },
+          spaceAfter: {
+            default: null,
+            parseHTML: (element) => parseUnit(element.style.marginBottom, 'pt'),
+            renderHTML: (attributes) =>
+              attributes.spaceAfter !== null ? { style: `margin-bottom: ${attributes.spaceAfter}pt` } : {}
+          },
+          indentRight: {
+            default: null,
+            parseHTML: (element) => parseUnit(element.style.marginRight, 'cm'),
+            renderHTML: (attributes) =>
+              attributes.indentRight ? { style: `margin-right: ${attributes.indentRight}cm` } : {}
+          },
+          shading: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-shading'),
+            renderHTML: (attributes) =>
+              attributes.shading
+                ? { 'data-shading': attributes.shading, style: `background-color: ${attributes.shading}` }
+                : {}
+          },
+          border: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-border'),
+            renderHTML: (attributes) => {
+              const css = BORDER_CSS[attributes.border as ParagraphBorder]
+              return css ? { 'data-border': attributes.border, style: css } : {}
+            }
+          },
+          tabStops: {
+            default: null,
+            parseHTML: (element) => parseTabStops(element.getAttribute('data-tab-stops')),
+            renderHTML: (attributes) =>
+              attributes.tabStops?.length ? { 'data-tab-stops': JSON.stringify(attributes.tabStops) } : {}
+          }
+        }
+      },
+      {
+        types: ['bulletList'],
+        attributes: {
+          bulletStyle: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-bullet'),
+            renderHTML: (attributes) => (attributes.bulletStyle ? { 'data-bullet': attributes.bulletStyle } : {})
+          }
+        }
+      },
+      {
+        types: ['orderedList'],
+        attributes: {
+          numberFormat: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-number-format'),
+            renderHTML: (attributes) =>
+              attributes.numberFormat ? { 'data-number-format': attributes.numberFormat } : {}
           }
         }
       },
@@ -103,6 +173,14 @@ export const ParagraphFormat = Extension.create({
         return changed
       }
 
+    const setBlockAttrs =
+      (attrs: Record<string, unknown>) =>
+      ({ commands }: CommandProps) => {
+        const paragraphs = commands.updateAttributes('paragraph', attrs)
+        const headings = commands.updateAttributes('heading', attrs)
+        return paragraphs || headings
+      }
+
     return {
       indent: () => changeIndent(1),
       outdent: () => changeIndent(-1),
@@ -130,12 +208,28 @@ export const ParagraphFormat = Extension.create({
           const headings = commands.updateAttributes('heading', { firstLineIndent })
           return paragraphs || headings
         },
+      setSpacing:
+        (spacing) =>
+        ({ commands }) => {
+          const attrs: Record<string, number | null> = {}
+          if (spacing.before !== undefined) attrs.spaceBefore = spacing.before
+          if (spacing.after !== undefined) attrs.spaceAfter = spacing.after
+          const paragraphs = commands.updateAttributes('paragraph', attrs)
+          const headings = commands.updateAttributes('heading', attrs)
+          return paragraphs || headings
+        },
+      setIndentRight: (cm) => setBlockAttrs({ indentRight: cm && cm > 0 ? Math.round(cm * 100) / 100 : null }),
+      setShading: (color) => setBlockAttrs({ shading: color }),
+      setParagraphBorder: (border) => setBlockAttrs({ border: border === 'none' ? null : border }),
+      setTabStops: (stops) => setBlockAttrs({ tabStops: stops && stops.length > 0 ? stops : null }),
       setBlockStyle:
         (blockStyle) =>
-        ({ commands, editor }) => {
-          // setParagraph devuelve false si ya es un párrafo, por eso no lo encadenamos con &&.
-          if (!editor.isActive('paragraph')) commands.setParagraph()
-          return commands.updateAttributes('paragraph', { blockStyle })
+        ({ chain, editor }) => {
+          // En una cadena: con `commands` sueltos, updateAttributes no ve el párrafo recién creado
+          // a partir de un título y no hace nada.
+          const steps = chain()
+          if (!editor.isActive('paragraph')) steps.setParagraph()
+          return steps.updateAttributes('paragraph', { blockStyle }).run()
         }
     }
   },
@@ -143,7 +237,16 @@ export const ParagraphFormat = Extension.create({
   addKeyboardShortcuts() {
     return {
       // Dentro de una tabla, Tab salta de celda (lo gestiona la extensión de tablas), como en Word.
-      Tab: () => !this.editor.isActive('table') && this.editor.commands.indent(),
+      Tab: () => {
+        if (this.editor.isActive('table')) return false
+        // Como en Word: al principio del párrafo (o en una lista) sangra; en medio del texto, tabulador.
+        const { $from, empty } = this.editor.state.selection
+        const atStart = empty && $from.parentOffset === 0
+        if (atStart || this.editor.isActive('listItem') || this.editor.isActive('codeBlock')) {
+          return this.editor.commands.indent()
+        }
+        return this.editor.commands.insertTab()
+      },
       'Shift-Tab': () => !this.editor.isActive('table') && this.editor.commands.outdent()
     }
   }
@@ -151,6 +254,21 @@ export const ParagraphFormat = Extension.create({
 
 /** "1.5cm" -> 1.5. Otras unidades no las escribe el editor; se ignoran. */
 function parseCm(value: string): number | null {
-  const match = /^(-?[\d.]+)cm$/.exec(value.trim())
-  return match ? Number(match[1]) || null : null
+  return parseUnit(value, 'cm') || null
+}
+
+/** "12pt" -> 12 si la unidad es la pedida; si no, null. */
+function parseUnit(value: string, unit: 'pt' | 'cm'): number | null {
+  const match = new RegExp(`^(-?[\\d.]+)${unit}$`).exec(value.trim())
+  return match ? Number(match[1]) : null
+}
+
+function parseTabStops(raw: string | null): TabStop[] | null {
+  if (!raw) return null
+  try {
+    const stops = JSON.parse(raw) as TabStop[]
+    return Array.isArray(stops) && stops.length > 0 ? stops : null
+  } catch {
+    return null
+  }
 }
