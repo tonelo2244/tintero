@@ -67,7 +67,61 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
 
   // El párrafo largo se parte (un hueco dentro de él) y la tabla repite su encabezado en cada hoja.
   await expect(editor.locator('p .writer-page-split')).toHaveCount(1)
-  await expect(editor.locator('tr.writer-table-repeat').first()).toBeAttached()
+  try {
+    await expect(editor.locator('tr.writer-table-repeat').first()).toBeAttached()
+  } catch (error) {
+    console.log(
+      'DBG',
+      await page.evaluate(() => {
+        const sheets = [...document.querySelectorAll('.writer-sheet')].map((s) =>
+          Math.round(s.getBoundingClientRect().top)
+        )
+        const t = document.querySelector('.ProseMirror table')!
+        const rows = [...t.querySelectorAll('tr')].map(
+          (r) =>
+            r.className +
+            ':' +
+            Math.round(r.getBoundingClientRect().top) +
+            ':' +
+            Math.round(r.getBoundingClientRect().height)
+        )
+        return JSON.stringify({
+          sheets,
+          tableTop: Math.round(t.getBoundingClientRect().top),
+          n: rows.length,
+          rows: rows.filter((r) => !r.startsWith(':')),
+          all: [...t.querySelectorAll('tr')]
+            .map(
+              (r, i) =>
+                i +
+                '|' +
+                r.className.slice(0, 18) +
+                '|' +
+                (r as HTMLElement).innerText.slice(0, 12).replace(/\s+/g, ' ') +
+                '|' +
+                Math.round(r.getBoundingClientRect().top)
+            )
+            .filter(
+              (x, i, a) =>
+                i < 3 ||
+                /gap|repeat|break/.test(x) ||
+                /gap|repeat|break/.test(a[i - 1] ?? '') ||
+                /gap|repeat|break/.test(a[i + 1] ?? '')
+            ),
+          split: Math.round(document.querySelector('.writer-page-split')!.getBoundingClientRect().top),
+          ths: t.querySelectorAll('th').length,
+          vw: innerWidth + 'x' + innerHeight,
+          fontOk: document.fonts.check('16px Carlito'),
+          wrap: (t.parentElement as HTMLElement).className,
+          firstRow: t.querySelector('tr')!.innerHTML.slice(0, 200),
+          starts: [...document.querySelectorAll('.writer-page-start')].map(
+            (e) => e.tagName + Math.round(e.getBoundingClientRect().top)
+          )
+        })
+      })
+    )
+    throw error
+  }
   const sheetCount = await page.locator('.writer-sheet').count()
   expect(sheetCount).toBeGreaterThanOrEqual(3)
   // El primer renglón que pasa de hoja empieza justo debajo del margen superior de la hoja 2.
