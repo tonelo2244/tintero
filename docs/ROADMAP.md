@@ -1,5 +1,7 @@
 # Tintero · Roadmap v2
 
+> El roadmap v2 está terminado. El siguiente es el [roadmap v3](ROADMAP-v3.md): Tintero Texto a la par con un procesador de texto profesional, pestaña por pestaña.
+
 Qué está hecho, dónde estamos y qué viene después.
 
 |         |                                                                                                 |

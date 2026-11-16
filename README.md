@@ -34,7 +34,7 @@ TypeScript. Tus archivos se quedan en tu disco y la IA (Ollama) se ejecuta en tu
 | Calidad y flujo de trabajo | 200+ tests unitarios, [pruebas e2e](#cómo-se-prueba) que arrancan la app en CI, ESLint/Prettier con pre-commit y un PR por funcionalidad   |
 | Seguridad de Electron      | `contextIsolation`, `sandbox`, CSP estricta y una API mínima en el preload                                                                 |
 
-Los cambios por versión están en el [CHANGELOG](CHANGELOG.md) y lo que viene en la [hoja de ruta](docs/ROADMAP.md).
+Los cambios por versión están en el [CHANGELOG](CHANGELOG.md) y lo que viene en la [hoja de ruta](docs/ROADMAP-v3.md).
 
 ## Capturas
 
@@ -294,7 +294,7 @@ Cada una está explicada en su PR, con las alternativas que se descartaron:
 
 ## Limitaciones conocidas (y siguiente paso natural)
 
-Qué viene después, por fases y con prioridades: [docs/ROADMAP.md](docs/ROADMAP.md).
+Qué viene después, por fases y con prioridades: [docs/ROADMAP-v3.md](docs/ROADMAP-v3.md) (el [v2](docs/ROADMAP.md) está terminado).
 
 - **Paginación de Texto por bloques**: un párrafo que no cabe en lo que queda de hoja pasa entero a la siguiente (no se parte entre dos hojas, como la opción «conservar líneas juntas» de Word), y un bloque más alto que una hoja entera (una tabla muy larga) se sale por abajo en pantalla. Lo impreso corta en los mismos sitios. Encabezado y pie son de texto plano e iguales en todas las hojas.
 - En Diapositivas, para editar el texto de un elemento agrupado hay que desagrupar; al exportar a .pptx los grupos salen como elementos sueltos (pptxgenjs no escribe grupos) y las transiciones se limitan a desvanecer y empujar.
