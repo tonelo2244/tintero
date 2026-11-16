@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import { isDefaultPageSetup, normalizePageSetup, type PageSetup } from './pageSetup'
+import { isDefaultStyles, normalizeStyles, type WriterStyle } from './styles'
 
 export type HeaderFooterAlign = 'left' | 'center' | 'right'
 
@@ -38,6 +39,10 @@ export interface WriterContent {
   comments?: WriterComment[]
   /** Tamaño, orientación y márgenes. Sin él, A4 vertical con 2,5 cm (formato v4; ver pageSetup.ts). */
   pageSetup?: PageSetup
+  /** Estilos del documento (fase 13). Sin ellos, los de partida (DEFAULT_STYLES). */
+  styles?: WriterStyle[]
+  /** Lista multinivel ligada a los títulos: 1, 1.1, 1.1.1… */
+  numberedHeadings?: boolean
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -49,7 +54,20 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.footer) parts.footer = content.footer
   if (content.comments && content.comments.length > 0) parts.comments = content.comments
   if (content.pageSetup) parts.pageSetup = content.pageSetup
+  if (content.styles) parts.styles = content.styles
+  if (content.numberedHeadings) parts.numberedHeadings = true
   return parts
+}
+
+/** Cambia los estilos. Los de partida no se guardan: el archivo queda igual que antes de la fase 13. */
+export function withStyles(parts: WriterParts, styles: WriterStyle[]): WriterParts {
+  const { styles: _previous, ...rest } = parts
+  return isDefaultStyles(styles) ? rest : { ...rest, styles }
+}
+
+export function withNumberedHeadings(parts: WriterParts, numbered: boolean): WriterParts {
+  const { numberedHeadings: _previous, ...rest } = parts
+  return numbered ? { ...rest, numberedHeadings: true } : rest
 }
 
 /** Cambia la configuración de página. La de por defecto no se guarda: el archivo queda como en la v3. */
@@ -83,6 +101,9 @@ export function parseWriterContent(raw: unknown): WriterContent {
   if (comments.length > 0) content.comments = comments
   const pageSetup = normalizePageSetup(candidate.pageSetup)
   if (pageSetup && !isDefaultPageSetup(pageSetup)) content.pageSetup = pageSetup
+  const styles = normalizeStyles(candidate.styles)
+  if (styles && !isDefaultStyles(styles)) content.styles = styles
+  if (candidate.numberedHeadings === true) content.numberedHeadings = true
   return content
 }
 

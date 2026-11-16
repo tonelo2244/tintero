@@ -1,5 +1,6 @@
 import { attr, child, descendants, path } from '@/core/office/xml'
 import { cssFontFamilyFor } from '@/ui/fonts'
+import { INDENT_STEP_CM } from '../paragraphFormat'
 
 /**
  * Formato "directo" de Word (fuente, tamaño, color, resaltado, alineación) y comentarios.
@@ -292,9 +293,6 @@ export function applyAnnotations(
   }
   return losses
 }
-
-/** Paso de la sangría del editor (ver editor/ParagraphFormat.ts): se guarda en pasos de 1,27 cm. */
-const INDENT_STEP_CM = 1.27
 
 function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): void {
   if (format.align) block.style.textAlign = format.align

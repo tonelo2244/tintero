@@ -1,41 +1,37 @@
 import type { Editor } from '@tiptap/core'
-
-export type BlockStyle = 'title' | 'subtitle' | 'no-spacing' | 'quote'
+import { headingLevelOf, NORMAL_STYLE_ID, type WriterStyle } from './styles'
 
 /**
- * Estilos de párrafo de la galería "Estilos". Cada uno sabe aplicarse y
- * detectar si está activo; la cinta solo los pinta, no conoce su lógica.
+ * Puente entre los estilos (datos, model/styles.ts) y los nodos del editor: cómo se aplica un
+ * estilo y qué estilo tiene el párrafo del cursor. Los títulos son nodos `heading` (para que la
+ * navegación y el .docx los reconozcan como títulos); el resto de estilos de párrafo, el atributo
+ * `blockStyle`; los de carácter, la marca `charStyle`.
  */
-export interface ParagraphStyle {
-  id: string
-  label: string
-  /** Clase CSS usada para la vista previa "AaBbCc" en la galería. */
-  previewClass: string
-  apply(editor: Editor): void
-  isActive(editor: Editor): boolean
+export function applyStyle(editor: Editor, style: WriterStyle): void {
+  const chain = editor.chain().focus()
+  if (style.type === 'character') {
+    chain.toggleCharStyle(style.id).run()
+    return
+  }
+  const level = headingLevelOf(style.id)
+  if (level) chain.setHeading({ level }).run()
+  else chain.setBlockStyle(style.id === NORMAL_STYLE_ID ? null : style.id).run()
 }
 
-const asParagraph = (blockStyle: BlockStyle | null): Pick<ParagraphStyle, 'apply' | 'isActive'> => ({
-  apply: (editor) => editor.chain().focus().setBlockStyle(blockStyle).run(),
-  isActive: (editor) => editor.isActive('paragraph', { blockStyle })
-})
-
-const asHeading = (level: 1 | 2 | 3): Pick<ParagraphStyle, 'apply' | 'isActive'> => ({
-  apply: (editor) => editor.chain().focus().setHeading({ level }).run(),
-  isActive: (editor) => editor.isActive('heading', { level })
-})
-
-export const PARAGRAPH_STYLES: ParagraphStyle[] = [
-  { id: 'normal', label: 'Normal', previewClass: 'style-preview--normal', ...asParagraph(null) },
-  { id: 'no-spacing', label: 'Sin espaciado', previewClass: 'style-preview--normal', ...asParagraph('no-spacing') },
-  { id: 'heading-1', label: 'Título 1', previewClass: 'style-preview--h1', ...asHeading(1) },
-  { id: 'heading-2', label: 'Título 2', previewClass: 'style-preview--h2', ...asHeading(2) },
-  { id: 'heading-3', label: 'Título 3', previewClass: 'style-preview--h3', ...asHeading(3) },
-  { id: 'title', label: 'Título', previewClass: 'style-preview--title', ...asParagraph('title') },
-  { id: 'subtitle', label: 'Subtítulo', previewClass: 'style-preview--subtitle', ...asParagraph('subtitle') },
-  { id: 'quote', label: 'Cita', previewClass: 'style-preview--quote', ...asParagraph('quote') }
-]
-
+/** Estilo de párrafo donde está el cursor (null si no es un párrafo ni un título, p. ej. código). */
 export function activeParagraphStyleId(editor: Editor): string | null {
-  return PARAGRAPH_STYLES.find((style) => style.isActive(editor))?.id ?? null
+  const block = editor.state.selection.$from.parent
+  if (block.type.name === 'heading') return `heading-${block.attrs.level}`
+  if (block.type.name === 'paragraph') return (block.attrs.blockStyle as string | null) ?? NORMAL_STYLE_ID
+  return null
+}
+
+export function activeCharStyleId(editor: Editor): string | null {
+  return (editor.getAttributes('charStyle').styleId as string | undefined) ?? null
+}
+
+export function isStyleActive(editor: Editor, style: WriterStyle): boolean {
+  return style.type === 'character'
+    ? activeCharStyleId(editor) === style.id
+    : activeParagraphStyleId(editor) === style.id
 }
