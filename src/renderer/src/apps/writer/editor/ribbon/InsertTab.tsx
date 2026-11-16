@@ -1,6 +1,11 @@
 import type { ChangeEvent } from 'react'
 import {
+  BookOpenText,
+  Bookmark,
+  CaseUpper,
+  Braces,
   CalendarDays,
+  Link2,
   Code2,
   SeparatorHorizontal,
   ImagePlus,
@@ -8,13 +13,23 @@ import {
   MessagesSquare,
   Minus,
   PanelTop,
-  Quote
+  Quote,
+  Shapes,
+  Sigma,
+  TableProperties,
+  ChartColumnBig,
+  SquareDashedText
 } from 'lucide-react'
-import { RibbonGroup } from '@/ui/Ribbon'
+import { Dropdown, RibbonGroup } from '@/ui/Ribbon'
 import { readImageFile } from '@/ui/readImageFile'
 import { TableGridPicker } from '@/ui/TableGridPicker'
 import { runCommand } from '../../model/commands'
-import { CommandButton } from './CommandButton'
+import { FIELD_KINDS } from '../../model/fields'
+import { DROP_CAP_MODES } from '../../model/dropCap'
+import { SymbolDropdown } from '../SymbolPicker'
+import { SHAPE_KINDS } from '../objects/Shape'
+import { SHAPE_LABELS, ShapeIcon } from '@/apps/slides/editor/ElementContent'
+import { CommandButton, CommandMenuItem } from './CommandButton'
 import { useCommandContext } from './commandContext'
 
 /** Pestaña Insertar: páginas, tablas, imágenes, elementos, comentarios y encabezado y pie. */
@@ -32,10 +47,12 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
   return (
     <>
       <RibbonGroup label="Páginas">
+        <CommandButton command="coverPage" large icon={<BookOpenText size={22} />} />
         <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Tablas">
         <TableGridPicker onInsert={(size) => runCommand(context, 'insertTable', size)} />
+        <CommandButton command="textToTable" large icon={<TableProperties size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Ilustraciones">
         <label className="tool-button tool-button--large" title="Insertar imagen desde el disco">
@@ -43,12 +60,61 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
           <span className="tool-button__label">Imagen</span>
           <input type="file" accept="image/*" hidden onChange={(event) => void insertImage(event)} />
         </label>
+        <Dropdown label="Formas" large trigger={<Shapes size={22} />}>
+          {(close) => (
+            <>
+              {SHAPE_KINDS.map((kind) => (
+                <CommandMenuItem key={kind} command="insertShape" arg={kind} onDone={close}>
+                  <ShapeIcon shape={kind} /> {SHAPE_LABELS[kind]}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
+        <CommandButton command="insertTextBox" large icon={<SquareDashedText size={22} />} />
+        <CommandButton command="insertChart" large icon={<ChartColumnBig size={22} />} />
+      </RibbonGroup>
+      <RibbonGroup label="Vínculos">
+        <CommandButton command="link" large icon={<Link2 size={22} />} />
+        <CommandButton command="bookmark" large icon={<Bookmark size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Elementos">
         <CommandButton command="horizontalRule" large icon={<Minus size={22} />} />
         <CommandButton command="insertDate" large icon={<CalendarDays size={22} />} />
+        <Dropdown label="Letra capital" large trigger={<CaseUpper size={22} />}>
+          {(close) => (
+            <>
+              {DROP_CAP_MODES.map(({ mode, label }) => (
+                <CommandMenuItem key={label} command="dropCap" arg={mode} onDone={close}>
+                  {label}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
+        <Dropdown label="Campo" large trigger={<Braces size={22} />}>
+          {(close) => (
+            <>
+              {FIELD_KINDS.map((field) => (
+                <CommandMenuItem key={field.kind} command="insertField" arg={field.kind} onDone={close}>
+                  <span className="layout-option">
+                    {field.label}
+                    <small>{field.description}</small>
+                  </span>
+                </CommandMenuItem>
+              ))}
+              <CommandMenuItem command="documentAuthor" onDone={close}>
+                Autor del documento…
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
         <CommandButton command="blockquote" large icon={<Quote size={22} />} />
         <CommandButton command="codeBlock" large icon={<Code2 size={22} />} />
+      </RibbonGroup>
+      <RibbonGroup label="Símbolos">
+        <CommandButton command="equation" large icon={<Sigma size={22} />} />
+        <SymbolDropdown />
       </RibbonGroup>
       <RibbonGroup label="Comentarios">
         <CommandButton command="addComment" large icon={<MessageSquarePlus size={22} />} />

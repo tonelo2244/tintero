@@ -82,7 +82,10 @@ function setup(html: string) {
     toggleSplit: () => calls.push('split'),
     openWordCount: () => calls.push('wordCount'),
     readAloudOpen: false,
-    toggleReadAloud: () => calls.push('readAloud')
+    toggleReadAloud: () => calls.push('readAloud'),
+    openDialog: (dialog) => calls.push(`dialog:${dialog}`),
+    documentAuthor: '',
+    setDocumentAuthor: (author) => calls.push(`author:${author}`)
   }
   const context: CommandContext = { editor, ui }
   return { context, calls, editor, page: () => pageSetup, styles: () => styles, numbered: () => numbered }
@@ -303,5 +306,113 @@ describe('comandos de Vista y Revisar (fase 14)', () => {
     expect(commandState(context, 'viewMode', 'print').active).toBe(true)
     expect(commandState(context, 'zoom', 'actual').active).toBe(true)
     expect(commandState(context, 'toggleRuler').active).toBe(true)
+  })
+})
+
+describe('comandos de Insertar (fase 16)', () => {
+  it('ecuación: el botón abre su cuadro y setEquation inserta o cambia la seleccionada', () => {
+    const { context, editor, calls } = setup('<p>a</p>')
+    editor.commands.setTextSelection(2)
+    runCommand(context, 'equation')
+    expect(calls.at(-1)).toBe('dialog:equation')
+    expect(commandKeyBindings()).toContainEqual({ keys: 'Alt-=', id: 'equation' })
+    editor.commands.setEquation('a^2')
+    expect(editor.getHTML()).toBe('<p>a<span data-latex="a^2" class="writer-equation"></span></p>')
+    editor.commands.setNodeSelection(2)
+    editor.commands.setEquation('b^2')
+    expect(editor.state.doc.firstChild?.childCount).toBe(2)
+    expect(editor.state.doc.firstChild?.lastChild?.attrs.latex).toBe('b^2')
+  })
+
+  it('portada al principio (una sola) y letra capital', () => {
+    const { context, editor, calls } = setup('<p>Texto</p>')
+    editor.commands.setTextSelection(3)
+    runCommand(context, 'coverPage')
+    expect(editor.state.doc.child(0).attrs.blockStyle).toBe('title')
+    expect(editor.state.doc.child(4).type.name).toBe('pageBreak')
+    expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe(
+      'Título del documento'
+    )
+    expect(calls.at(-1)).toBe('dialog:author')
+    expect(commandState(context, 'coverPage').enabled).toBe(false)
+
+    editor.commands.setTextSelection(editor.state.doc.content.size - 2)
+    runCommand(context, 'dropCap', 'drop')
+    expect(editor.state.doc.lastChild?.attrs.dropCap).toBe('drop')
+    expect(commandState(context, 'dropCap', 'drop').active).toBe(true)
+    runCommand(context, 'dropCap', null)
+    expect(editor.state.doc.lastChild?.attrs.dropCap).toBeNull()
+  })
+
+  it('convertir texto en tabla, estilo de tabla, sombreado y bordes de celda', () => {
+    const { context, editor } = setup('<p>Nombre; Edad</p><p>Ana; 30</p><p>fuera</p>')
+    editor.commands.setTextSelection({ from: 2, to: 20 })
+    expect(commandState(context, 'textToTable').enabled).toBe(true)
+    runCommand(context, 'textToTable')
+    const table = editor.state.doc.child(0)
+    expect(table.type.name).toBe('table')
+    expect(table.childCount).toBe(2)
+    expect(table.child(1).child(1).textContent).toBe('30')
+    expect(editor.state.doc.child(1).textContent).toBe('fuera')
+
+    // El cursor queda en la tabla: estilo, sombreado y borde inferior de la celda.
+    expect(commandState(context, 'tableStyle', 'grid').active).toBe(true)
+    runCommand(context, 'tableStyle', 'banded')
+    expect(commandState(context, 'tableStyle', 'banded').active).toBe(true)
+    runCommand(context, 'cellShading', '#ffeeaa')
+    runCommand(context, 'cellBorders', 'bottom')
+    const cell = editor.state.doc.child(0).child(0).child(0)
+    expect(cell.attrs).toMatchObject({ background: '#ffeeaa', borders: 'top' })
+    expect(editor.getHTML()).toContain('data-table-style="banded"')
+    expect(editor.getHTML()).toContain('data-borders="top"')
+  })
+
+  it('vínculos, marcadores, campos y símbolos', () => {
+    const { context, calls, editor } = setup('<p>hola</p>')
+    runCommand(context, 'link')
+    runCommand(context, 'bookmark')
+    runCommand(context, 'symbolDialog')
+    expect(calls).toEqual(['dialog:link', 'dialog:bookmark', 'dialog:symbol'])
+    expect(commandState(context, 'removeLink').enabled).toBe(false)
+    expect(commandKeyBindings()).toContainEqual({ keys: 'Mod-k', id: 'link' })
+
+    editor.commands.setTextSelection(5)
+    runCommand(context, 'insertSymbol', '€')
+    runCommand(context, 'insertField', 'page')
+    expect(editor.getHTML()).toBe(
+      '<p>hola€<span data-field="page" class="writer-field" title="Campo: Número de página"></span></p>'
+    )
+    // Sin autor, el campo Autor lo pregunta.
+    runCommand(context, 'insertField', 'author')
+    expect(calls.at(-1)).toBe('dialog:author')
+  })
+
+  it('formas: insertar, ajustar texto, ordenar, cambiar tamaño y eliminar', () => {
+    const { context, editor } = setup('<p>uno</p><p>dos</p>')
+    editor.commands.setTextSelection(7)
+    runCommand(context, 'insertShape', 'star')
+    // Delante del párrafo del cursor, y seleccionada.
+    expect(editor.state.doc.child(1).type.name).toBe('shape')
+    expect(commandState(context, 'objectWrap', 'inline').active).toBe(true)
+    runCommand(context, 'objectWrap', 'front')
+    runCommand(context, 'arrange', 'front')
+    runCommand(context, 'objectSize', { width: 80 })
+    const shape = editor.state.doc.child(1)
+    expect(shape.attrs).toMatchObject({ kind: 'star', wrap: 'front', zIndex: 0, width: 80, height: 100 })
+    runCommand(context, 'changeShape', 'ellipse')
+    expect(editor.state.doc.child(1).attrs.kind).toBe('ellipse')
+    runCommand(context, 'deleteObject')
+    expect(editor.state.doc.childCount).toBe(2)
+  })
+
+  it('cuadro de texto: el cursor queda dentro y su pestaña lo reconoce', () => {
+    const { context, editor } = setup('<p>uno</p>')
+    runCommand(context, 'insertTextBox')
+    editor.commands.insertContent('nota')
+    expect(editor.state.doc.child(0).type.name).toBe('textBox')
+    expect(editor.state.doc.child(0).textContent).toBe('nota')
+    runCommand(context, 'objectOutline', null)
+    expect(editor.state.doc.child(0).attrs.border).toBeNull()
+    expect(commandState(context, 'insertTextBox').enabled).toBe(false)
   })
 })

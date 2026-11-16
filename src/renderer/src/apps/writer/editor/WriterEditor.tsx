@@ -9,6 +9,7 @@ import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import {
+  withAuthor,
   withHeaderFooter,
   withHyphenation,
   withNumberedHeadings,
@@ -19,7 +20,7 @@ import {
   type WriterContent,
   type WriterParts
 } from '../model/content'
-import type { CommandContext, WriterUi } from '../model/commands'
+import type { CommandContext, WriterDialogId, WriterUi } from '../model/commands'
 import { runCommand } from '../model/commands'
 import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
@@ -45,6 +46,7 @@ import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { HeaderFooterPanel } from './HeaderFooterPanel'
+import { InsertDialogs } from './InsertDialogs'
 import { NavigationPanel, selectPageStart } from './NavigationPanel'
 import { OutlineView } from './OutlineView'
 import { PageSetupDialog } from './PageSetupDialog'
@@ -66,7 +68,9 @@ import { LayoutTab } from './ribbon/LayoutTab'
 import { OutlineTab } from './ribbon/OutlineTab'
 import { ReviewTab } from './ribbon/ReviewTab'
 import { TableTab } from './ribbon/TableTab'
-import { HEADER_FOOTER_TAB, OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { HEADER_FOOTER_TAB, OBJECT_TAB_ID, OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { ObjectTab } from './ribbon/ObjectTab'
+import { selectedObject } from '../model/objectEdits'
 import { HeaderFooterTab } from './ribbon/HeaderFooterTab'
 import { ViewTab } from './ribbon/ViewTab'
 import { usePageMetrics } from './usePageMetrics'
@@ -171,6 +175,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     }
   }, [editor, headerFooterEditing])
 
+  // Los campos Nombre del archivo y Autor leen estos datos, que no están en el texto.
+  useEffect(() => {
+    editor?.commands.setFieldContext({ fileName: session.documentName, author: parts.author ?? '' })
+  }, [editor, session.documentName, parts.author])
+
   const pageSetup = parts.pageSetup ?? DEFAULT_PAGE_SETUP
   const geometry = useMemo(() => pageGeometry(pageSetup), [pageSetup])
   const setPageSetup = useCallback(
@@ -219,8 +228,22 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   /** Cuadro de estilo abierto: `null` cerrado; `{ styleId: undefined }` crea uno nuevo. */
   const [styleDialog, setStyleDialog] = useState<{ styleId?: string } | null>(null)
   const [tabStopsOpen, setTabStopsOpen] = useState(false)
+  /** Cuadro de Insertar abierto (vínculo, marcador, símbolo...): uno a la vez. */
+  const [insertDialog, setInsertDialog] = useState<WriterDialogId | null>(null)
 
   const toolbar = useWriterToolbarState(editor)
+  /** Imagen, forma, cuadro de texto o gráfico seleccionado: su pestaña contextual (fase 16). */
+  const object = useEditorState({
+    editor,
+    selector: ({ editor: current }) => (current ? selectedObject(current) : null),
+    equalityFn: (a, b) => a?.pos === b?.pos && a?.node === b?.node
+  })
+  // Como en Word: al seleccionar un objeto entero (no al escribir dentro de un cuadro de texto) se
+  // abre su pestaña. Solo cuando cambia de objeto: retocarlo desde la cinta no te saca de donde estás.
+  const wholeObjectKey = object && editor?.state.selection.from === object.pos ? `${object.type}@${object.pos}` : null
+  useEffect(() => {
+    if (wholeObjectKey) setActiveTab(OBJECT_TAB_ID)
+  }, [wholeObjectKey])
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
   const ai = useAiStatus()
   const assistant = useWritingAssistant(editor)
@@ -331,6 +354,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     setPageSetupOpen(false)
     setStylesPanelOpen(false)
     setTabStopsOpen(false)
+    setInsertDialog(null)
   }
 
   /** Lo que los comandos pueden pedir a esta pantalla (paneles, buscar, configuración de página). */
@@ -412,10 +436,26 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       setWordCountOpen(true)
     },
     readAloudOpen: readAloud.open,
-    toggleReadAloud: readAloud.toggle
+    toggleReadAloud: readAloud.toggle,
+    openDialog: (dialog) => {
+      closeSidePanels()
+      setInsertDialog(dialog)
+    },
+    documentAuthor: parts.author ?? '',
+    setDocumentAuthor: (author) => updateParts((current) => withAuthor(current, author))
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
+
+  // Doble clic sobre una ecuación: su cuadro, como el botón Ecuación con ella seleccionada.
+  useEffect(() => {
+    if (!editor) return
+    const storage = editor.storage.equation
+    storage.openEditor = () => commandContextRef.current?.ui.openDialog('equation')
+    return () => {
+      storage.openEditor = null
+    }
+  }, [editor])
 
   // Edición > Buscar / Reemplazar del menú nativo (Cmd/Ctrl+F y su pareja): los mismos comandos que la cinta.
   useEffect(
@@ -486,7 +526,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const inTable = toolbar?.table.active ?? false
   const inOutline = viewMode === 'outline'
   const inHeaderFooter = headerFooterEditing !== null
-  const tabs = visibleTabs(inTable, inOutline, inHeaderFooter)
+  const tabs = visibleTabs(inTable, inOutline, inHeaderFooter, object?.type ?? null)
   // Si una pestaña contextual desaparece (sales de la tabla, del Esquema o del encabezado), se vuelve a otra.
   const visibleTab =
     activeTab === TABLE_TAB.id && !inTable
@@ -495,7 +535,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         ? 'view'
         : activeTab === HEADER_FOOTER_TAB.id && !inHeaderFooter
           ? 'insert'
-          : activeTab
+          : activeTab === OBJECT_TAB_ID && !object
+            ? 'insert'
+            : activeTab
 
   const renderRibbon = () => {
     if (!editor || !toolbar) return null
@@ -539,6 +581,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         return <TableTab />
       case HEADER_FOOTER_TAB.id:
         return <HeaderFooterTab />
+      case OBJECT_TAB_ID:
+        return object ? <ObjectTab object={object} /> : null
       default:
         return <HomeTab state={toolbar} />
     }
@@ -631,6 +675,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         <WriterCommandsProvider value={commandContext}>
           <TabStopsDialog editor={commandContext.editor} onClose={() => setTabStopsOpen(false)} />
         </WriterCommandsProvider>
+      )}
+      {insertDialog && editor && (
+        <InsertDialogs dialog={insertDialog} editor={editor} ui={ui} onClose={() => setInsertDialog(null)} />
       )}
       {pageSetupOpen && (
         <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />

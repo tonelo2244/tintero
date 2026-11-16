@@ -5,10 +5,16 @@ import Highlight from '@tiptap/extension-highlight'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import TextAlign from '@tiptap/extension-text-align'
-import Image from '@tiptap/extension-image'
-import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
+import { Bookmark } from './Bookmark'
+import { writerTableExtensions } from './WriterTable'
 import { CharStyle } from './CharStyle'
+import { Field } from './Field'
+import { Chart } from './objects/Chart'
+import { Equation } from './Equation'
+import { Shape } from './objects/Shape'
+import { TextBox } from './objects/TextBox'
+import { WriterImage } from './objects/WriterImage'
 import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
@@ -37,9 +43,10 @@ export function createWriterExtensions(): Extensions {
     Subscript,
     Superscript,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    Image.configure({ allowBase64: true }),
-    // Tablas con columnas redimensionables arrastrando el borde, como en un procesador de texto.
-    TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
+    // Imagen con tamaño, recorte, giro y ajuste de texto (fase 16).
+    WriterImage.configure({ allowBase64: true }),
+    // Tablas con columnas redimensionables arrastrando el borde, estilos de tabla y bordes y sombreado de celda.
+    ...writerTableExtensions(),
     CharacterCount,
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
     ParagraphFormat,
@@ -51,6 +58,12 @@ export function createWriterExtensions(): Extensions {
     CharStyle,
     FormatPainter,
     CommentMark,
-    SearchAndReplace
+    SearchAndReplace,
+    Bookmark,
+    Field,
+    Shape,
+    TextBox,
+    Chart,
+    Equation
   ]
 }

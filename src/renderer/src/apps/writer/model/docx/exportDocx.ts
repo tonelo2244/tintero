@@ -1,5 +1,11 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  Math as DocxMath,
+  DropCapType,
+  FrameAnchorType,
+  FrameWrap,
+  LineRuleType,
+  Bookmark,
   BorderStyle,
   ColumnBreak,
   CommentRangeEnd,
@@ -10,12 +16,13 @@ import {
   Footer,
   Header,
   HeadingLevel,
-  ImageRun,
+  InternalHyperlink,
   Packer,
   PageBreak,
   PageNumber,
   PageOrientation,
   Paragraph,
+  SimpleField,
   SectionType,
   ShadingType,
   Tab,
@@ -32,7 +39,6 @@ import {
   type ParagraphChild
 } from 'docx'
 import { cssColorToHex, cssFontToName, cssSizeToPt } from '@/core/office/cssValues'
-import { decodeImageDataUrl, fitWidth, imageSize } from '@/core/office/images'
 import {
   PAGE_COUNT_TOKEN,
   PAGE_NUMBER_TOKEN,
@@ -58,14 +64,20 @@ import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
 import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
+import { BOOKMARK, bookmarkOfHref } from '../links'
+import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
+import { chartRun, imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
+import { DEFAULT_FONT_SIZE_PT } from '../../constants'
+import { latexToMath } from 'docx/math'
+import { EQUATION } from '../equation'
+import { DROP_CAP_LINES, isDropCapMode, splitDropCap, type DropCapMode } from '../dropCap'
+import { isBandedRow, parseCellBorders, tableStyle, type CellSide, type TableStyle } from '../tableStyles'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
 const PX_PER_CM = 96 / 2.54
 /** Mismo gris que las celdas de encabezado en el editor. */
-const HEADER_CELL_FILL = 'F2F2F2'
-const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'BFBFBF' }
 
 /** Un bloque de Word: párrafo o tabla. */
 type DocxBlock = Paragraph | Table
@@ -111,12 +123,14 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   // Secciones de Word: una por salto de sección y otra por cada bloque de columnas (fase 15).
   const plans = planDocxSections(content.doc.content ?? [], pageSetup)
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
+  converter.author = content.author ?? ''
   const sectionChildren = plans.map((plan) => {
     converter.setContentWidth(contentWidthCm(plan.setup))
     return converter.blocks(plan.blocks)
   })
   const document = new Document({
-    creator: 'Tintero',
+    // El campo AUTHOR de Word lee esta propiedad.
+    creator: content.author ?? 'Tintero',
     // "Pares e impares diferentes" es un ajuste del documento entero en Word (settings.xml).
     ...(content.evenPages && { evenAndOddHeaderAndFooters: true }),
     // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
@@ -232,6 +246,8 @@ class DocxConverter {
   /** Ancho útil de la hoja: lo que ocupan las tablas y lo máximo que puede medir una imagen. */
   private contentWidthTwips = 0
   private maxImageWidthPx = 0
+  /** Autor del documento: el valor que llevan escrito los campos Autor. */
+  author = ''
 
   constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
     this.setContentWidth(contentWidthCm)
@@ -252,8 +268,15 @@ class DocxConverter {
 
   private block(node: JSONContent, list?: ListContext): DocxBlock[] {
     switch (node.type) {
-      case 'paragraph':
-        return [this.paragraph(node, list)]
+      case 'paragraph': {
+        const dropCap = isDropCapMode(node.attrs?.dropCap) ? splitDropCap(node.content ?? []) : null
+        if (!dropCap || list) return [this.paragraph(node, list)]
+        // Como Word: la letra va en su propio párrafo, un marco que ocupa tres renglones del siguiente.
+        return [
+          this.dropCapParagraph(node.attrs?.dropCap, dropCap.letter),
+          this.paragraph({ ...node, content: dropCap.rest }, list)
+        ]
+      }
       case 'heading':
         return [this.paragraph(node, list)]
       case 'bulletList': {
@@ -288,7 +311,21 @@ class DocxConverter {
           })
         ]
       case 'image':
-        return [new Paragraph({ children: this.inline(node, []) })]
+        return [objectParagraph(node, imageRun(node, this.maxImageWidthPx))]
+      case 'shape':
+        return [objectParagraph(node, shapeRun(node))]
+      case 'chart':
+        return [objectParagraph(node, chartRun(node, this.maxImageWidthPx))]
+      case 'textBox':
+        return [
+          objectParagraph(
+            node,
+            textBoxRun(
+              node,
+              this.blocks(node.content ?? []).filter((block): block is Paragraph => block instanceof Paragraph)
+            )
+          )
+        ]
       case 'pageBreak':
         // Como hace Word con Ctrl+Intro: un párrafo que solo contiene el salto.
         return [new Paragraph({ children: [new PageBreak()] })]
@@ -307,13 +344,40 @@ class DocxConverter {
     }
   }
 
+  /** El marco con la letra capital (`w:framePr w:dropCap`), del tamaño de sus renglones. */
+  private dropCapParagraph(mode: DropCapMode, letter: JSONContent): Paragraph {
+    const lineTwips = Math.round(DEFAULT_FONT_SIZE_PT * 1.15 * 20)
+    return new Paragraph({
+      frame: {
+        type: 'absolute',
+        position: { x: 0, y: 0 },
+        anchor: { horizontal: FrameAnchorType.TEXT, vertical: FrameAnchorType.TEXT },
+        wrap: FrameWrap.AROUND,
+        dropCap: mode === 'margin' ? DropCapType.MARGIN : DropCapType.DROP,
+        lines: DROP_CAP_LINES
+      },
+      spacing: { line: lineTwips * DROP_CAP_LINES, lineRule: LineRuleType.EXACT, before: 0, after: 0 },
+      children: [
+        new TextRun({
+          text: letter.text,
+          ...runOptions(letter.marks ?? []),
+          size: Math.round(DEFAULT_FONT_SIZE_PT * 1.15 * DROP_CAP_LINES * 2 * 0.95)
+        })
+      ]
+    })
+  }
+
+  /** Formato que se añade a cada texto (el del encabezado de un estilo de tabla, mientras se escribe). */
+  private runDefaults: MutableRunOptions = {}
+
   /**
    * Tabla de Tiptap -> tabla de Word. Tiptap y Word representan igual las celdas combinadas
    * (colspan/rowspan en la celda de origen y las demás omitidas), así que la traducción es directa.
    */
   private table(node: JSONContent, availableTwips: number): Table {
     const columnWidths = columnWidthsTwips(readColumnWidths(node), availableTwips)
-    const rows = (node.content ?? []).map((row) => {
+    const style = tableStyle(node.attrs?.tableStyle)
+    const rows = (node.content ?? []).map((row, rowIndex) => {
       const cells = row.content ?? []
       // Una fila hecha solo de encabezados se repite arriba de cada página, como en Word.
       const isHeaderRow = cells.length > 0 && cells.every((cell) => cell.type === 'tableHeader')
@@ -325,7 +389,12 @@ class DocxConverter {
           const columnSpan = Math.max(1, Number(cell.attrs?.colspan) || 1)
           const width = columnWidths.slice(column, column + columnSpan).reduce((sum, value) => sum + value, 0)
           column += columnSpan
+          const isHeader = cell.type === 'tableHeader'
+          this.runDefaults = isHeader ? headerRunOptions(style) : {}
           const content = this.blocks(cell.content ?? [])
+          this.runDefaults = {}
+          const fill = cellFill(style, cell, isHeader, rowIndex)
+          const borders = parseCellBorders(cell.attrs?.borders)
           return new TableCell({
             // Word exige que una celda termine en párrafo.
             children: content.at(-1) instanceof Paragraph ? content : [...content, new Paragraph({})],
@@ -333,10 +402,8 @@ class DocxConverter {
             rowSpan: Math.max(1, Number(cell.attrs?.rowspan) || 1),
             width: { size: width, type: WidthType.DXA },
             verticalAlign: VerticalAlign.TOP,
-            shading:
-              cell.type === 'tableHeader'
-                ? { type: ShadingType.CLEAR, fill: HEADER_CELL_FILL, color: 'auto' }
-                : undefined
+            shading: fill ? { type: ShadingType.CLEAR, fill, color: 'auto' } : undefined,
+            borders: borders === null ? undefined : cellBordersDocx(borders)
           })
         })
       })
@@ -345,14 +412,7 @@ class DocxConverter {
       rows,
       columnWidths,
       width: { size: columnWidths.reduce((sum, value) => sum + value, 0), type: WidthType.DXA },
-      borders: {
-        top: TABLE_BORDER,
-        bottom: TABLE_BORDER,
-        left: TABLE_BORDER,
-        right: TABLE_BORDER,
-        insideHorizontal: TABLE_BORDER,
-        insideVertical: TABLE_BORDER
-      }
+      borders: tableBordersDocx(style)
     })
   }
 
@@ -437,12 +497,22 @@ class DocxConverter {
       const image = imageRun(node, this.maxImageWidthPx)
       return image ? [image] : []
     }
+    if (node.type === BOOKMARK) {
+      // Un marcador de Tintero es un punto: en Word, un w:bookmarkStart y su w:bookmarkEnd seguidos.
+      const name = node.attrs?.name
+      return typeof name === 'string' && name ? [new Bookmark({ id: name, children: [] })] : []
+    }
+    if (node.type === FIELD && isFieldKind(node.attrs?.kind)) {
+      // Word recalcula fecha y páginas al abrir; el valor escrito es el que se ve hasta entonces.
+      const kind = node.attrs.kind
+      const cached = fieldText(kind, { date: new Date(), page: 1, pages: 1, fileName: '', author: this.author })
+      return [new SimpleField(docxFieldInstruction(kind), kind === 'fileName' ? '' : cached)]
+    }
+    if (node.type === EQUATION) return [equationRun(String(node.attrs?.latex ?? ''))]
     if (node.type !== 'text' || !node.text) return []
 
-    const run = new TextRun({ text: node.text, ...runOptions(marks) })
-    const link = marks.find((mark) => mark.type === 'link')?.attrs?.href
-    const text = typeof link === 'string' && link ? new ExternalHyperlink({ link, children: [run] }) : run
-    return this.withCommentRange(text, commentIdOf(marks))
+    const run = new TextRun({ text: node.text, ...this.runDefaults, ...runOptions(marks) })
+    return this.withCommentRange(linked(run, marks), commentIdOf(marks))
   }
 
   private withCommentRange(text: ParagraphChild, commentId: string | null): ParagraphChild[] {
@@ -459,6 +529,16 @@ class DocxConverter {
     }
     return children
   }
+}
+
+/** Texto dentro de su vínculo, si lo tiene: a un marcador (`#nombre`) o a una dirección. */
+function linked(run: TextRun, marks: NonNullable<JSONContent['marks']>): ParagraphChild {
+  const href = marks.find((mark) => mark.type === 'link')?.attrs?.href
+  if (typeof href !== 'string' || !href) return run
+  const anchor = bookmarkOfHref(href)
+  return anchor
+    ? new InternalHyperlink({ anchor, children: [run] })
+    : new ExternalHyperlink({ link: href, children: [run] })
 }
 
 type MutableRunOptions = { -readonly [K in keyof IRunOptions]: IRunOptions[K] }
@@ -554,24 +634,6 @@ function contentWidthCm(setup: PageSetup): number {
   return orientedSize(setup).width - setup.margins.left - setup.margins.right
 }
 
-function imageRun(node: JSONContent, maxWidthPx: number): ImageRun | null {
-  const decoded = typeof node.attrs?.src === 'string' ? decodeImageDataUrl(node.attrs.src) : null
-  if (!decoded) return null // imagen enlazada o formato que Word no entiende (SVG, WebP)
-  const declaredWidth = Number(node.attrs?.width)
-  const declaredHeight = Number(node.attrs?.height)
-  const size =
-    declaredWidth > 0 && declaredHeight > 0
-      ? { width: declaredWidth, height: declaredHeight }
-      : (imageSize(decoded) ?? { width: maxWidthPx, height: Math.round(maxWidthPx * 0.75) })
-  const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
-  return new ImageRun({
-    type: decoded.kind,
-    data: decoded.bytes,
-    transformation: fitWidth(size, maxWidthPx),
-    altText: { name: alt || 'Imagen', description: alt, title: alt }
-  })
-}
-
 function commentIdOf(marks: NonNullable<JSONContent['marks']>): string | null {
   const id = marks.find((mark) => mark.type === 'comment')?.attrs?.commentId
   return typeof id === 'string' && id ? id : null
@@ -620,4 +682,58 @@ function escapeRegExp(text: string): string {
 function codeLines(node: JSONContent): string[] {
   const text = (node.content ?? []).map((child) => child.text ?? '').join('')
   return text.split('\n')
+}
+
+// --- Estilos de tabla y bordes de celda (fase 16) ---
+
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto' }
+const hex = (color: string) => color.replace('#', '').toUpperCase()
+
+/** Bordes de la tabla según su estilo (los de cada celda, si los tiene, van aparte y mandan). */
+function tableBordersDocx(style: TableStyle) {
+  const line = { style: BorderStyle.SINGLE, size: 4, color: hex(style.borderColor) }
+  const all = style.borders === 'all'
+  const horizontal = style.borders !== 'none'
+  return {
+    top: horizontal ? line : NO_BORDER,
+    bottom: horizontal ? line : NO_BORDER,
+    insideHorizontal: horizontal ? line : NO_BORDER,
+    left: all ? line : NO_BORDER,
+    right: all ? line : NO_BORDER,
+    insideVertical: all ? line : NO_BORDER
+  }
+}
+
+/** Bordes propios de una celda: negros, como los que pone Word con el botón Bordes. */
+function cellBordersDocx(borders: CellSide[]) {
+  const line = { style: BorderStyle.SINGLE, size: 4, color: '000000' }
+  const side = (name: CellSide) => (borders.includes(name) ? line : NO_BORDER)
+  return { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') }
+}
+
+/** Fondo de una celda: el suyo; si no, el del encabezado o la banda del estilo. */
+function cellFill(style: TableStyle, cell: JSONContent, isHeader: boolean, rowIndex: number): string | null {
+  const own = typeof cell.attrs?.background === 'string' ? cssColorToHex(cell.attrs.background) : null
+  if (own) return own
+  if (isHeader) return style.headerFill ? hex(style.headerFill) : null
+  return isBandedRow(style, rowIndex) && style.bandFill ? hex(style.bandFill) : null
+}
+
+function headerRunOptions(style: TableStyle): MutableRunOptions {
+  return {
+    ...(style.headerBold && { bold: true }),
+    ...(style.headerColor && { color: hex(style.headerColor) })
+  }
+}
+
+/**
+ * Ecuación -> ecuación nativa de Word (OMML), que allí se sigue editando. Si el LaTeX tiene algo
+ * que `docx/math` no conoce, va como texto en cursiva: mejor el LaTeX que perder la ecuación.
+ */
+function equationRun(latex: string): ParagraphChild {
+  try {
+    return new DocxMath({ children: latexToMath(latex) })
+  } catch {
+    return new TextRun({ text: latex, italics: true })
+  }
 }

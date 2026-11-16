@@ -90,25 +90,25 @@ Leyenda: **Hecho** · **Parcial** (existe pero incompleto) · **Falta** (con la 
 
 | Función                           | Tintero hoy | Plan       | Valor    | Nota                                                                                         |
 | --------------------------------- | ----------- | ---------- | -------- | -------------------------------------------------------------------------------------------- |
-| Portada                           | Falta       | Fase 16    | Bajo     | Una plantilla de bloque; reutiliza la galería de plantillas del inicio                       |
+| Portada                           | Hecho       | Fase 16    | Bajo     | Una plantilla de bloque; reutiliza la galería de plantillas del inicio                       |
 | Página en blanco, salto de página | Falta       | Fase 12    | Muy alto | Hoy no se puede forzar un salto de página. Es lo primero que hay que añadir                  |
 | Tabla                             | Hecho       |            |          | "Convertir texto en tabla" y estilos de tabla: fase 16                                       |
-| Imagen                            | Parcial     | Fase 16    | Alto     | Solo en línea: falta tamaño exacto, recortar, girar, ajuste de texto y texto alternativo     |
-| Formas                            | Falta       | Fase 16    | Medio    | Reutilizar las formas SVG de Diapositivas                                                    |
+| Imagen                            | Hecho       | Fase 16    | Alto     | Solo en línea: falta tamaño exacto, recortar, girar, ajuste de texto y texto alternativo     |
+| Formas                            | Hecho       | Fase 16    | Medio    | Reutilizar las formas SVG de Diapositivas                                                    |
 | Iconos, modelos 3D, SmartArt      | Falta       | Descartar  |          | Los iconos de Office tienen licencia; 3D y SmartArt casi no se usan en documentos            |
-| Gráfico                           | Falta       | Fase 16    | Medio    | Reutilizar los gráficos SVG de Hojas (`sheets/editor/charts`) con una tabla de datos         |
+| Gráfico                           | Hecho       | Fase 16    | Medio    | Reutilizar los gráficos SVG de Hojas (`sheets/editor/charts`) con una tabla de datos         |
 | Captura de pantalla               | Falta       | Más tarde  | Bajo     | `desktopCapturer` de Electron; pide permisos de grabación en macOS                           |
-| Vínculo                           | Parcial     | Fase 16    | Alto     | La extensión `link` ya está en StarterKit, pero no hay botón ni diálogo                      |
-| Marcador y referencia cruzada     | Falta       | Fase 16/17 | Medio    | Marcador en la 16; "ver página N" necesita la paginación de la 15                            |
+| Vínculo                           | Hecho       | Fase 16    | Alto     | La extensión `link` ya está en StarterKit, pero no hay botón ni diálogo                      |
+| Marcador y referencia cruzada     | Parcial     | Fase 16/17 | Medio    | Marcador en la 16; "ver página N" necesita la paginación de la 15                            |
 | Comentario                        | Hecho       |            |          | Responder y resolver: fase 18                                                                |
 | Encabezado, pie, número de página | Parcial     | Fase 15    | Alto     | Hoy texto plano en un panel lateral; falta editarlo sobre la hoja, con formato y por sección |
-| Cuadro de texto                   | Falta       | Fase 16    | Medio    | Objeto flotante; comparte la capa de objetos con formas e imágenes                           |
-| Elementos rápidos, campos         | Parcial     | Fase 16    | Medio    | La fecha se inserta como texto fijo; faltan campos que se actualizan (fecha, autor, página)  |
+| Cuadro de texto                   | Hecho       | Fase 16    | Medio    | Objeto flotante; comparte la capa de objetos con formas e imágenes                           |
+| Elementos rápidos, campos         | Hecho       | Fase 16    | Medio    | La fecha se inserta como texto fijo; faltan campos que se actualizan (fecha, autor, página)  |
 | WordArt                           | Falta       | Descartar  |          | Efectos de texto (fase 13 o más tarde) cubren lo razonable                                   |
-| Letra capital                     | Falta       | Fase 16    | Bajo     | CSS `initial-letter` / `float`; .docx `w:framePr`                                            |
+| Letra capital                     | Hecho       | Fase 16    | Bajo     | CSS `initial-letter` / `float`; .docx `w:framePr`                                            |
 | Línea de firma, objeto incrustado | Falta       | Descartar  |          | Firma digital y OLE no tienen sentido en una app local sin certificados                      |
-| Ecuación                          | Falta       | Fase 16    | Medio    | Escribir en LaTeX y pintar con KaTeX/MathML. **Dependencia nueva: decisión tuya**            |
-| Símbolo                           | Falta       | Fase 16    | Medio    | Selector con los más usados (©, €, →, ±, letras griegas) y búsqueda por nombre               |
+| Ecuación                          | Hecho       | Fase 16    | Medio    | Escribir en LaTeX y pintar con KaTeX/MathML. **Dependencia nueva: decisión tuya**            |
+| Símbolo                           | Hecho       | Fase 16    | Medio    | Selector con los más usados (©, €, →, ±, letras griegas) y búsqueda por nombre               |
 
 ### Dibujar
 
@@ -308,6 +308,8 @@ Objetivo: completar Insertar y la parte de "Organizar" de Disposición. Mucho se
 | Portada, letra capital, tabla desde texto, estilos de tabla, bordes y sombreado de celda | Piezas pequeñas; completan Insertar y la pestaña Tabla.                                                                                                                                | Baja      |
 
 Esfuerzo: 3–5 semanas.
+
+> **Estado (noviembre de 2026): hecha.** Ecuaciones con KaTeX (elegido frente a MathML) y, al .docx, como ecuaciones nativas de Word con `docx/math`; formas, cuadros de texto y gráficos también nativos (`docx/shapes`, `docx/charts`). Las imágenes siguen siendo bloques anclados a su sitio, así que los documentos anteriores se abren igual. Queda pendiente: **agrupar** objetos; el texto rodea la caja del objeto sin girar; al importar un .docx, las imágenes llegan en línea (sin ajuste, recorte ni giro) y los gráficos, formas y ecuaciones de Word no se leen todavía; y la letra capital de un .docx importado llega como un párrafo aparte.
 
 ### Fase 17 · Referencias
 

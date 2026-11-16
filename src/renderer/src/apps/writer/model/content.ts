@@ -58,6 +58,8 @@ export interface WriterContent {
   firstPage?: HeaderFooterSet
   /** "Pares e impares diferentes": si está, las hojas pares usan este encabezado y pie. */
   evenPages?: HeaderFooterSet
+  /** Autor del documento (fase 16): lo enseña el campo Autor y va al .docx como `dc:creator`. */
+  author?: string
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -74,6 +76,7 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.hyphenation) parts.hyphenation = true
   if (content.firstPage) parts.firstPage = content.firstPage
   if (content.evenPages) parts.evenPages = content.evenPages
+  if (content.author) parts.author = content.author
   return parts
 }
 
@@ -86,6 +89,11 @@ export function withStyles(parts: WriterParts, styles: WriterStyle[]): WriterPar
 export function withNumberedHeadings(parts: WriterParts, numbered: boolean): WriterParts {
   const { numberedHeadings: _previous, ...rest } = parts
   return numbered ? { ...rest, numberedHeadings: true } : rest
+}
+
+export function withAuthor(parts: WriterParts, author: string): WriterParts {
+  const { author: _previous, ...rest } = parts
+  return author.trim() ? { ...rest, author: author.trim() } : rest
 }
 
 export function withHyphenation(parts: WriterParts, hyphenation: boolean): WriterParts {
@@ -132,6 +140,7 @@ export function parseWriterContent(raw: unknown): WriterContent {
   if (firstPage) content.firstPage = firstPage
   const evenPages = parseHeaderFooterSet(candidate.evenPages)
   if (evenPages) content.evenPages = evenPages
+  if (typeof candidate.author === 'string' && candidate.author.trim()) content.author = candidate.author.trim()
   return content
 }
 

@@ -23,8 +23,12 @@ export const FILE_FORMAT_ID = 'tintero'
  *   6. Texto: saltos de sección con su propia hoja (`sectionBreak`), bloques de columnas
  *      (`columns`, `columnBreak`) y guiones automáticos (`hyphenation`). Sin migración: son nodos
  *      y campos nuevos; un Tintero anterior no sabría pintarlos y por eso dirá "versión más nueva".
+ *   7. Texto: objetos e inserciones de la fase 16. Nodos nuevos (`bookmark`, `field`, `shape`,
+ *      `textBox`, `chart`, `equation`), autor del documento (`author`), imagen con tamaño, recorte,
+ *      giro y colocación, estilo de tabla con bordes y sombreado por celda, y letra capital. Sin
+ *      migración: todo es opcional y una imagen sin colocación es la de siempre, en su renglón.
  */
-export const FILE_FORMAT_VERSION = 6
+export const FILE_FORMAT_VERSION = 7
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

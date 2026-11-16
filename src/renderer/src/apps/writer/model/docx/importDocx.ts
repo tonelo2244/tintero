@@ -204,8 +204,12 @@ export function prepareHtml(html: string, transform?: (body: HTMLElement) => voi
   convertTabs(dom.body)
   dom.querySelectorAll('img[src=""]').forEach((image) => image.remove())
   normalizePageBreaks(dom.body)
-  // mammoth añade enlaces de vuelta en las notas al pie ("↑"); en el editor no llevan a ningún sitio.
-  dom.querySelectorAll('a[href^="#"]').forEach((link) => link.replaceWith(...link.childNodes))
+  // Los vínculos internos se quedan si llevan a un marcador de Word (mammoth lo escribe como
+  // `<a id>` sin href). Los demás, como los de vuelta de las notas al pie ("↑"), no llevan a ningún sitio.
+  const bookmarks = new Set([...dom.querySelectorAll('a[id]:not([href])')].map((anchor) => anchor.id))
+  dom.querySelectorAll('a[href^="#"]').forEach((link) => {
+    if (!bookmarks.has(decodeURIComponent(link.getAttribute('href')!.slice(1)))) link.replaceWith(...link.childNodes)
+  })
   return dom.body.innerHTML
 }
 

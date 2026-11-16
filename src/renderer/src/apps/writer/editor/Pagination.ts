@@ -387,6 +387,8 @@ function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[]
   for (const unit of collectUnits(view.state.doc, sections.sectionOf)) {
     const dom = view.nodeDOM(unit.pos)
     if (!(dom instanceof HTMLElement)) continue
+    // Un objeto detrás o delante del texto (fase 16) no ocupa sitio: no cuenta para repartir.
+    if (dom.classList.contains('writer-object') && dom.style.position === 'absolute') continue
     // La primera fila de una tabla mueve la tabla entera: cuenta desde el borde de la tabla.
     const tableDom = unit.firstRow && unit.table ? view.nodeDOM(unit.table.pos) : null
     const top = (tableDom instanceof HTMLElement ? tableDom : dom).getBoundingClientRect().top
@@ -419,7 +421,8 @@ function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[]
  */
 function measureLines(view: EditorView, unit: Unit, toY: (screenY: number) => number): Line[] {
   // En columnas, los renglones de una columna se solapan con los de la otra: no se parte por renglones.
-  if (unit.node.isAtom || unit.node.type.name === COLUMNS) return []
+  // Un cuadro de texto (fase 16) tampoco se parte: es un objeto, va entero en una hoja.
+  if (unit.node.isAtom || unit.node.type.name === COLUMNS || unit.node.type.name === 'textBox') return []
   const lines: Line[] = []
   const visit = (textblock: ProseMirrorNode, textblockPos: number) => {
     const dom = view.nodeDOM(textblockPos)

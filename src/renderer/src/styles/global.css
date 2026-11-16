@@ -3238,3 +3238,327 @@ p.writer-outline-block--body::after {
     print-color-adjust: exact;
   }
 }
+
+/* ---------- Fase 16: Insertar objetos y vínculos ---------- */
+
+.writer-content a[href] {
+  color: #1d5fb8;
+  text-decoration: underline;
+}
+/* Marcador: no ocupa sitio; con las marcas de párrafo a la vista, una "I" gris como en Word. */
+.writer-content .writer-bookmark {
+  display: none;
+}
+.show-marks .writer-content .writer-bookmark {
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  border-left: 2px solid #9a9a9a;
+  vertical-align: text-bottom;
+}
+.writer-dialog__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.writer-dialog__hint--error {
+  color: #b3392f;
+}
+.writer-bookmark-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+.writer-bookmark-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.writer-bookmark-list li span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.writer-bookmark-list button,
+.writer-dialog-button {
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+/* Campos: el valor se calcula; un fondo gris al pasar por encima dice que no es texto escrito. */
+.writer-content .writer-field {
+  border-radius: 2px;
+}
+.writer-content .writer-field:hover,
+.writer-content .writer-field.ProseMirror-selectednode {
+  background: #e3e3e3;
+}
+.writer-content .writer-field:empty::before {
+  content: '{campo}';
+  color: #888;
+}
+@media print {
+  .writer-content .writer-field:hover {
+    background: none;
+  }
+}
+/* Símbolos */
+.writer-symbol-menu {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.writer-symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 30px);
+  gap: 2px;
+}
+.writer-symbol-grid__cell {
+  width: 30px;
+  height: 30px;
+  font:
+    16px/1 Georgia,
+    'Times New Roman',
+    serif;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.writer-symbol-grid__cell:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+.writer-symbol-dialog__list {
+  max-height: 420px;
+  overflow: auto;
+}
+.writer-symbol-dialog__list h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Objetos (fase 16): imagen, forma, cuadro de texto y gráfico comparten marco y asas. */
+.writer-content {
+  /* Contexto de apilado propio: lo que va "detrás del texto" queda bajo el texto pero sobre la hoja. */
+  isolation: isolate;
+}
+.writer-content .writer-object {
+  position: relative;
+  box-sizing: border-box;
+  max-width: 100%;
+  width: fit-content;
+}
+.writer-content .writer-object[data-wrap='behind'],
+.writer-content .writer-object[data-wrap='front'] {
+  max-width: none;
+}
+.writer-content .writer-object__body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+.writer-content .writer-object__body.is-cropped {
+  overflow: hidden;
+}
+.writer-content .writer-object img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.writer-content .writer-object.is-selected,
+.writer-content .writer-object.is-editing {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.writer-object__handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 2px;
+  display: none;
+  z-index: 2;
+}
+.writer-object__handle--resize {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+.writer-object__handle--move {
+  left: -6px;
+  top: -6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: move;
+}
+.writer-object.is-selected > .writer-object__handle:not([hidden]),
+.writer-object.is-editing > .writer-object__handle:not([hidden]),
+.writer-object.is-dragging > .writer-object__handle:not([hidden]) {
+  display: block;
+}
+.writer-content .writer-object[data-type='shape'] {
+  width: 160px;
+  height: 100px;
+}
+.writer-shape__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.writer-content .writer-object[data-type='textBox'] > .writer-object__body {
+  padding: 4px 8px;
+  min-height: 2em;
+  background-clip: padding-box;
+}
+.writer-content .writer-object[data-type='textBox'] {
+  width: 240px;
+}
+.writer-dialog__textarea {
+  font: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 4px 6px;
+  resize: vertical;
+}
+@media print {
+  .writer-content .writer-object.is-selected,
+  .writer-content .writer-object.is-editing {
+    outline: none;
+  }
+  .writer-object__handle {
+    display: none !important;
+  }
+}
+
+/* Gráficos en Texto (fase 16) */
+.writer-object[data-type='chart'] .writer-object__body {
+  line-height: 0;
+}
+.writer-chart-dialog__table {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+}
+.writer-chart-dialog__row {
+  display: flex;
+  gap: 2px;
+}
+.writer-chart-dialog__row input {
+  width: 74px;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 3px;
+  font: inherit;
+  font-size: 12px;
+}
+.writer-chart-dialog__row input.is-header {
+  font-weight: 600;
+  background: var(--surface-2, #f4f4f4);
+}
+.writer-chart-dialog__buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Estilos de tabla (fase 16). Los mismos colores que model/tableStyles.ts, que es lo que va al .docx.
+   Los bordes y el sombreado propios de una celda van en su estilo en línea y pasan por encima. */
+.writer-content table[data-table-style='plain'] td,
+.writer-content table[data-table-style='plain'] th {
+  border-style: none;
+}
+.writer-content table[data-table-style='plain'] th,
+.writer-content table[data-table-style='lines'] th,
+.writer-content table[data-table-style='banded'] th {
+  background: none;
+  font-weight: 700;
+}
+.writer-content table[data-table-style='lines'] td,
+.writer-content table[data-table-style='lines'] th {
+  border-color: #7f7f7f;
+  border-left-style: none;
+  border-right-style: none;
+}
+.writer-content table[data-table-style='accent'] td,
+.writer-content table[data-table-style='accent'] th {
+  border-color: #8eaadb;
+}
+.writer-content table[data-table-style='accent'] th {
+  background: #4472c4;
+  color: #ffffff;
+  font-weight: 700;
+}
+.writer-content table[data-table-style='banded'] td,
+.writer-content table[data-table-style='banded'] th {
+  border-color: #a5a5a5;
+  border-left-style: none;
+  border-right-style: none;
+}
+.writer-content table[data-table-style='banded'] tr:nth-child(even) > td {
+  background: #f2f2f2;
+}
+
+/* Letra capital (fase 16): tres renglones de alto. "En margen" la saca a la izquierda del texto. */
+.writer-content p[data-drop-cap]::first-letter {
+  float: left;
+  /* Alto de la mayúscula (≈0,7 em) = dos renglones más el alto de la mayúscula del texto. */
+  font-size: 4.6em;
+  line-height: 0.74;
+  padding: 0.05em 0.06em 0 0;
+}
+.writer-content p[data-drop-cap='margin']::first-letter {
+  margin-left: -0.75em;
+}
+
+/* Ecuaciones (fase 16): las pinta KaTeX; aquí solo su marco en el texto y el cuadro. */
+.writer-equation {
+  padding: 0 1px;
+  border-radius: 2px;
+  cursor: default;
+}
+.writer-content .writer-equation.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+}
+.writer-equation-dialog__input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.writer-equation-dialog__snippets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0;
+}
+.writer-equation-dialog__snippets button {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.writer-equation-dialog__preview {
+  min-height: 56px;
+  margin: 8px 0;
+  padding: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+}

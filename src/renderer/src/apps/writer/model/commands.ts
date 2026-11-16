@@ -30,6 +30,19 @@ import { COLUMNS } from './columns'
 import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './content'
 import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
+import { longDate, type FieldKind } from './fields'
+import type { DropCapMode } from './dropCap'
+import { coverPageContent, startsWithCoverPage } from './coverPage'
+import { tableStyle, type CellBorderAction, type TableStyleId } from './tableStyles'
+import type { ShapeKind } from '@/apps/slides/model/types'
+import { placementOf, resizeKeepingRatio, type ArrangeAction, type ObjectAlign, type WrapMode } from './floating'
+import {
+  arrangeSelectedObject,
+  objectSize,
+  rotateSelectedObject,
+  selectedObject,
+  updateSelectedObject
+} from './objectEdits'
 
 /**
  * Registro de comandos de Texto (el patrón Command, el mismo que usan VS Code o los editores serios).
@@ -104,7 +117,18 @@ export interface WriterUi {
   openWordCount(): void
   readAloudOpen: boolean
   toggleReadAloud(): void
+  /** Cuadros de Insertar (fase 16): vínculo, marcador, símbolo, ecuación, gráfico... */
+  openDialog(dialog: WriterDialogId): void
+  /** Autor del documento: lo pinta el campo Autor. */
+  documentAuthor: string
+  setDocumentAuthor(author: string): void
 }
+
+/**
+ * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
+ * (ecuación, gráfico) lo leen de la selección al abrirse.
+ */
+export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText' | 'chart' | 'equation'
 
 export interface CommandContext {
   editor: Editor
@@ -135,10 +159,6 @@ const currentFontSize = (editor: Editor) => {
   const value = editor.getAttributes('textStyle').fontSize as string | undefined
   return value ? parseFloat(value) : DEFAULT_FONT_SIZE_PT
 }
-
-/** Fecha larga en español ("16 de noviembre de 2026"), la que inserta el botón Fecha. */
-export const longDate = (date = new Date()) =>
-  date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
 
 async function paste({ editor }: CommandContext): Promise<void> {
   editor.commands.focus()
@@ -439,6 +459,29 @@ export const WRITER_COMMANDS = {
   replace: { label: 'Reemplazar', run: ({ ui }) => ui.openFind('replace') },
 
   // --- Insertar ---
+  coverPage: {
+    label: 'Portada',
+    run: ({ editor, ui }) => {
+      // Va siempre al principio, como en Word, con el título seleccionado para escribir el de verdad.
+      editor.chain().focus().insertContentAt(0, coverPageContent()).run()
+      const titleSize = editor.state.doc.firstChild?.content.size ?? 0
+      editor.commands.setTextSelection({ from: 1, to: 1 + titleSize })
+      if (!ui.documentAuthor) ui.openDialog('author')
+    },
+    isEnabled: ({ editor }) => !startsWithCoverPage(editor.getJSON())
+  },
+  dropCap: {
+    label: 'Letra capital',
+    run: (context, mode: DropCapMode | null) => chain(context).setDropCap(mode).run(),
+    isActive: ({ editor }, mode: DropCapMode | null) =>
+      editor.isActive('paragraph') && (editor.getAttributes('paragraph').dropCap ?? null) === mode,
+    isEnabled: ({ editor }) => editor.isActive('paragraph')
+  },
+  textToTable: {
+    label: 'Convertir texto en tabla',
+    run: (context) => chain(context).convertTextToTable().run(),
+    isEnabled: ({ editor }) => editor.can().convertTextToTable()
+  },
   insertTable: {
     label: 'Tabla',
     run: (context, size: { rows: number; cols: number }) =>
@@ -450,6 +493,171 @@ export const WRITER_COMMANDS = {
   },
   horizontalRule: { label: 'Línea horizontal', run: (context) => chain(context).setHorizontalRule().run() },
   insertDate: { label: 'Fecha', run: (context) => chain(context).insertContent(longDate()).run() },
+  // --- Vínculos (fase 16) ---
+  link: {
+    label: 'Vínculo',
+    shortcut: 'Ctrl/Cmd+K',
+    keys: 'Mod-k',
+    run: ({ ui }) => ui.openDialog('link'),
+    isActive: ({ editor }) => editor.isActive('link')
+  },
+  removeLink: {
+    label: 'Quitar vínculo',
+    run: (context) => chain(context).extendMarkRange('link').unsetLink().run(),
+    isEnabled: ({ editor }) => editor.isActive('link')
+  },
+  bookmark: { label: 'Marcador', run: ({ ui }) => ui.openDialog('bookmark') },
+  // --- Campos (fase 16) ---
+  insertField: {
+    label: 'Campo',
+    run: (context, kind: FieldKind) => {
+      chain(context).insertField(kind).run()
+      // Sin autor, el campo diría "[Autor]": se pregunta en el momento, como haría cualquiera.
+      if (kind === 'author' && !context.ui.documentAuthor) context.ui.openDialog('author')
+    }
+  },
+  documentAuthor: { label: 'Autor del documento…', run: ({ ui }) => ui.openDialog('author') },
+  // --- Símbolos (fase 16) ---
+  insertSymbol: {
+    label: 'Símbolo',
+    run: (context, char: string) => chain(context).insertContent({ type: 'text', text: char }).run()
+  },
+  symbolDialog: { label: 'Más símbolos…', run: ({ ui }) => ui.openDialog('symbol') },
+  // --- Ecuaciones (fase 16): el cuadro inserta una o edita la seleccionada ---
+  equation: {
+    label: 'Ecuación',
+    shortcut: 'Alt+=',
+    keys: 'Alt-=',
+    run: ({ ui }) => ui.openDialog('equation'),
+    isEnabled: ({ editor }) => !editor.isActive('codeBlock')
+  },
+  // --- Objetos: formas, cuadros de texto e imágenes (fase 16) ---
+  insertShape: {
+    label: 'Formas',
+    run: (context, kind: ShapeKind) => chain(context).insertShape(kind).run(),
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  insertTextBox: {
+    label: 'Cuadro de texto',
+    run: (context) => chain(context).insertTextBox().run(),
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  insertChart: {
+    label: 'Gráfico',
+    run: (context) => {
+      chain(context).insertChart().run()
+      // Como en Word: al insertar se abre la tabla de datos para cambiar los de ejemplo.
+      context.ui.openDialog('chart')
+    },
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  chartDialog: {
+    label: 'Datos del gráfico',
+    run: ({ ui }) => ui.openDialog('chart'),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'chart'
+  },
+  objectWrap: {
+    label: 'Ajustar texto',
+    run: ({ editor }, wrap: WrapMode) => void updateSelectedObject(editor, { wrap }),
+    isActive: ({ editor }, wrap: WrapMode) => {
+      const object = selectedObject(editor)
+      return !!object && placementOf(object.node.attrs).wrap === wrap
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  objectAlign: {
+    label: 'Alinear',
+    run: ({ editor }, align: ObjectAlign) => {
+      // Alinear un objeto libre lo devuelve al ancla: el desplazamiento ya no tendría sentido.
+      void updateSelectedObject(editor, { align, offsetX: 0 })
+    },
+    isActive: ({ editor }, align: ObjectAlign) => {
+      const object = selectedObject(editor)
+      return !!object && placementOf(object.node.attrs).align === align
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  arrange: {
+    label: 'Organizar',
+    run: ({ editor }, action: ArrangeAction) => void arrangeSelectedObject(editor, action),
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  objectSize: {
+    label: 'Tamaño',
+    run: ({ editor }, change: { width?: number; height?: number }) => {
+      const object = selectedObject(editor)
+      if (!object) return
+      // Imágenes y gráficos mantienen la proporción, como en Word con "Bloquear relación de aspecto".
+      const keepRatio = object.type === 'image' || object.type === 'chart'
+      const size = resizeKeepingRatio(objectSize(editor, object), change, keepRatio)
+      void updateSelectedObject(editor, object.type === 'textBox' ? { width: size.width } : size)
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  resetObjectSize: {
+    label: 'Restablecer tamaño',
+    run: ({ editor }) => void updateSelectedObject(editor, { width: null, height: null, crop: null, rotation: 0 }),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'image'
+  },
+  rotateObject: {
+    label: 'Girar',
+    run: ({ editor }, degrees: number) => void rotateSelectedObject(editor, degrees),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'image' || type === 'shape'
+    }
+  },
+  cropDialog: {
+    label: 'Recortar',
+    run: ({ ui }) => ui.openDialog('crop'),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'image'
+  },
+  altTextDialog: {
+    label: 'Texto alternativo',
+    run: ({ ui }) => ui.openDialog('altText'),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'image' || type === 'chart'
+    }
+  },
+  objectFill: {
+    label: 'Relleno',
+    run: ({ editor }, color: string | null) => void updateSelectedObject(editor, { fill: color }),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'shape' || type === 'textBox'
+    }
+  },
+  objectOutline: {
+    label: 'Contorno',
+    run: ({ editor }, color: string | null) => {
+      const object = selectedObject(editor)
+      void updateSelectedObject(editor, object?.type === 'textBox' ? { border: color } : { stroke: color })
+    },
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'shape' || type === 'textBox'
+    }
+  },
+  changeShape: {
+    label: 'Cambiar forma',
+    run: ({ editor }, kind: ShapeKind) => void updateSelectedObject(editor, { kind }),
+    isActive: ({ editor }, kind: ShapeKind) => selectedObject(editor)?.node.attrs.kind === kind,
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'shape'
+  },
+  deleteObject: {
+    label: 'Eliminar',
+    run: ({ editor }) => {
+      const object = selectedObject(editor)
+      if (object)
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: object.pos, to: object.pos + object.node.nodeSize })
+          .run()
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
   blockquote: {
     label: 'Cita',
     run: (context) => chain(context).toggleBlockquote().run(),
@@ -644,6 +852,19 @@ export const WRITER_COMMANDS = {
     isActive: ({ editor }, level: number | null) => (editor.storage.outlineView?.showLevel ?? null) === level
   },
   // --- Tabla (pestaña contextual) ---
+  tableStyle: {
+    label: 'Estilo de tabla',
+    run: (context, style: TableStyleId) => chain(context).setTableStyle(style).run(),
+    isActive: ({ editor }, style: TableStyleId) => tableStyleAtCursor(editor) === style
+  },
+  cellShading: {
+    label: 'Sombreado',
+    run: (context, color: string | null) => chain(context).setCellShading(color).run()
+  },
+  cellBorders: {
+    label: 'Bordes',
+    run: (context, action: CellBorderAction) => chain(context).applyCellBorders(action).run()
+  },
   addRowBefore: { label: 'Fila encima', run: (context) => chain(context).addRowBefore().run() },
   addRowAfter: { label: 'Fila debajo', run: (context) => chain(context).addRowAfter().run() },
   addColumnBefore: { label: 'Columna a la izquierda', run: (context) => chain(context).addColumnBefore().run() },
@@ -713,6 +934,16 @@ export function commandKeyBindings(): { keys: string; id: WriterCommandId }[] {
     const { keys } = commandOf(id)
     return keys ? [{ keys, id }] : []
   })
+}
+
+/** Estilo de la tabla donde está el cursor (null fuera de una tabla). */
+function tableStyleAtCursor(editor: Editor): TableStyleId | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === 'table') return tableStyle(node.attrs.tableStyle).id
+  }
+  return null
 }
 
 /** ¿La fila donde está el cursor es de encabezado? (todas sus celdas son `tableHeader`) */
