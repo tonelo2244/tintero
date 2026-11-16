@@ -1,6 +1,28 @@
-import { createBlank, expect, test } from './support/tintero'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { createBlank, expect, test, type Tintero } from './support/tintero'
 
 const SHOTS = process.env.FASE17_SHOTS
+
+/** Exporta a PDF y devuelve el texto de cada hoja (pdftotext, como en la fase 15). */
+async function exportPdfPages(tintero: Tintero, name: string): Promise<string[]> {
+  const { page } = tintero
+  const pdfPath = join(tintero.workDir, name)
+  await tintero.answerNextSaveDialog(pdfPath)
+  await page.getByRole('button', { name: 'Exportar' }).click()
+  await page.getByRole('menuitem', { name: 'PDF (.pdf)' }).click()
+  await expect
+    .poll(() =>
+      readFile(pdfPath).then(
+        (bytes) => bytes.length,
+        () => 0
+      )
+    )
+    .toBeGreaterThan(0)
+  if (SHOTS) execFileSync('pdftoppm', ['-png', '-r', '50', pdfPath, join(SHOTS, name.replace('.pdf', ''))])
+  return execFileSync('pdftotext', ['-layout', pdfPath, '-']).toString('utf8').split('\f')
+}
 
 /** Fase 17: tabla de contenido, notas al pie y al final, títulos, referencias cruzadas y citas. */
 test('Texto: notas al pie en su hoja, notas al final y tabla de contenido', async ({ tintero }) => {
@@ -86,6 +108,14 @@ test('Texto: notas al pie en su hoja, notas al final y tabla de contenido', asyn
   // Ctrl+clic en una entrada lleva al título (hoja 2).
   await toc.locator('.writer-toc__entry', { hasText: 'Detalles' }).click({ modifiers: ['Control'] })
   await expect(page.getByRole('contentinfo')).toContainText('Página 2 de 2')
+
+  // En el PDF, cada nota al pie en su hoja y la del final detrás del texto.
+  const pages = await exportPdfPages(tintero, 'notas.pdf')
+  // (pdftotext escribe el número volado en su propio renglón.)
+  expect(pages[0]).toMatch(/1\s+Ahora soy la primera\./)
+  expect(pages[0]).toMatch(/2\s+La primera nota, al pie de la hoja\./)
+  expect(pages[1]).toMatch(/i\s+Nota del final\./)
+  expect(pages[1]).not.toContain('Ahora soy la primera')
 })
 
 test('Texto: títulos de figura, referencia cruzada, citas APA e ISO 690 y bibliografía', async ({ tintero }) => {

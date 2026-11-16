@@ -58,7 +58,8 @@ export const Note = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'sup[data-note]' }]
+    // Por delante del superíndice (una marca), que si no se queda con el <sup> vacío.
+    return [{ tag: 'sup[data-note]', priority: 100 }]
   },
 
   renderHTML({ HTMLAttributes }) {
