@@ -106,3 +106,35 @@ test('Texto: formas, cuadro de texto y gráfico con su pestaña contextual', asy
   await page.keyboard.insertText('Nota al margen')
   await expect(editor.locator('.writer-object[data-type="textBox"]')).toContainText('Nota al margen')
 })
+
+test('Texto: convertir texto en tabla y darle estilo, sombreado y bordes', async ({ tintero }) => {
+  const { page } = tintero
+  await createBlank(page, 'Texto')
+  const editor = page.locator('.ProseMirror').first()
+  await editor.click()
+  await page.keyboard.insertText('Zona; Ventas')
+  await page.keyboard.press('Enter')
+  await page.keyboard.insertText('Norte; 12')
+  await page.keyboard.press('Enter')
+  await page.keyboard.insertText('Sur; 8')
+  await page.keyboard.press('Control+a')
+
+  await page.getByRole('tab', { name: 'Insertar' }).click()
+  await page.getByRole('button', { name: 'Convertir texto en tabla' }).click()
+  const table = editor.locator('table')
+  await expect(table.locator('tr')).toHaveCount(3)
+  await expect(table.locator('tr').nth(1).locator('td').nth(1)).toHaveText('12')
+
+  // Pestaña Tabla: estilo con bandas y la primera celda con borde inferior.
+  await table.locator('td').first().click()
+  await page.getByRole('tab', { name: 'Tabla' }).click()
+  await page.getByRole('button', { name: 'Estilos' }).click()
+  await page.getByRole('button', { name: 'Filas en bandas' }).click()
+  await expect(table).toHaveAttribute('data-table-style', 'banded')
+  await page.getByRole('button', { name: 'Bordes' }).click()
+  await page.getByRole('button', { name: 'Todos los bordes' }).click()
+  await expect(table.locator('td').first()).toHaveAttribute('data-borders', 'top right bottom left')
+  await expect(table.locator('td').first()).toHaveCSS('border-left-style', 'solid')
+  await expect(table.locator('tr').nth(1).locator('td').first()).toHaveCSS('background-color', 'rgb(242, 242, 242)')
+  await page.screenshot({ path: 'test-results/fase16-tabla.png' })
+})

@@ -310,6 +310,29 @@ describe('comandos de Vista y Revisar (fase 14)', () => {
 })
 
 describe('comandos de Insertar (fase 16)', () => {
+  it('convertir texto en tabla, estilo de tabla, sombreado y bordes de celda', () => {
+    const { context, editor } = setup('<p>Nombre; Edad</p><p>Ana; 30</p><p>fuera</p>')
+    editor.commands.setTextSelection({ from: 2, to: 20 })
+    expect(commandState(context, 'textToTable').enabled).toBe(true)
+    runCommand(context, 'textToTable')
+    const table = editor.state.doc.child(0)
+    expect(table.type.name).toBe('table')
+    expect(table.childCount).toBe(2)
+    expect(table.child(1).child(1).textContent).toBe('30')
+    expect(editor.state.doc.child(1).textContent).toBe('fuera')
+
+    // El cursor queda en la tabla: estilo, sombreado y borde inferior de la celda.
+    expect(commandState(context, 'tableStyle', 'grid').active).toBe(true)
+    runCommand(context, 'tableStyle', 'banded')
+    expect(commandState(context, 'tableStyle', 'banded').active).toBe(true)
+    runCommand(context, 'cellShading', '#ffeeaa')
+    runCommand(context, 'cellBorders', 'bottom')
+    const cell = editor.state.doc.child(0).child(0).child(0)
+    expect(cell.attrs).toMatchObject({ background: '#ffeeaa', borders: 'top' })
+    expect(editor.getHTML()).toContain('data-table-style="banded"')
+    expect(editor.getHTML()).toContain('data-borders="top"')
+  })
+
   it('vínculos, marcadores, campos y símbolos', () => {
     const { context, calls, editor } = setup('<p>hola</p>')
     runCommand(context, 'link')

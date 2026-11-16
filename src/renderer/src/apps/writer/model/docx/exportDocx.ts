@@ -64,12 +64,11 @@ import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
 import { chartRun, imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
+import { isBandedRow, parseCellBorders, tableStyle, type CellSide, type TableStyle } from '../tableStyles'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
 const PX_PER_CM = 96 / 2.54
 /** Mismo gris que las celdas de encabezado en el editor. */
-const HEADER_CELL_FILL = 'F2F2F2'
-const TABLE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'BFBFBF' }
 
 /** Un bloque de Word: párrafo o tabla. */
 type DocxBlock = Paragraph | Table
@@ -329,13 +328,17 @@ class DocxConverter {
     }
   }
 
+  /** Formato que se añade a cada texto (el del encabezado de un estilo de tabla, mientras se escribe). */
+  private runDefaults: MutableRunOptions = {}
+
   /**
    * Tabla de Tiptap -> tabla de Word. Tiptap y Word representan igual las celdas combinadas
    * (colspan/rowspan en la celda de origen y las demás omitidas), así que la traducción es directa.
    */
   private table(node: JSONContent, availableTwips: number): Table {
     const columnWidths = columnWidthsTwips(readColumnWidths(node), availableTwips)
-    const rows = (node.content ?? []).map((row) => {
+    const style = tableStyle(node.attrs?.tableStyle)
+    const rows = (node.content ?? []).map((row, rowIndex) => {
       const cells = row.content ?? []
       // Una fila hecha solo de encabezados se repite arriba de cada página, como en Word.
       const isHeaderRow = cells.length > 0 && cells.every((cell) => cell.type === 'tableHeader')
@@ -347,7 +350,12 @@ class DocxConverter {
           const columnSpan = Math.max(1, Number(cell.attrs?.colspan) || 1)
           const width = columnWidths.slice(column, column + columnSpan).reduce((sum, value) => sum + value, 0)
           column += columnSpan
+          const isHeader = cell.type === 'tableHeader'
+          this.runDefaults = isHeader ? headerRunOptions(style) : {}
           const content = this.blocks(cell.content ?? [])
+          this.runDefaults = {}
+          const fill = cellFill(style, cell, isHeader, rowIndex)
+          const borders = parseCellBorders(cell.attrs?.borders)
           return new TableCell({
             // Word exige que una celda termine en párrafo.
             children: content.at(-1) instanceof Paragraph ? content : [...content, new Paragraph({})],
@@ -355,10 +363,8 @@ class DocxConverter {
             rowSpan: Math.max(1, Number(cell.attrs?.rowspan) || 1),
             width: { size: width, type: WidthType.DXA },
             verticalAlign: VerticalAlign.TOP,
-            shading:
-              cell.type === 'tableHeader'
-                ? { type: ShadingType.CLEAR, fill: HEADER_CELL_FILL, color: 'auto' }
-                : undefined
+            shading: fill ? { type: ShadingType.CLEAR, fill, color: 'auto' } : undefined,
+            borders: borders === null ? undefined : cellBordersDocx(borders)
           })
         })
       })
@@ -367,14 +373,7 @@ class DocxConverter {
       rows,
       columnWidths,
       width: { size: columnWidths.reduce((sum, value) => sum + value, 0), type: WidthType.DXA },
-      borders: {
-        top: TABLE_BORDER,
-        bottom: TABLE_BORDER,
-        left: TABLE_BORDER,
-        right: TABLE_BORDER,
-        insideHorizontal: TABLE_BORDER,
-        insideVertical: TABLE_BORDER
-      }
+      borders: tableBordersDocx(style)
     })
   }
 
@@ -472,7 +471,7 @@ class DocxConverter {
     }
     if (node.type !== 'text' || !node.text) return []
 
-    const run = new TextRun({ text: node.text, ...runOptions(marks) })
+    const run = new TextRun({ text: node.text, ...this.runDefaults, ...runOptions(marks) })
     return this.withCommentRange(linked(run, marks), commentIdOf(marks))
   }
 
@@ -643,4 +642,46 @@ function escapeRegExp(text: string): string {
 function codeLines(node: JSONContent): string[] {
   const text = (node.content ?? []).map((child) => child.text ?? '').join('')
   return text.split('\n')
+}
+
+// --- Estilos de tabla y bordes de celda (fase 16) ---
+
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto' }
+const hex = (color: string) => color.replace('#', '').toUpperCase()
+
+/** Bordes de la tabla según su estilo (los de cada celda, si los tiene, van aparte y mandan). */
+function tableBordersDocx(style: TableStyle) {
+  const line = { style: BorderStyle.SINGLE, size: 4, color: hex(style.borderColor) }
+  const all = style.borders === 'all'
+  const horizontal = style.borders !== 'none'
+  return {
+    top: horizontal ? line : NO_BORDER,
+    bottom: horizontal ? line : NO_BORDER,
+    insideHorizontal: horizontal ? line : NO_BORDER,
+    left: all ? line : NO_BORDER,
+    right: all ? line : NO_BORDER,
+    insideVertical: all ? line : NO_BORDER
+  }
+}
+
+/** Bordes propios de una celda: negros, como los que pone Word con el botón Bordes. */
+function cellBordersDocx(borders: CellSide[]) {
+  const line = { style: BorderStyle.SINGLE, size: 4, color: '000000' }
+  const side = (name: CellSide) => (borders.includes(name) ? line : NO_BORDER)
+  return { top: side('top'), right: side('right'), bottom: side('bottom'), left: side('left') }
+}
+
+/** Fondo de una celda: el suyo; si no, el del encabezado o la banda del estilo. */
+function cellFill(style: TableStyle, cell: JSONContent, isHeader: boolean, rowIndex: number): string | null {
+  const own = typeof cell.attrs?.background === 'string' ? cssColorToHex(cell.attrs.background) : null
+  if (own) return own
+  if (isHeader) return style.headerFill ? hex(style.headerFill) : null
+  return isBandedRow(style, rowIndex) && style.bandFill ? hex(style.bandFill) : null
+}
+
+function headerRunOptions(style: TableStyle): MutableRunOptions {
+  return {
+    ...(style.headerBold && { bold: true }),
+    ...(style.headerColor && { color: hex(style.headerColor) })
+  }
 }

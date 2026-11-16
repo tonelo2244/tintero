@@ -31,6 +31,7 @@ import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './c
 import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
 import { longDate, type FieldKind } from './fields'
+import { tableStyle, type CellBorderAction, type TableStyleId } from './tableStyles'
 import type { ShapeKind } from '@/apps/slides/model/types'
 import { placementOf, resizeKeepingRatio, type ArrangeAction, type ObjectAlign, type WrapMode } from './floating'
 import {
@@ -456,6 +457,11 @@ export const WRITER_COMMANDS = {
   replace: { label: 'Reemplazar', run: ({ ui }) => ui.openFind('replace') },
 
   // --- Insertar ---
+  textToTable: {
+    label: 'Convertir texto en tabla',
+    run: (context) => chain(context).convertTextToTable().run(),
+    isEnabled: ({ editor }) => editor.can().convertTextToTable()
+  },
   insertTable: {
     label: 'Tabla',
     run: (context, size: { rows: number; cols: number }) =>
@@ -818,6 +824,19 @@ export const WRITER_COMMANDS = {
     isActive: ({ editor }, level: number | null) => (editor.storage.outlineView?.showLevel ?? null) === level
   },
   // --- Tabla (pestaña contextual) ---
+  tableStyle: {
+    label: 'Estilo de tabla',
+    run: (context, style: TableStyleId) => chain(context).setTableStyle(style).run(),
+    isActive: ({ editor }, style: TableStyleId) => tableStyleAtCursor(editor) === style
+  },
+  cellShading: {
+    label: 'Sombreado',
+    run: (context, color: string | null) => chain(context).setCellShading(color).run()
+  },
+  cellBorders: {
+    label: 'Bordes',
+    run: (context, action: CellBorderAction) => chain(context).applyCellBorders(action).run()
+  },
   addRowBefore: { label: 'Fila encima', run: (context) => chain(context).addRowBefore().run() },
   addRowAfter: { label: 'Fila debajo', run: (context) => chain(context).addRowAfter().run() },
   addColumnBefore: { label: 'Columna a la izquierda', run: (context) => chain(context).addColumnBefore().run() },
@@ -887,6 +906,16 @@ export function commandKeyBindings(): { keys: string; id: WriterCommandId }[] {
     const { keys } = commandOf(id)
     return keys ? [{ keys, id }] : []
   })
+}
+
+/** Estilo de la tabla donde está el cursor (null fuera de una tabla). */
+function tableStyleAtCursor(editor: Editor): TableStyleId | null {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === 'table') return tableStyle(node.attrs.tableStyle).id
+  }
+  return null
 }
 
 /** ¿La fila donde está el cursor es de encabezado? (todas sus celdas son `tableHeader`) */

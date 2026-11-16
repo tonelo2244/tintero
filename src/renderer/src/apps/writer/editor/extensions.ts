@@ -5,9 +5,9 @@ import Highlight from '@tiptap/extension-highlight'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import TextAlign from '@tiptap/extension-text-align'
-import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { Bookmark } from './Bookmark'
+import { writerTableExtensions } from './WriterTable'
 import { CharStyle } from './CharStyle'
 import { Field } from './Field'
 import { Chart } from './objects/Chart'
@@ -44,8 +44,8 @@ export function createWriterExtensions(): Extensions {
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     // Imagen con tamaño, recorte, giro y ajuste de texto (fase 16).
     WriterImage.configure({ allowBase64: true }),
-    // Tablas con columnas redimensionables arrastrando el borde, como en un procesador de texto.
-    TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
+    // Tablas con columnas redimensionables arrastrando el borde, estilos de tabla y bordes y sombreado de celda.
+    ...writerTableExtensions(),
     CharacterCount,
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
     ParagraphFormat,

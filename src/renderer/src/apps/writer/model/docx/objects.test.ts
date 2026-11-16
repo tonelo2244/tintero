@@ -163,3 +163,36 @@ describe('objetos en .docx', () => {
     expect(pie).toContain('c:pieChart')
   })
 })
+
+describe('estilos de tabla en .docx', () => {
+  const cell = (value: string, attrs: Record<string, unknown> = {}, type = 'tableCell'): JSONContent => ({
+    type,
+    attrs,
+    content: [paragraph([text(value)])]
+  })
+
+  it('el estilo pone bordes, encabezado en color y bandas; la celda, su sombreado y bordes', async () => {
+    const { xml } = await exported([
+      {
+        type: 'table',
+        attrs: { tableStyle: 'accent' },
+        content: [
+          { type: 'tableRow', content: [cell('Zona', {}, 'tableHeader'), cell('Ventas', {}, 'tableHeader')] },
+          { type: 'tableRow', content: [cell('Norte', { background: '#ffeeaa', borders: 'bottom' }), cell('12')] }
+        ]
+      }
+    ])
+    expect(xml).toContain('w:color="8EAADB"') // bordes del estilo
+    expect(xml).toContain('w:fill="4472C4"') // encabezado
+    expect(xml).toMatch(/<w:color w:val="FFFFFF"\/>/) // texto blanco en el encabezado
+    expect(xml).toContain('w:fill="FFEEAA"') // sombreado propio
+    expect(xml).toMatch(/<w:tcBorders>.*<w:bottom w:val="single".*<\/w:tcBorders>/s)
+  })
+
+  it('"Sin bordes" no escribe líneas', async () => {
+    const { xml } = await exported([
+      { type: 'table', attrs: { tableStyle: 'plain' }, content: [{ type: 'tableRow', content: [cell('a')] }] }
+    ])
+    expect(xml).not.toContain('w:val="single"')
+  })
+})

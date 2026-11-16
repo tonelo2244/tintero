@@ -3479,3 +3479,40 @@ p.writer-outline-block--body::after {
   gap: 6px;
   margin-top: 8px;
 }
+
+/* Estilos de tabla (fase 16). Los mismos colores que model/tableStyles.ts, que es lo que va al .docx.
+   Los bordes y el sombreado propios de una celda van en su estilo en línea y pasan por encima. */
+.writer-content table[data-table-style='plain'] td,
+.writer-content table[data-table-style='plain'] th {
+  border-style: none;
+}
+.writer-content table[data-table-style='plain'] th,
+.writer-content table[data-table-style='lines'] th,
+.writer-content table[data-table-style='banded'] th {
+  background: none;
+  font-weight: 700;
+}
+.writer-content table[data-table-style='lines'] td,
+.writer-content table[data-table-style='lines'] th {
+  border-color: #7f7f7f;
+  border-left-style: none;
+  border-right-style: none;
+}
+.writer-content table[data-table-style='accent'] td,
+.writer-content table[data-table-style='accent'] th {
+  border-color: #8eaadb;
+}
+.writer-content table[data-table-style='accent'] th {
+  background: #4472c4;
+  color: #ffffff;
+  font-weight: 700;
+}
+.writer-content table[data-table-style='banded'] td,
+.writer-content table[data-table-style='banded'] th {
+  border-color: #a5a5a5;
+  border-left-style: none;
+  border-right-style: none;
+}
+.writer-content table[data-table-style='banded'] tr:nth-child(even) > td {
+  background: #f2f2f2;
+}

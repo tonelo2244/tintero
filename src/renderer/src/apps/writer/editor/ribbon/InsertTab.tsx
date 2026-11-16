@@ -13,6 +13,7 @@ import {
   PanelTop,
   Quote,
   Shapes,
+  TableProperties,
   ChartColumnBig,
   SquareDashedText
 } from 'lucide-react'
@@ -46,6 +47,7 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
       </RibbonGroup>
       <RibbonGroup label="Tablas">
         <TableGridPicker onInsert={(size) => runCommand(context, 'insertTable', size)} />
+        <CommandButton command="textToTable" large icon={<TableProperties size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Ilustraciones">
         <label className="tool-button tool-button--large" title="Insertar imagen desde el disco">
