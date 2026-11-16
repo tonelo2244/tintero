@@ -57,12 +57,26 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   await page.getByRole('tab', { name: 'Tabla' }).click()
   await page.getByRole('button', { name: 'Fila de encabezado' }).click()
   await expect(editor.locator('th')).toHaveCount(2)
-  await editor.locator('td').first().click()
+  console.log(
+    'DBG0',
+    await editor
+      .locator('table')
+      .evaluateAll((tables) => tables.map((t) => (t as HTMLElement).innerText.replace(/\s+/g, ' ')))
+  )
+  // La primera celda de verdad (si la tabla ya cruza de hoja, antes van el hueco y el encabezado repetido).
+  await editor.locator('tr:not(.ProseMirror-widget) > td').first().click()
   for (let row = 1; row <= 70; row++) {
     await page.keyboard.insertText(`Fila ${row}`)
     await page.keyboard.press('Tab')
     await page.keyboard.insertText(String(row * 10))
     if (row < 70) await page.keyboard.press('Tab')
+    if (row === 2)
+      console.log(
+        'DBG2',
+        await editor
+          .locator('table')
+          .evaluateAll((tables) => tables.map((t) => (t as HTMLElement).innerText.replace(/\s+/g, ' ')))
+      )
   }
 
   // El párrafo largo se parte (un hueco dentro de él) y la tabla repite su encabezado en cada hoja.
@@ -72,53 +86,11 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   } catch (error) {
     console.log(
       'DBG',
-      await page.evaluate(() => {
-        const sheets = [...document.querySelectorAll('.writer-sheet')].map((s) =>
-          Math.round(s.getBoundingClientRect().top)
-        )
-        const t = document.querySelector('.ProseMirror table')!
-        const rows = [...t.querySelectorAll('tr')].map(
-          (r) =>
-            r.className +
-            ':' +
-            Math.round(r.getBoundingClientRect().top) +
-            ':' +
-            Math.round(r.getBoundingClientRect().height)
-        )
-        return JSON.stringify({
-          sheets,
-          tableTop: Math.round(t.getBoundingClientRect().top),
-          n: rows.length,
-          rows: rows.filter((r) => !r.startsWith(':')),
-          all: [...t.querySelectorAll('tr')]
-            .map(
-              (r, i) =>
-                i +
-                '|' +
-                r.className.slice(0, 18) +
-                '|' +
-                (r as HTMLElement).innerText.slice(0, 12).replace(/\s+/g, ' ') +
-                '|' +
-                Math.round(r.getBoundingClientRect().top)
-            )
-            .filter(
-              (x, i, a) =>
-                i < 3 ||
-                /gap|repeat|break/.test(x) ||
-                /gap|repeat|break/.test(a[i - 1] ?? '') ||
-                /gap|repeat|break/.test(a[i + 1] ?? '')
-            ),
-          split: Math.round(document.querySelector('.writer-page-split')!.getBoundingClientRect().top),
-          ths: t.querySelectorAll('th').length,
-          vw: innerWidth + 'x' + innerHeight,
-          fontOk: document.fonts.check('16px Carlito'),
-          wrap: (t.parentElement as HTMLElement).className,
-          firstRow: t.querySelector('tr')!.innerHTML.slice(0, 200),
-          starts: [...document.querySelectorAll('.writer-page-start')].map(
-            (e) => e.tagName + Math.round(e.getBoundingClientRect().top)
-          )
-        })
-      })
+      await editor.evaluate((dom) =>
+        [...dom.children]
+          .map((child) => child.tagName + ':' + (child as HTMLElement).innerText.slice(0, 60).replace(/\s+/g, ' '))
+          .join(' || ')
+      )
     )
     throw error
   }
