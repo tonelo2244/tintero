@@ -56,6 +56,20 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
   - Registro de comandos (`model/commands.ts`): la cinta, los atajos y el menú nativo ejecutan
     los mismos comandos. Cada pestaña de la cinta vive en su archivo (`editor/ribbon/`).
   - .docx: se importan la sangría izquierda, la de primera línea y la francesa.
+- **Texto, estilos de verdad** (fase 13):
+  - Los **estilos son datos del documento** con «basado en»: modificar Título 1 cambia todos los
+    títulos 1. Galería con clic derecho (Modificar, Actualizar para que coincida con la selección,
+    Nuevo estilo, Eliminar), **panel de estilos** y Títulos 4 a 6. Estilos de carácter (Énfasis,
+    Énfasis intenso, Texto destacado y propios).
+  - **Lista multinivel** vinculada a los títulos (1, 1.1, 1.1.1), **biblioteca de viñetas**,
+    formatos de número (1., 1), a., a), A., i., I., 1.1.) y reiniciar o continuar la numeración.
+  - Párrafo: **espaciado antes y después**, sangría derecha y valores exactos en Disposición,
+    **sombreado y bordes**, **tabulaciones** (izquierda, centro, derecha, decimal, con relleno de
+    puntos) y la tecla Tab inserta un tabulador en medio del texto.
+  - **Copiar formato** (un clic: una vez; doble clic: hasta Esc), **cambiar mayúsculas y
+    minúsculas**, **ordenar párrafos**, pegar solo texto y Seleccionar (todo, el párrafo).
+  - .docx de ida y vuelta: `styles.xml` (integrados por nombre y los propios que se usan), `w:shd`,
+    `w:pBdr`, `w:tabs`, `w:rStyle`, viñetas y formatos de número. Corpus Word y LibreOffice.
 
 ### Corregido
 
@@ -63,6 +77,9 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 5 (estilos del documento y formato de párrafo de la fase 13). Un
+  documento sin estilos guardados usa los de partida, que reproducen el aspecto de siempre.
+- Texto: el aspecto de párrafos y títulos sale de los estilos del documento, no de una hoja CSS fija.
 - Formato de archivo versión 4 (configuración de página y saltos de página en Texto). Un documento
   sin configuración es A4 con 2,5 cm, como antes.
 - Formato de archivo versión 3 (por los grupos de Diapositivas). Los archivos anteriores se abren
