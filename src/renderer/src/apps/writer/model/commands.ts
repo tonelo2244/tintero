@@ -31,6 +31,15 @@ import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './c
 import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
 import { longDate, type FieldKind } from './fields'
+import type { ShapeKind } from '@/apps/slides/model/types'
+import { placementOf, resizeKeepingRatio, type ArrangeAction, type ObjectAlign, type WrapMode } from './floating'
+import {
+  arrangeSelectedObject,
+  objectSize,
+  rotateSelectedObject,
+  selectedObject,
+  updateSelectedObject
+} from './objectEdits'
 
 /**
  * Registro de comandos de Texto (el patrón Command, el mismo que usan VS Code o los editores serios).
@@ -116,7 +125,7 @@ export interface WriterUi {
  * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
  * (ecuación, gráfico) lo leen de la selección al abrirse.
  */
-export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol'
+export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText'
 
 export interface CommandContext {
   editor: Editor
@@ -488,6 +497,119 @@ export const WRITER_COMMANDS = {
     run: (context, char: string) => chain(context).insertContent({ type: 'text', text: char }).run()
   },
   symbolDialog: { label: 'Más símbolos…', run: ({ ui }) => ui.openDialog('symbol') },
+  // --- Objetos: formas, cuadros de texto e imágenes (fase 16) ---
+  insertShape: {
+    label: 'Formas',
+    run: (context, kind: ShapeKind) => chain(context).insertShape(kind).run(),
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  insertTextBox: {
+    label: 'Cuadro de texto',
+    run: (context) => chain(context).insertTextBox().run(),
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  objectWrap: {
+    label: 'Ajustar texto',
+    run: ({ editor }, wrap: WrapMode) => void updateSelectedObject(editor, { wrap }),
+    isActive: ({ editor }, wrap: WrapMode) => {
+      const object = selectedObject(editor)
+      return !!object && placementOf(object.node.attrs).wrap === wrap
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  objectAlign: {
+    label: 'Alinear',
+    run: ({ editor }, align: ObjectAlign) => {
+      // Alinear un objeto libre lo devuelve al ancla: el desplazamiento ya no tendría sentido.
+      void updateSelectedObject(editor, { align, offsetX: 0 })
+    },
+    isActive: ({ editor }, align: ObjectAlign) => {
+      const object = selectedObject(editor)
+      return !!object && placementOf(object.node.attrs).align === align
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  arrange: {
+    label: 'Organizar',
+    run: ({ editor }, action: ArrangeAction) => void arrangeSelectedObject(editor, action),
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  objectSize: {
+    label: 'Tamaño',
+    run: ({ editor }, change: { width?: number; height?: number }) => {
+      const object = selectedObject(editor)
+      if (!object) return
+      // Imágenes y gráficos mantienen la proporción, como en Word con "Bloquear relación de aspecto".
+      const keepRatio = object.type === 'image' || object.type === 'chart'
+      const size = resizeKeepingRatio(objectSize(editor, object), change, keepRatio)
+      void updateSelectedObject(editor, object.type === 'textBox' ? { width: size.width } : size)
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
+  resetObjectSize: {
+    label: 'Restablecer tamaño',
+    run: ({ editor }) => void updateSelectedObject(editor, { width: null, height: null, crop: null, rotation: 0 }),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'image'
+  },
+  rotateObject: {
+    label: 'Girar',
+    run: ({ editor }, degrees: number) => void rotateSelectedObject(editor, degrees),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'image' || type === 'shape'
+    }
+  },
+  cropDialog: {
+    label: 'Recortar',
+    run: ({ ui }) => ui.openDialog('crop'),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'image'
+  },
+  altTextDialog: {
+    label: 'Texto alternativo',
+    run: ({ ui }) => ui.openDialog('altText'),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'image' || type === 'chart'
+    }
+  },
+  objectFill: {
+    label: 'Relleno',
+    run: ({ editor }, color: string | null) => void updateSelectedObject(editor, { fill: color }),
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'shape' || type === 'textBox'
+    }
+  },
+  objectOutline: {
+    label: 'Contorno',
+    run: ({ editor }, color: string | null) => {
+      const object = selectedObject(editor)
+      void updateSelectedObject(editor, object?.type === 'textBox' ? { border: color } : { stroke: color })
+    },
+    isEnabled: ({ editor }) => {
+      const type = selectedObject(editor)?.type
+      return type === 'shape' || type === 'textBox'
+    }
+  },
+  changeShape: {
+    label: 'Cambiar forma',
+    run: ({ editor }, kind: ShapeKind) => void updateSelectedObject(editor, { kind }),
+    isActive: ({ editor }, kind: ShapeKind) => selectedObject(editor)?.node.attrs.kind === kind,
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'shape'
+  },
+  deleteObject: {
+    label: 'Eliminar',
+    run: ({ editor }) => {
+      const object = selectedObject(editor)
+      if (object)
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: object.pos, to: object.pos + object.node.nodeSize })
+          .run()
+    },
+    isEnabled: ({ editor }) => selectedObject(editor) !== null
+  },
   blockquote: {
     label: 'Cita',
     run: (context) => chain(context).toggleBlockquote().run(),

@@ -308,3 +308,54 @@ describe('comandos de Vista y Revisar (fase 14)', () => {
     expect(commandState(context, 'toggleRuler').active).toBe(true)
   })
 })
+
+describe('comandos de Insertar (fase 16)', () => {
+  it('vínculos, marcadores, campos y símbolos', () => {
+    const { context, calls, editor } = setup('<p>hola</p>')
+    runCommand(context, 'link')
+    runCommand(context, 'bookmark')
+    runCommand(context, 'symbolDialog')
+    expect(calls).toEqual(['dialog:link', 'dialog:bookmark', 'dialog:symbol'])
+    expect(commandState(context, 'removeLink').enabled).toBe(false)
+    expect(commandKeyBindings()).toContainEqual({ keys: 'Mod-k', id: 'link' })
+
+    editor.commands.setTextSelection(5)
+    runCommand(context, 'insertSymbol', '€')
+    runCommand(context, 'insertField', 'page')
+    expect(editor.getHTML()).toBe(
+      '<p>hola€<span data-field="page" class="writer-field" title="Campo: Número de página"></span></p>'
+    )
+    // Sin autor, el campo Autor lo pregunta.
+    runCommand(context, 'insertField', 'author')
+    expect(calls.at(-1)).toBe('dialog:author')
+  })
+
+  it('formas: insertar, ajustar texto, ordenar, cambiar tamaño y eliminar', () => {
+    const { context, editor } = setup('<p>uno</p><p>dos</p>')
+    editor.commands.setTextSelection(7)
+    runCommand(context, 'insertShape', 'star')
+    // Delante del párrafo del cursor, y seleccionada.
+    expect(editor.state.doc.child(1).type.name).toBe('shape')
+    expect(commandState(context, 'objectWrap', 'inline').active).toBe(true)
+    runCommand(context, 'objectWrap', 'front')
+    runCommand(context, 'arrange', 'front')
+    runCommand(context, 'objectSize', { width: 80 })
+    const shape = editor.state.doc.child(1)
+    expect(shape.attrs).toMatchObject({ kind: 'star', wrap: 'front', zIndex: 0, width: 80, height: 100 })
+    runCommand(context, 'changeShape', 'ellipse')
+    expect(editor.state.doc.child(1).attrs.kind).toBe('ellipse')
+    runCommand(context, 'deleteObject')
+    expect(editor.state.doc.childCount).toBe(2)
+  })
+
+  it('cuadro de texto: el cursor queda dentro y su pestaña lo reconoce', () => {
+    const { context, editor } = setup('<p>uno</p>')
+    runCommand(context, 'insertTextBox')
+    editor.commands.insertContent('nota')
+    expect(editor.state.doc.child(0).type.name).toBe('textBox')
+    expect(editor.state.doc.child(0).textContent).toBe('nota')
+    runCommand(context, 'objectOutline', null)
+    expect(editor.state.doc.child(0).attrs.border).toBeNull()
+    expect(commandState(context, 'insertTextBox').enabled).toBe(false)
+  })
+})

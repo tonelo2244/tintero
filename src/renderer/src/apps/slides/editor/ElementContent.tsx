@@ -213,7 +213,7 @@ function TextContent({
 }
 
 /** Formas en un viewBox 100x100 que se estira a la caja del elemento. */
-const SHAPE_PATHS: Record<ShapeKind, string> = {
+export const SHAPE_PATHS: Record<ShapeKind, string> = {
   rect: 'M0,0 H100 V100 H0 Z',
   roundRect: 'M12,0 H88 Q100,0 100,12 V88 Q100,100 88,100 H12 Q0,100 0,88 V12 Q0,0 12,0 Z',
   ellipse: 'M50,0 A50,50 0 1,1 49.99,0 Z',

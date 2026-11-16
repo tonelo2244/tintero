@@ -11,7 +11,9 @@ import {
   MessagesSquare,
   Minus,
   PanelTop,
-  Quote
+  Quote,
+  Shapes,
+  SquareDashedText
 } from 'lucide-react'
 import { Dropdown, RibbonGroup } from '@/ui/Ribbon'
 import { readImageFile } from '@/ui/readImageFile'
@@ -19,6 +21,8 @@ import { TableGridPicker } from '@/ui/TableGridPicker'
 import { runCommand } from '../../model/commands'
 import { FIELD_KINDS } from '../../model/fields'
 import { SymbolDropdown } from '../SymbolPicker'
+import { SHAPE_KINDS } from '../objects/Shape'
+import { SHAPE_LABELS, ShapeIcon } from '@/apps/slides/editor/ElementContent'
 import { CommandButton, CommandMenuItem } from './CommandButton'
 import { useCommandContext } from './commandContext'
 
@@ -48,6 +52,18 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
           <span className="tool-button__label">Imagen</span>
           <input type="file" accept="image/*" hidden onChange={(event) => void insertImage(event)} />
         </label>
+        <Dropdown label="Formas" large trigger={<Shapes size={22} />}>
+          {(close) => (
+            <>
+              {SHAPE_KINDS.map((kind) => (
+                <CommandMenuItem key={kind} command="insertShape" arg={kind} onDone={close}>
+                  <ShapeIcon shape={kind} /> {SHAPE_LABELS[kind]}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
+        <CommandButton command="insertTextBox" large icon={<SquareDashedText size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Vínculos">
         <CommandButton command="link" large icon={<Link2 size={22} />} />

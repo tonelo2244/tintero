@@ -5,12 +5,14 @@ import Highlight from '@tiptap/extension-highlight'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import TextAlign from '@tiptap/extension-text-align'
-import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { Bookmark } from './Bookmark'
 import { CharStyle } from './CharStyle'
 import { Field } from './Field'
+import { Shape } from './objects/Shape'
+import { TextBox } from './objects/TextBox'
+import { WriterImage } from './objects/WriterImage'
 import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
@@ -39,7 +41,8 @@ export function createWriterExtensions(): Extensions {
     Subscript,
     Superscript,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    Image.configure({ allowBase64: true }),
+    // Imagen con tamaño, recorte, giro y ajuste de texto (fase 16).
+    WriterImage.configure({ allowBase64: true }),
     // Tablas con columnas redimensionables arrastrando el borde, como en un procesador de texto.
     TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
     CharacterCount,
@@ -55,6 +58,8 @@ export function createWriterExtensions(): Extensions {
     CommentMark,
     SearchAndReplace,
     Bookmark,
-    Field
+    Field,
+    Shape,
+    TextBox
   ]
 }

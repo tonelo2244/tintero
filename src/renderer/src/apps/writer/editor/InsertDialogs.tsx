@@ -4,6 +4,7 @@ import { UserRound } from 'lucide-react'
 import type { WriterDialogId, WriterUi } from '../model/commands'
 import { BookmarkDialog, LinkDialog } from './LinkDialogs'
 import { SymbolDialog } from './SymbolPicker'
+import { AltTextDialog, CropDialog } from './ObjectDialogs'
 import { WriterDialog } from './WriterDialog'
 
 interface InsertDialogsProps {
@@ -22,6 +23,10 @@ export function InsertDialogs({ dialog, editor, ui, onClose }: InsertDialogsProp
       return <BookmarkDialog editor={editor} onClose={onClose} />
     case 'symbol':
       return <SymbolDialog editor={editor} onClose={onClose} />
+    case 'crop':
+      return <CropDialog editor={editor} onClose={onClose} />
+    case 'altText':
+      return <AltTextDialog editor={editor} onClose={onClose} />
     case 'author':
       return <AuthorDialog author={ui.documentAuthor} onSave={ui.setDocumentAuthor} onClose={onClose} />
   }

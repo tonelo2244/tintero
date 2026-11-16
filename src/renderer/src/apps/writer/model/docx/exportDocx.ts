@@ -11,7 +11,6 @@ import {
   Footer,
   Header,
   HeadingLevel,
-  ImageRun,
   InternalHyperlink,
   Packer,
   PageBreak,
@@ -35,7 +34,6 @@ import {
   type ParagraphChild
 } from 'docx'
 import { cssColorToHex, cssFontToName, cssSizeToPt } from '@/core/office/cssValues'
-import { decodeImageDataUrl, fitWidth, imageSize } from '@/core/office/images'
 import {
   PAGE_COUNT_TOKEN,
   PAGE_NUMBER_TOKEN,
@@ -63,6 +61,7 @@ import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
 import { BOOKMARK, bookmarkOfHref } from '../links'
 import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
+import { imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
@@ -297,7 +296,19 @@ class DocxConverter {
           })
         ]
       case 'image':
-        return [new Paragraph({ children: this.inline(node, []) })]
+        return [objectParagraph(node, imageRun(node, this.maxImageWidthPx))]
+      case 'shape':
+        return [objectParagraph(node, shapeRun(node))]
+      case 'textBox':
+        return [
+          objectParagraph(
+            node,
+            textBoxRun(
+              node,
+              this.blocks(node.content ?? []).filter((block): block is Paragraph => block instanceof Paragraph)
+            )
+          )
+        ]
       case 'pageBreak':
         // Como hace Word con Ctrl+Intro: un párrafo que solo contiene el salto.
         return [new Paragraph({ children: [new PageBreak()] })]
@@ -580,24 +591,6 @@ function pageProperties(setup: PageSetup) {
 
 function contentWidthCm(setup: PageSetup): number {
   return orientedSize(setup).width - setup.margins.left - setup.margins.right
-}
-
-function imageRun(node: JSONContent, maxWidthPx: number): ImageRun | null {
-  const decoded = typeof node.attrs?.src === 'string' ? decodeImageDataUrl(node.attrs.src) : null
-  if (!decoded) return null // imagen enlazada o formato que Word no entiende (SVG, WebP)
-  const declaredWidth = Number(node.attrs?.width)
-  const declaredHeight = Number(node.attrs?.height)
-  const size =
-    declaredWidth > 0 && declaredHeight > 0
-      ? { width: declaredWidth, height: declaredHeight }
-      : (imageSize(decoded) ?? { width: maxWidthPx, height: Math.round(maxWidthPx * 0.75) })
-  const alt = typeof node.attrs?.alt === 'string' ? node.attrs.alt : ''
-  return new ImageRun({
-    type: decoded.kind,
-    data: decoded.bytes,
-    transformation: fitWidth(size, maxWidthPx),
-    altText: { name: alt || 'Imagen', description: alt, title: alt }
-  })
 }
 
 function commentIdOf(marks: NonNullable<JSONContent['marks']>): string | null {

@@ -78,3 +78,68 @@ describe('campos en .docx', () => {
     expect(first?.content?.[1].attrs?.kind).toBe('page')
   })
 })
+
+/** PNG de 4×2 px (lo justo para que Word lo acepte). */
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAYAAAB/qH1jAAAAEUlEQVR42mP8z8DwnwEJMOIUAAD+DgP9KYqPWQAAAABJRU5ErkJggg=='
+
+describe('objetos en .docx', () => {
+  it('imagen flotante con tamaño, recorte, giro y texto alternativo', async () => {
+    const { xml } = await exported([
+      {
+        type: 'image',
+        attrs: {
+          src: PNG,
+          alt: 'Gráfico de ventas',
+          width: 200,
+          height: 100,
+          rotation: 90,
+          crop: { top: 0, right: 25, bottom: 10, left: 0 },
+          wrap: 'square',
+          align: 'right'
+        }
+      },
+      paragraph([text('Texto que rodea la imagen.')])
+    ])
+    expect(xml).toContain('<wp:anchor')
+    expect(xml).toContain('<wp:wrapSquare')
+    expect(xml).toContain('<wp:align>right</wp:align>')
+    expect(xml).toContain('descr="Gráfico de ventas"')
+    expect(xml).toContain('rot="5400000"')
+    expect(xml).toMatch(/<a:srcRect[^>]*r="25000"/)
+    // 200 px = 1905000 EMU
+    expect(xml).toContain('cx="1905000"')
+  })
+
+  it('una imagen detrás del texto lleva su desplazamiento y behindDoc', async () => {
+    const { xml } = await exported([
+      { type: 'image', attrs: { src: PNG, width: 40, height: 20, wrap: 'behind', offsetX: 100, offsetY: 50 } }
+    ])
+    expect(xml).toContain('behindDoc="1"')
+    expect(xml).toContain('<wp:wrapNone/>')
+    expect(xml).toContain('<wp:posOffset>952500</wp:posOffset>')
+    expect(xml).toContain('<wp:posOffset>476250</wp:posOffset>')
+  })
+
+  it('una imagen en línea centrada centra su párrafo', async () => {
+    const { xml } = await exported([{ type: 'image', attrs: { src: PNG, align: 'center' } }])
+    expect(xml).toContain('<wp:inline')
+    expect(xml).toContain('<w:jc w:val="center"/>')
+  })
+
+  it('formas y cuadros de texto como formas nativas de Word', async () => {
+    const { xml } = await exported([
+      { type: 'shape', attrs: { kind: 'star', fill: '#5b8bd0', stroke: null, width: 160, height: 100 } },
+      {
+        type: 'textBox',
+        attrs: { width: 240, wrap: 'square', align: 'right', border: '#444444' },
+        content: [paragraph([text('Nota al margen')])]
+      }
+    ])
+    expect(xml).toContain('prst="star5"')
+    expect(xml).toContain('<a:srgbClr val="5B8BD0"/>')
+    expect(xml).toContain('prst="rect"')
+    expect(xml).toContain('<wps:txbx>')
+    expect(xml).toContain('Nota al margen')
+  })
+})
