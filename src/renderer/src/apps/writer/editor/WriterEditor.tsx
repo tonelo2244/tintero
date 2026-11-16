@@ -70,7 +70,10 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     content: initialContent.doc,
     autofocus: 'end',
     editorProps: {
-      attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' }
+      attributes: { class: 'writer-content', spellcheck: 'true', lang: 'es' },
+      // Al seguir el cursor, que no quede debajo de la regla (pegada arriba del lienzo).
+      scrollMargin: { top: 48, bottom: 24, left: 0, right: 0 },
+      scrollThreshold: { top: 48, bottom: 24, left: 0, right: 0 }
     },
     onUpdate: ({ editor: current }) => onChange({ ...partsRef.current, doc: current.getJSON() })
   })

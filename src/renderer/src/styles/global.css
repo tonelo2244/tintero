@@ -873,7 +873,8 @@ button {
 /* Regla horizontal: va encima de la hoja y se queda arriba al desplazarse (como en Word). */
 .writer-ruler {
   position: sticky;
-  top: 0;
+  /* El lienzo tiene 24 px de relleno arriba: sin compensarlo, el texto asoma por encima de la regla. */
+  top: -24px;
   z-index: 5;
   height: 22px;
   margin-bottom: 8px;
