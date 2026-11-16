@@ -57,7 +57,20 @@ function setup(html: string) {
     setNumberedHeadings: (value) => {
       numbered = value
     },
-    openTabStopsDialog: () => calls.push('tabStopsDialog')
+    openTabStopsDialog: () => calls.push('tabStopsDialog'),
+    viewMode: 'print',
+    setViewMode: (mode) => calls.push(`view:${mode}`),
+    navigationOpen: false,
+    toggleNavigation: () => calls.push('navigation'),
+    showRuler: true,
+    toggleRuler: () => calls.push('ruler'),
+    zoom: 1,
+    setZoom: (zoom) => calls.push(`zoom:${zoom}`),
+    splitOpen: false,
+    toggleSplit: () => calls.push('split'),
+    openWordCount: () => calls.push('wordCount'),
+    readAloudOpen: false,
+    toggleReadAloud: () => calls.push('readAloud')
   }
   const context: CommandContext = { editor, ui }
   return { context, calls, editor, page: () => pageSetup, styles: () => styles, numbered: () => numbered }
@@ -261,5 +274,22 @@ describe('formato de párrafo (fase 13)', () => {
     )
     // Era de un solo uso: ya no está activa.
     expect(commandState(context, 'formatPainter', false).active).toBe(false)
+  })
+})
+
+describe('comandos de Vista y Revisar (fase 14)', () => {
+  it('piden a la interfaz la vista, el zoom, el panel, dividir, contar y leer', () => {
+    const { context, calls } = setup('<p>hola</p>')
+    runCommand(context, 'viewMode', 'outline')
+    runCommand(context, 'zoom', 'onePage')
+    runCommand(context, 'zoom', 1.5)
+    runCommand(context, 'toggleNavigation')
+    runCommand(context, 'toggleRuler')
+    runCommand(context, 'toggleSplit')
+    runCommand(context, 'wordCount')
+    expect(calls).toEqual(['view:outline', 'zoom:onePage', 'zoom:1.5', 'navigation', 'ruler', 'split', 'wordCount'])
+    expect(commandState(context, 'viewMode', 'print').active).toBe(true)
+    expect(commandState(context, 'zoom', 'actual').active).toBe(true)
+    expect(commandState(context, 'toggleRuler').active).toBe(true)
   })
 })

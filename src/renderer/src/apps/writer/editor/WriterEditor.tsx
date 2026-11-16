@@ -23,6 +23,8 @@ import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
 import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
+import { isPaginated, showsRuler, type ReadingTheme, type ViewMode } from '../model/views'
+import { zoomForPreset, type ZoomPreset } from '../model/zoom'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
@@ -31,10 +33,16 @@ import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { HeaderFooterPanel } from './HeaderFooterPanel'
+import { NavigationPanel, selectPageStart } from './NavigationPanel'
+import { OutlineView } from './OutlineView'
 import { PageSetupDialog } from './PageSetupDialog'
 import { Pagination } from './Pagination'
 import { PresentationPanel } from './PresentationPanel'
+import { ReadAloudBar } from './ReadAloudBar'
+import { ReadAloudHighlight } from './ReadAloud'
+import { ReadingBar } from './ReadingBar'
 import { Ruler } from './Ruler'
+import { SplitPane } from './SplitPane'
 import { StyleDialog } from './StyleDialog'
 import { StylesPanel } from './StylesPanel'
 import { TabStops } from './TabStops'
@@ -43,15 +51,20 @@ import { WriterCommandsProvider } from './ribbon/commandContext'
 import { HomeTab } from './ribbon/HomeTab'
 import { InsertTab } from './ribbon/InsertTab'
 import { LayoutTab } from './ribbon/LayoutTab'
+import { OutlineTab } from './ribbon/OutlineTab'
+import { ReviewTab } from './ribbon/ReviewTab'
 import { TableTab } from './ribbon/TableTab'
-import { TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { ViewTab } from './ribbon/ViewTab'
 import { usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
 import { useAskDocuments } from './useAskDocuments'
+import { useReadAloud } from './useReadAloud'
 import { useWritingAssistant } from './useWritingAssistant'
 import { useWriterComments } from './useWriterComments'
 import { WriterAssistantTab } from './WriterAssistantTab'
+import { WordCountDialog } from './WordCountDialog'
 import { WriterStatusBar } from './WriterStatusBar'
 
 export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
@@ -61,6 +74,16 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [showRuler, setShowRuler] = useState(true)
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
   const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
+  // Vista y navegación (fase 14): preferencias de la pantalla, no del documento (no se guardan).
+  const [viewMode, setViewModeState] = useState<ViewMode>('print')
+  /** Vista a la que vuelve Esc desde el modo lectura. */
+  const [viewBeforeReading, setViewBeforeReading] = useState<ViewMode>('print')
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>('light')
+  const [navigationOpen, setNavigationOpen] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
+  const [wordCountOpen, setWordCountOpen] = useState(false)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
   /*
    * Encabezado, pie y comentarios no son parte del estado de Tiptap. Se guardan aquí y se mandan
    * junto al cuerpo en cada cambio. El ref evita que `onUpdate` (creado una sola vez) use una copia vieja.
@@ -75,6 +98,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     () => [
       ...createWriterExtensions(),
       Pagination,
+      OutlineView,
+      ReadAloudHighlight,
       TabStops,
       CommandShortcuts.configure({ getContext: () => commandContextRef.current })
     ],
@@ -142,6 +167,77 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   /** Panel de IA abierto: ninguno, cómo preparar Ollama, redacción, crear presentación o preguntar. */
   const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation' | 'ask'>('closed')
   const pages = usePageMetrics(editor, zoom)
+  const readAloud = useReadAloud(editor)
+  const paginated = isPaginated(viewMode)
+
+  // Cada vista enciende o apaga lo suyo: las hojas, el esquema y si se puede escribir.
+  useEffect(() => {
+    if (!editor) return
+    editor.commands.setPaginationEnabled(isPaginated(viewMode))
+    editor.commands.setOutlineView(viewMode === 'outline')
+    editor.setEditable(viewMode !== 'read')
+  }, [editor, viewMode])
+
+  const setViewMode = (mode: ViewMode) => {
+    if (mode === 'read') {
+      setViewBeforeReading(viewMode === 'read' ? 'print' : viewMode)
+      // Leer es solo leer: fuera paneles y cuadros (taparían la barra del modo lectura).
+      closeSidePanels()
+      setWordCountOpen(false)
+      setFind(null)
+    }
+    setViewModeState(mode)
+    // La pestaña Esquema aparece con su vista y se abre sola, como en Word.
+    if (mode === 'outline') setActiveTab(OUTLINE_TAB.id)
+  }
+
+  // Esc sale del modo lectura (a la vista de antes).
+  useEffect(() => {
+    if (viewMode !== 'read') return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setViewModeState(viewBeforeReading)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewMode, viewBeforeReading])
+
+  /** Desplaza el lienzo para que la hoja `page` quede arriba. */
+  const scrollToPage = useCallback(
+    (page: number) => {
+      const canvas = canvasRef.current
+      const sheet = pageRef.current
+      if (!canvas || !sheet) return
+      const sheetTop = sheet.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop
+      canvas.scrollTop = sheetTop + (page - 1) * geometry.pitch * zoom - 8
+    },
+    [geometry.pitch, zoom]
+  )
+
+  /** Zoom exacto o un preset: las cuentas en model/zoom.ts, las medidas del lienzo aquí. */
+  const changeZoom = (target: ZoomPreset | number) => {
+    if (typeof target === 'number') return setZoom(target)
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rulerHeight = showRuler && showsRuler(viewMode) ? 30 : 0
+    const next = zoomForPreset(
+      target,
+      { width: canvas.clientWidth, height: canvas.clientHeight },
+      { width: geometry.width, height: geometry.height + rulerHeight },
+      24
+    )
+    setZoom(next)
+    // "Una página": la hoja del cursor, entera a la vista.
+    if (target === 'onePage') {
+      const page = pages.current
+      requestAnimationFrame(() => {
+        const sheet = pageRef.current
+        const canvasNow = canvasRef.current
+        if (!sheet || !canvasNow) return
+        const sheetTop = sheet.getBoundingClientRect().top - canvasNow.getBoundingClientRect().top + canvasNow.scrollTop
+        canvasNow.scrollTop = sheetTop + (page - 1) * geometry.pitch * next - 8
+      })
+    }
+  }
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
 
@@ -192,7 +288,23 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     openTabStopsDialog: () => {
       closeSidePanels()
       setTabStopsOpen(true)
-    }
+    },
+    viewMode,
+    setViewMode,
+    navigationOpen,
+    toggleNavigation: () => setNavigationOpen((open) => !open),
+    showRuler,
+    toggleRuler: () => setShowRuler((value) => !value),
+    zoom,
+    setZoom: changeZoom,
+    splitOpen,
+    toggleSplit: () => setSplitOpen((open) => !open),
+    openWordCount: () => {
+      closeSidePanels()
+      setWordCountOpen(true)
+    },
+    readAloudOpen: readAloud.open,
+    toggleReadAloud: readAloud.toggle
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
@@ -264,9 +376,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   const readyModel = ai.status?.state === 'ready' ? ai.status.model : null
   const inTable = toolbar?.table.active ?? false
-  const tabs = visibleTabs(inTable)
-  // Si el cursor sale de la tabla con su pestaña abierta, se vuelve a Inicio (la pestaña desaparece).
-  const visibleTab = activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab
+  const inOutline = viewMode === 'outline'
+  const tabs = visibleTabs(inTable, inOutline)
+  // Si una pestaña contextual desaparece (sales de la tabla o del Esquema), se vuelve a otra.
+  const visibleTab =
+    activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab === OUTLINE_TAB.id && !inOutline ? 'view' : activeTab
 
   const renderRibbon = () => {
     if (!editor || !toolbar) return null
@@ -274,7 +388,13 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       case 'insert':
         return <InsertTab commentCount={comments.count} />
       case 'layout':
-        return <LayoutTab state={toolbar} showRuler={showRuler} onToggleRuler={() => setShowRuler((value) => !value)} />
+        return <LayoutTab state={toolbar} />
+      case 'review':
+        return <ReviewTab commentCount={comments.count} />
+      case 'view':
+        return <ViewTab />
+      case OUTLINE_TAB.id:
+        return <OutlineTab />
       case 'assistant':
         return (
           <WriterAssistantTab
@@ -323,16 +443,20 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       tabs={tabs}
       activeTab={visibleTab}
       onTabChange={setActiveTab}
+      hideRibbon={viewMode === 'read'}
       ribbon={
         commandContext && <WriterCommandsProvider value={commandContext}>{renderRibbon()}</WriterCommandsProvider>
       }
       statusBar={
         <WriterStatusBar
-          currentPage={pages.current}
-          totalPages={pages.total}
+          currentPage={paginated ? pages.current : null}
+          totalPages={paginated ? pages.total : null}
           words={toolbar?.words ?? 0}
           zoom={zoom}
           onZoomChange={setZoom}
+          onWordCount={() => commandContext && runCommand(commandContext, 'wordCount')}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
         />
       }
     >
@@ -402,65 +526,107 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           onClose={() => setHeaderFooterOpen(false)}
         />
       )}
+      {wordCountOpen && editor && (
+        <WordCountDialog
+          editor={editor}
+          pages={paginated ? pages.total : null}
+          onClose={() => setWordCountOpen(false)}
+        />
+      )}
+      {readAloud.open && <ReadAloudBar readAloud={readAloud} />}
       {editor && find && (
         <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
       )}
-      <div
-        className="writer-canvas"
-        onMouseDown={(event) => {
-          // Clic en el fondo gris: llevar el foco al final del documento, como en un procesador de texto.
-          if (event.target === event.currentTarget) {
-            event.preventDefault()
-            editor?.commands.focus('end')
-          }
-        }}
-      >
-        <div className="writer-zoom" style={{ zoom }}>
-          {showRuler && (
-            <Ruler
-              pageSetup={pageSetup}
-              indents={toolbar?.indents ?? null}
-              zoom={zoom}
-              onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
-              tabStops={toolbar?.paragraph.tabStops ?? []}
-              onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
-              onIndentsChange={(indents) =>
-                editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
-              }
-            />
-          )}
+      {viewMode === 'read' && (
+        <ReadingBar
+          theme={readingTheme}
+          onThemeChange={setReadingTheme}
+          onExit={() => setViewMode(viewBeforeReading)}
+        />
+      )}
+      <div className="writer-workspace">
+        {navigationOpen && editor && viewMode !== 'read' && (
+          <NavigationPanel
+            editor={editor}
+            paginated={paginated}
+            geometry={geometry}
+            sheetStyle={pageCssVariables(geometry)}
+            onGoToPage={(page) => {
+              selectPageStart(editor, page)
+              scrollToPage(page)
+            }}
+            onClose={() => setNavigationOpen(false)}
+          />
+        )}
+        <div className="writer-workspace__main">
           <div
-            className={`writer-page ${showMarks ? 'show-marks' : ''}`}
-            style={{ minHeight: pages.total * geometry.pitch - geometry.gap, ...pageCssVariables(geometry) }}
+            ref={canvasRef}
+            className={`writer-canvas writer-canvas--${viewMode} ${viewMode === 'read' ? `writer-reading--${readingTheme}` : ''}`}
+            onMouseDown={(event) => {
+              // Clic en el fondo gris: llevar el foco al final del documento, como en un procesador de texto.
+              if (event.target === event.currentTarget) {
+                event.preventDefault()
+                editor?.commands.focus('end')
+              }
+            }}
           >
-            {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
-            <div className="writer-sheets" aria-hidden>
-              {Array.from({ length: pages.total }, (_, index) => (
-                <div
-                  key={index}
-                  className="writer-sheet"
-                  style={{ top: index * geometry.pitch, height: geometry.height }}
-                >
-                  {parts.header && (
-                    <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
-                      {headerFooterText(parts.header, index + 1, pages.total)}
-                    </div>
-                  )}
-                  {parts.footer && (
-                    <div className={`writer-sheet__footer writer-sheet__part--${parts.footer.align}`}>
-                      {headerFooterText(parts.footer, index + 1, pages.total)}
-                    </div>
-                  )}
-                </div>
-              ))}
+            <div className="writer-zoom" style={{ zoom }}>
+              {showRuler && showsRuler(viewMode) && (
+                <Ruler
+                  pageSetup={pageSetup}
+                  indents={toolbar?.indents ?? null}
+                  zoom={zoom}
+                  onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+                  tabStops={toolbar?.paragraph.tabStops ?? []}
+                  onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
+                  onIndentsChange={(indents) =>
+                    editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
+                  }
+                />
+              )}
+              <div
+                ref={pageRef}
+                className={`writer-page ${showMarks ? 'show-marks' : ''}`}
+                style={{
+                  ...(paginated && { minHeight: pages.total * geometry.pitch - geometry.gap }),
+                  ...pageCssVariables(geometry)
+                }}
+              >
+                {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
+                {paginated && (
+                  <div className="writer-sheets" aria-hidden>
+                    {Array.from({ length: pages.total }, (_, index) => (
+                      <div
+                        key={index}
+                        className="writer-sheet"
+                        style={{ top: index * geometry.pitch, height: geometry.height }}
+                      >
+                        {parts.header && (
+                          <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
+                            {headerFooterText(parts.header, index + 1, pages.total)}
+                          </div>
+                        )}
+                        {parts.footer && (
+                          <div className={`writer-sheet__footer writer-sheet__part--${parts.footer.align}`}>
+                            {headerFooterText(parts.footer, index + 1, pages.total)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <EditorContent editor={editor} />
+              </div>
             </div>
-            <EditorContent editor={editor} />
+            {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
+            <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
+            {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
+            <style>{documentCss}</style>
           </div>
+          {splitOpen && editor && (
+            <SplitPane editor={editor} sheetStyle={pageCssVariables(geometry)} onClose={() => setSplitOpen(false)} />
+          )}
         </div>
-        {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
-        <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
-        {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
-        <style>{documentCss}</style>
       </div>
     </EditorLayout>
   )

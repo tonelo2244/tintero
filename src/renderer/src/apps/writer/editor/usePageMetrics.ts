@@ -24,11 +24,11 @@ export function usePageMetrics(editor: Editor | null, zoom: number) {
       }
     }
     measure()
-    editor.on('selectionUpdate', measure)
-    editor.on('update', measure)
+    // Cualquier transacción, no solo las que cambian texto o cursor: la paginación mueve los bloques
+    // de hoja con una transacción propia, y sin volver a medir el cursor se quedaba en la hoja de antes.
+    editor.on('transaction', measure)
     return () => {
-      editor.off('selectionUpdate', measure)
-      editor.off('update', measure)
+      editor.off('transaction', measure)
     }
   }, [editor, total, zoom])
 

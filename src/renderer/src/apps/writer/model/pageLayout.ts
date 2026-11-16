@@ -73,9 +73,13 @@ export function paginate(
   return { breaks, pageCount }
 }
 
-/** En qué hoja (desde 1) cae una altura medida desde el principio del área de texto. */
+/**
+ * En qué hoja (desde 1) cae una altura medida desde el principio del área de texto. Con holgura:
+ * el primer renglón de una hoja empieza justo en `n·pitch`, y la medida de la pantalla puede dar
+ * medio píxel menos (entonces la barra de estado decía "Página 1" con el cursor en la 2).
+ */
 export function pageAt(y: number, pageCount: number, pitch = DEFAULT_GEOMETRY.pitch): number {
-  return Math.min(pageCount, Math.max(1, Math.floor(y / pitch) + 1))
+  return Math.min(pageCount, Math.max(1, Math.floor((y + SAFETY_PX) / pitch) + 1))
 }
 
 /** Texto del encabezado o pie de una hoja concreta: los marcadores pasan a números. */

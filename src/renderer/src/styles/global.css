@@ -2106,6 +2106,424 @@ button {
   font-size: 12px;
 }
 
+/* ===== Texto: vista y navegación (fase 14) ===== */
+.writer-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.writer-workspace__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.writer-canvas {
+  /* scrollIntoView (panel de navegación, leer en voz alta) deja sitio a la regla pegajosa. */
+  scroll-padding-top: 40px;
+}
+
+/* Panel de navegación: acoplado a la izquierda, como en Word (no tapa el texto). */
+.writer-comments.writer-navigation {
+  position: static;
+  flex: 0 0 260px;
+  width: 260px;
+  border-width: 0 1px 0 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+}
+.writer-navigation__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.writer-navigation__tabs button {
+  border: none;
+  background: none;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.writer-navigation__tabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.writer-navigation__tree {
+  list-style: none;
+  margin: 0;
+  padding: 6px 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+.writer-navigation__item {
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  position: relative;
+}
+.writer-navigation__item:hover {
+  background: var(--hover);
+}
+.writer-navigation__item.is-active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.writer-navigation__item.drop-before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+.writer-navigation__item.drop-after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.writer-navigation__twisty {
+  border: none;
+  background: none;
+  padding: 2px;
+  display: inline-flex;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.writer-navigation__heading {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  padding: 4px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.writer-navigation__pages {
+  list-style: none;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.writer-navigation__pages li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.writer-thumbnail {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: #fff;
+  cursor: pointer;
+}
+.writer-thumbnail.is-active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.writer-thumbnail__sheet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  box-sizing: border-box;
+  padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);
+  pointer-events: none;
+  text-align: left;
+  overflow: hidden;
+}
+
+/* Borrador, Esquema y Lectura: el texto seguido en una tira blanca, sin hojas. */
+.writer-canvas--draft .writer-page,
+.writer-canvas--outline .writer-page,
+.writer-canvas--read .writer-page {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  padding-top: 32px;
+  padding-bottom: 48px;
+}
+.writer-canvas--draft .writer-content,
+.writer-canvas--outline .writer-content,
+.writer-canvas--read .writer-content {
+  min-height: 60vh;
+}
+/* En Borrador el salto de página se ve siempre, como la línea de puntos de Word. */
+.writer-canvas--draft .writer-content hr.writer-page-break::after {
+  content: 'Salto de página';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  border-top: 1px dashed #8aa4d6;
+  font-size: 9pt;
+  line-height: 1;
+  color: #8aa4d6;
+  text-align: center;
+  padding-top: 2px;
+}
+
+/* Esquema: un triángulo para plegar cada título y una viñeta para el texto normal. */
+.writer-canvas--outline .writer-page {
+  padding-left: calc(var(--margin-left, 2.5cm) + 12px);
+}
+.writer-outline-block {
+  position: relative;
+}
+.writer-outline-hidden {
+  display: none !important;
+}
+.writer-outline-toggle {
+  position: absolute;
+  left: -24px;
+  top: 0;
+  width: 18px;
+  height: 1.3em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: normal;
+  color: #777;
+  cursor: pointer;
+  user-select: none;
+}
+.writer-outline-toggle::before {
+  content: '▾';
+}
+.writer-outline-toggle.is-folded::before {
+  content: '▸';
+  color: var(--accent);
+}
+.writer-outline-toggle.is-empty {
+  cursor: default;
+}
+.writer-outline-toggle.is-empty::before {
+  content: '–';
+}
+p.writer-outline-block--body::after {
+  content: '•';
+  position: absolute;
+  left: -18px;
+  top: 0;
+  color: #aaa;
+}
+
+/* Modo lectura: sin cinta, una columna cómoda y colores a elegir. */
+.writer-canvas--read .writer-page {
+  width: min(46em, calc(100vw - 48px));
+  padding-left: 56px;
+  padding-right: 56px;
+  cursor: default;
+}
+.writer-reading--sepia {
+  background: #e9e1cf;
+}
+.writer-reading--sepia .writer-page {
+  background: #f6efdf;
+}
+.writer-reading--sepia .writer-content {
+  color: #4a3b2a;
+}
+.writer-reading--dark {
+  background: #121212;
+}
+.writer-reading--dark .writer-page {
+  background: #1e1e1e;
+  box-shadow: none;
+}
+/* El texto con color propio se aclara también: en oscuro, el negro sobre negro no se leería. */
+.writer-reading--dark .writer-content,
+.writer-reading--dark .writer-content * {
+  color: #e4e4e4 !important;
+  border-color: #555 !important;
+}
+.writer-reading-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  background: #f7f7f7;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.writer-reading-bar__title {
+  font-weight: 600;
+  flex: 1;
+}
+.writer-reading-bar__themes {
+  display: inline-flex;
+  gap: 4px;
+}
+.writer-reading-bar__theme,
+.writer-reading-bar__exit {
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.writer-reading-bar__theme--sepia {
+  background: #f6efdf;
+}
+.writer-reading-bar__theme--dark {
+  background: #1e1e1e;
+  color: #eee;
+}
+.writer-reading-bar__theme[aria-checked='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Leer en voz alta: la frase que suena, y los mandos flotando arriba a la derecha. */
+.writer-read-aloud {
+  background: rgba(47, 90, 168, 0.22);
+  border-radius: 2px;
+}
+.writer-read-aloud-bar {
+  position: absolute;
+  top: 10px;
+  /* Centrada: a la derecha van los paneles (comentarios, contar palabras) y no los tapa. */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+}
+.writer-read-aloud-bar button {
+  border: none;
+  background: none;
+  border-radius: 4px;
+  padding: 4px;
+  display: inline-flex;
+  cursor: pointer;
+  color: var(--text);
+}
+.writer-read-aloud-bar button:hover {
+  background: var(--hover);
+}
+.writer-read-aloud-bar select {
+  font: inherit;
+  max-width: 180px;
+}
+.writer-read-aloud-bar__hint {
+  color: var(--text-muted);
+}
+
+/* Dividir: la segunda vista del documento debajo de la principal. */
+.writer-split {
+  flex: 0 0 40%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 3px solid #c9c9c9;
+  background: #e8e8e8;
+}
+.writer-split__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: #f0f0f0;
+}
+.writer-split__scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 0;
+}
+.writer-page.writer-split__page {
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  padding-top: 24px;
+  padding-bottom: 32px;
+}
+.writer-split__page .writer-content {
+  min-height: 0;
+}
+
+/* Contar palabras y barra de estado. */
+.writer-comments.writer-word-count {
+  bottom: auto;
+}
+.writer-word-count__scope {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+}
+.writer-word-count__list {
+  margin: 0 0 12px;
+}
+.writer-word-count__list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.writer-word-count__list dt,
+.writer-word-count__list dd {
+  margin: 0;
+}
+.writer-word-count__list dd {
+  font-variant-numeric: tabular-nums;
+}
+.statusbar__button {
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 2px 4px;
+  margin: 0 -4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.statusbar__button:hover,
+.statusbar__views button:hover {
+  background: var(--hover);
+}
+.statusbar__views {
+  display: inline-flex;
+  gap: 2px;
+}
+.statusbar__views button {
+  border: none;
+  background: none;
+  padding: 3px 5px;
+  border-radius: 4px;
+  display: inline-flex;
+  color: inherit;
+  cursor: pointer;
+}
+.statusbar__views button.is-active {
+  background: rgba(0, 0, 0, 0.1);
+}
+.ribbon-zoom-100 {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
 /* ===== Impresión ===== */
 .print-only {
   display: none;
@@ -2131,6 +2549,8 @@ button {
   }
   .editor-layout,
   .editor-layout__body,
+  .writer-workspace,
+  .writer-workspace__main,
   .app-root {
     display: block;
     height: auto;
@@ -2148,8 +2568,19 @@ button {
     width: auto;
     min-height: 0 !important;
   }
+  /* Se imprime el documento entero aunque en Esquema haya secciones plegadas. */
+  .writer-content .writer-outline-hidden {
+    display: revert !important;
+  }
+  .writer-outline-toggle,
+  p.writer-outline-block--body::after {
+    display: none;
+  }
   .writer-sheets,
   .writer-comments,
+  .writer-split,
+  .writer-reading-bar,
+  .writer-read-aloud-bar,
   .writer-ruler,
   .writer-page-break {
     display: none;

@@ -24,6 +24,9 @@ import { BULLET_STYLES } from './paragraphFormat'
 import { activeParagraphStyleId, applyStyle, isStyleActive } from './paragraphStyles'
 import { findStyle, isBuiltInStyle, removeStyle, upsertStyle, type WriterStyle } from './styles'
 import type { CaseMode } from './textCase'
+import { canChangeOutlineLevel, canMoveAtCursor, changeOutlineLevel, moveAtCursor } from './outlineEdits'
+import type { ViewMode } from './views'
+import type { ZoomPreset } from './zoom'
 
 /**
  * Registro de comandos de Texto (el patrón Command, el mismo que usan VS Code o los editores serios).
@@ -65,6 +68,21 @@ export interface WriterUi {
   numberedHeadings: boolean
   setNumberedHeadings(numbered: boolean): void
   openTabStopsDialog(): void
+  /** Vista y navegación (fase 14). */
+  viewMode: ViewMode
+  setViewMode(mode: ViewMode): void
+  navigationOpen: boolean
+  toggleNavigation(): void
+  showRuler: boolean
+  toggleRuler(): void
+  zoom: number
+  /** Un preset ("Una página"...) o un factor exacto (1 = 100 %). */
+  setZoom(zoom: ZoomPreset | number): void
+  splitOpen: boolean
+  toggleSplit(): void
+  openWordCount(): void
+  readAloudOpen: boolean
+  toggleReadAloud(): void
 }
 
 export interface CommandContext {
@@ -468,6 +486,81 @@ export const WRITER_COMMANDS = {
   },
   pageSetupDialog: { label: 'Configurar página', run: ({ ui }) => ui.openPageSetupDialog() },
 
+  // --- Vista (fase 14) ---
+  viewMode: {
+    label: 'Vista',
+    run: ({ ui }, mode: ViewMode) => ui.setViewMode(mode),
+    isActive: ({ ui }, mode: ViewMode) => ui.viewMode === mode
+  },
+  toggleNavigation: {
+    label: 'Panel de navegación',
+    keys: 'Mod-Alt-n',
+    shortcut: 'Ctrl/Cmd+Alt+N',
+    run: ({ ui }) => ui.toggleNavigation(),
+    isActive: ({ ui }) => ui.navigationOpen
+  },
+  toggleRuler: { label: 'Regla', run: ({ ui }) => ui.toggleRuler(), isActive: ({ ui }) => ui.showRuler },
+  zoom: {
+    label: 'Zoom',
+    run: ({ ui }, zoom: ZoomPreset | number) => ui.setZoom(zoom),
+    // Solo 100 % se puede marcar como activo: "Una página" depende del tamaño de la ventana.
+    isActive: ({ ui }, zoom: ZoomPreset | number) => (zoom === 'actual' ? ui.zoom === 1 : ui.zoom === zoom)
+  },
+  toggleSplit: { label: 'Dividir', run: ({ ui }) => ui.toggleSplit(), isActive: ({ ui }) => ui.splitOpen },
+  wordCount: {
+    label: 'Contar palabras',
+    keys: 'Mod-Shift-g',
+    shortcut: 'Ctrl/Cmd+Mayús+G',
+    run: ({ ui }) => ui.openWordCount()
+  },
+  readAloud: {
+    label: 'Leer en voz alta',
+    run: ({ ui }) => ui.toggleReadAloud(),
+    isActive: ({ ui }) => ui.readAloudOpen,
+    isEnabled: () => typeof window !== 'undefined' && 'speechSynthesis' in window
+  },
+
+  // --- Esquema ---
+  outlinePromote: {
+    label: 'Subir nivel',
+    keys: 'Alt-Shift-ArrowLeft',
+    shortcut: 'Alt+Mayús+←',
+    run: ({ editor }) => void changeOutlineLevel(editor, 'promote'),
+    isEnabled: ({ editor }) => canChangeOutlineLevel(editor, 'promote')
+  },
+  outlineDemote: {
+    label: 'Bajar nivel',
+    keys: 'Alt-Shift-ArrowRight',
+    shortcut: 'Alt+Mayús+→',
+    run: ({ editor }) => void changeOutlineLevel(editor, 'demote'),
+    isEnabled: ({ editor }) => canChangeOutlineLevel(editor, 'demote')
+  },
+  outlineToBody: {
+    label: 'Texto normal',
+    run: ({ editor }) => void changeOutlineLevel(editor, 'body'),
+    isEnabled: ({ editor }) => canChangeOutlineLevel(editor, 'body')
+  },
+  outlineMoveUp: {
+    label: 'Mover arriba',
+    keys: 'Alt-Shift-ArrowUp',
+    shortcut: 'Alt+Mayús+↑',
+    run: ({ editor }) => void moveAtCursor(editor, 'up'),
+    isEnabled: ({ editor }) => canMoveAtCursor(editor, 'up')
+  },
+  outlineMoveDown: {
+    label: 'Mover abajo',
+    keys: 'Alt-Shift-ArrowDown',
+    shortcut: 'Alt+Mayús+↓',
+    run: ({ editor }) => void moveAtCursor(editor, 'down'),
+    isEnabled: ({ editor }) => canMoveAtCursor(editor, 'down')
+  },
+  outlineExpandAll: { label: 'Expandir todo', run: ({ editor }) => editor.commands.setOutlineFoldAll(false) },
+  outlineCollapseAll: { label: 'Contraer todo', run: ({ editor }) => editor.commands.setOutlineFoldAll(true) },
+  outlineShowLevel: {
+    label: 'Mostrar nivel',
+    run: ({ editor }, level: number | null) => editor.commands.setOutlineLevel(level),
+    isActive: ({ editor }, level: number | null) => (editor.storage.outlineView?.showLevel ?? null) === level
+  },
   // --- Tabla (pestaña contextual) ---
   addRowBefore: { label: 'Fila encima', run: (context) => chain(context).addRowBefore().run() },
   addRowAfter: { label: 'Fila debajo', run: (context) => chain(context).addRowAfter().run() },
