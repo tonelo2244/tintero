@@ -35,12 +35,21 @@ function setup(html: string) {
     toggleComments: () => calls.push('toggleComments'),
     headerFooterOpen: false,
     toggleHeaderFooter: () => calls.push('toggleHeaderFooter'),
+    headerFooterEditing: null,
+    closeHeaderFooterEditing: () => calls.push('closeHeaderFooter'),
+    insertHeaderFooterToken: (token) => calls.push(`token:${token}`),
+    setHeaderFooterAlign: (align) => calls.push(`align:${align}`),
+    differentFirstPage: false,
+    setDifferentFirstPage: (enabled) => calls.push(`first:${enabled}`),
+    differentEvenPages: false,
+    setDifferentEvenPages: (enabled) => calls.push(`even:${enabled}`),
     get pageSetup() {
       return pageSetup
     },
     setPageSetup: (next) => {
       pageSetup = next
     },
+    hasSections: false,
     openPageSetupDialog: () => calls.push('pageSetupDialog'),
     get styles() {
       return styles
@@ -57,6 +66,8 @@ function setup(html: string) {
     setNumberedHeadings: (value) => {
       numbered = value
     },
+    hyphenation: false,
+    setHyphenation: (enabled) => calls.push(`hyphenation:${enabled}`),
     openTabStopsDialog: () => calls.push('tabStopsDialog'),
     viewMode: 'print',
     setViewMode: (mode) => calls.push(`view:${mode}`),
@@ -65,6 +76,7 @@ function setup(html: string) {
     showRuler: true,
     toggleRuler: () => calls.push('ruler'),
     zoom: 1,
+    multiPage: false,
     setZoom: (zoom) => calls.push(`zoom:${zoom}`),
     splitOpen: false,
     toggleSplit: () => calls.push('split'),

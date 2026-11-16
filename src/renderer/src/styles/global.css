@@ -835,6 +835,45 @@ button {
   bottom: 0;
   height: var(--margin-bottom, 2.5cm);
 }
+/* Encabezado o pie en edición sobre la hoja (doble clic en el margen); el texto del cuerpo se atenúa. */
+.writer-sheet__editing {
+  pointer-events: auto;
+  border-bottom: 1px dashed #2b579a;
+}
+.writer-sheet__footer.writer-sheet__editing {
+  border-bottom: 0;
+  border-top: 1px dashed #2b579a;
+}
+.writer-sheet__editing textarea {
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  padding: 0;
+}
+.writer-sheet__editing-label {
+  position: absolute;
+  left: 0;
+  bottom: -18px;
+  padding: 1px 6px;
+  font-size: 8pt;
+  color: #fff;
+  background: #2b579a;
+  border-radius: 0 0 3px 3px;
+  white-space: nowrap;
+}
+.writer-sheet__footer .writer-sheet__editing-label {
+  bottom: auto;
+  top: -18px;
+  border-radius: 3px 3px 0 0;
+}
+.writer-page--header-footer .writer-content {
+  opacity: 0.45;
+}
 .writer-sheet__part--center {
   justify-content: center;
   text-align: center;
@@ -847,13 +886,133 @@ button {
   position: relative;
 }
 
+/*
+ * Párrafo partido entre hojas (editor/Pagination.ts): el hueco es un renglón entero del alto del
+ * salto. En línea y no de bloque, para que el renglón anterior siga justificado.
+ */
+.writer-content .writer-page-split {
+  display: inline-block;
+  width: 100%;
+  vertical-align: top;
+  pointer-events: none;
+  user-select: none;
+}
+/* Tabla partida: una fila vacía hace de hueco y el encabezado se repite arriba de la hoja nueva. */
+.writer-content tr.writer-table-gap > td {
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+}
+.writer-content tr.writer-table-repeat {
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * Varias páginas (Vista > Zoom): cada hoja es una columna del mismo texto, en filas. Los huecos de
+ * la paginación se cambian por saltos de columna, como al imprimir se cambian por saltos de hoja.
+ * Mientras la paginación mide (data-measuring), el texto vuelve a ser una sola tira.
+ */
+.writer-page--multi .writer-content {
+  width: var(--content-width);
+}
+.writer-page--multi:not([data-measuring]) .writer-content {
+  width: var(--multi-content-width);
+  column-count: var(--pages-across);
+  column-gap: var(--multi-column-gap);
+  column-height: var(--multi-column-height);
+  column-wrap: wrap;
+  row-gap: var(--multi-row-gap);
+  column-fill: auto;
+}
+.writer-page--multi:not([data-measuring]) .writer-page-start {
+  margin-top: 0 !important;
+  break-before: column;
+}
+.writer-page--multi:not([data-measuring]) .writer-page-split {
+  display: block;
+  width: auto;
+  height: 0 !important;
+  break-before: column;
+}
+.writer-page--multi:not([data-measuring]) tr.writer-table-gap {
+  display: none;
+}
+/* Una caja con barra de desplazamiento no se parte entre columnas: la tabla tiene que poder. */
+.writer-page--multi:not([data-measuring]) .tableWrapper {
+  overflow: visible;
+}
+.writer-page--multi:not([data-measuring]) tr.writer-table-repeat,
+.writer-page--multi:not([data-measuring]) tr.writer-row-break {
+  break-before: column;
+}
+
+/* Disposición > Guiones > Automático: el editor va con lang="es" y Chromium parte con su diccionario. */
+.writer-page--hyphenate .writer-content {
+  hyphens: auto;
+}
+
+/* Columnas (Disposición > Columnas): equilibradas si caben en la hoja; si no, una fila por hoja. */
+.writer-content .writer-columns {
+  column-count: var(--columns, 2);
+  column-gap: 1.25cm;
+  margin: 0 0 8pt;
+}
+.writer-content .writer-columns > :first-child {
+  margin-top: 0;
+}
+.writer-content .writer-columns--paged {
+  column-fill: auto;
+  column-height: var(--column-height);
+  column-wrap: wrap;
+  row-gap: var(--column-row-gap);
+  margin-bottom: 0;
+}
+.show-marks .writer-content .writer-columns {
+  outline: 1px dashed #c5d3ee;
+  outline-offset: 2px;
+}
+/* Salto de columna: lo de detrás va a la columna siguiente. */
+.writer-content hr.writer-column-break {
+  border: 0;
+  height: 0;
+  margin: 0;
+  break-after: column;
+}
+.show-marks .writer-content hr.writer-column-break,
+.writer-content hr.writer-column-break.ProseMirror-selectednode {
+  border-top: 1px dotted #8aa4d6;
+}
+
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
-.writer-content hr.writer-page-break {
+.writer-content hr.writer-page-break,
+.writer-content hr.writer-section-break {
   position: relative;
   border: 0;
   height: 0;
   margin: 0;
   overflow: visible;
+}
+/* Salto de sección: igual, con su rótulo (como la línea doble de Word). */
+.show-marks .writer-content hr.writer-section-break::after,
+.writer-content hr.writer-section-break.ProseMirror-selectednode::after,
+.writer-canvas--draft .writer-content hr.writer-section-break::after {
+  content: 'Salto de sección (página siguiente)';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  border-top: 3px double #8aa4d6;
+  font-size: 9pt;
+  line-height: 1;
+  color: #8aa4d6;
+  padding-top: 2px;
+  pointer-events: none;
+}
+/* Bloques de una sección con otra hoja: desplazados y con su ancho (la paginación pone los valores). */
+.writer-content > .writer-section-block {
+  position: relative;
+  box-sizing: border-box;
 }
 .show-marks .writer-content hr.writer-page-break::after,
 .writer-content hr.writer-page-break.ProseMirror-selectednode::after {
@@ -2576,7 +2735,18 @@ p.writer-outline-block--body::after {
   p.writer-outline-block--body::after {
     display: none;
   }
+  .writer-content > .writer-section-block {
+    left: 0 !important;
+    width: auto !important;
+  }
+  /* Al imprimir, las columnas por hojas siguen solas de una hoja a la siguiente. */
+  .writer-content .writer-columns--paged {
+    column-height: auto;
+    column-wrap: nowrap;
+    row-gap: normal;
+  }
   .writer-sheets,
+  .writer-section-break,
   .writer-comments,
   .writer-split,
   .writer-reading-bar,
@@ -2585,10 +2755,23 @@ p.writer-outline-block--body::after {
   .writer-page-break {
     display: none;
   }
-  /* La hoja impresa corta donde la de pantalla: el margen de pantalla se cambia por un salto. */
+  /* La hoja impresa corta donde la de pantalla: cada hueco de pantalla se cambia por un salto. */
   .writer-page-start {
     break-before: page;
     margin-top: 0 !important;
+  }
+  .writer-content .writer-page-split {
+    display: block;
+    width: auto;
+    height: 0 !important;
+    break-before: page;
+  }
+  .writer-content tr.writer-table-gap {
+    display: none;
+  }
+  .writer-content tr.writer-table-repeat,
+  .writer-content tr.writer-row-break {
+    break-before: page;
   }
   .writer-comment {
     background: none;

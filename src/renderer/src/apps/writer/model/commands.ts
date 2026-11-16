@@ -26,6 +26,9 @@ import { findStyle, isBuiltInStyle, removeStyle, upsertStyle, type WriterStyle }
 import type { CaseMode } from './textCase'
 import { canChangeOutlineLevel, canMoveAtCursor, changeOutlineLevel, moveAtCursor } from './outlineEdits'
 import type { ViewMode } from './views'
+import { COLUMNS } from './columns'
+import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './content'
+import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
 
 /**
@@ -55,7 +58,20 @@ export interface WriterUi {
   toggleComments(): void
   headerFooterOpen: boolean
   toggleHeaderFooter(): void
+  /** Encabezado o pie que se está editando sobre la hoja (doble clic en el margen), o null. */
+  headerFooterEditing: { kind: HeaderFooterKind; variant: HeaderFooterVariant; align: HeaderFooterAlign } | null
+  closeHeaderFooterEditing(): void
+  insertHeaderFooterToken(token: string): void
+  setHeaderFooterAlign(align: HeaderFooterAlign): void
+  /** "Primera página diferente" y "Pares e impares diferentes". */
+  differentFirstPage: boolean
+  setDifferentFirstPage(enabled: boolean): void
+  differentEvenPages: boolean
+  setDifferentEvenPages(enabled: boolean): void
+  /** Hoja de la sección donde está el cursor (sin secciones, la del documento). */
   pageSetup: PageSetup
+  /** El documento tiene saltos de sección (más de un tamaño de hoja). */
+  hasSections: boolean
   setPageSetup(setup: PageSetup): void
   openPageSetupDialog(): void
   /** Estilos del documento (fase 13). */
@@ -66,6 +82,9 @@ export interface WriterUi {
   stylesPanelOpen: boolean
   toggleStylesPanel(): void
   numberedHeadings: boolean
+  /** Guiones automáticos (Disposición > Guiones). */
+  hyphenation: boolean
+  setHyphenation(enabled: boolean): void
   setNumberedHeadings(numbered: boolean): void
   openTabStopsDialog(): void
   /** Vista y navegación (fase 14). */
@@ -76,6 +95,8 @@ export interface WriterUi {
   showRuler: boolean
   toggleRuler(): void
   zoom: number
+  /** "Varias páginas": las hojas en filas, unas al lado de otras. */
+  multiPage: boolean
   /** Un preset ("Una página"...) o un factor exacto (1 = 100 %). */
   setZoom(zoom: ZoomPreset | number): void
   splitOpen: boolean
@@ -448,6 +469,57 @@ export const WRITER_COMMANDS = {
     isEnabled: ({ editor }) =>
       !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
   },
+  // --- Encabezado y pie (pestaña contextual, mientras se edita sobre la hoja) ---
+  headerFooterPageNumber: {
+    label: 'Número de página',
+    run: ({ ui }) => ui.insertHeaderFooterToken(PAGE_NUMBER_TOKEN),
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  headerFooterPageCount: {
+    label: 'Total de páginas',
+    run: ({ ui }) => ui.insertHeaderFooterToken(PAGE_COUNT_TOKEN),
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  headerFooterAlign: {
+    label: 'Alinear',
+    run: ({ ui }, align: HeaderFooterAlign) => ui.setHeaderFooterAlign(align),
+    isActive: ({ ui }, align: HeaderFooterAlign) => ui.headerFooterEditing?.align === align,
+    isEnabled: ({ ui }) => ui.headerFooterEditing !== null
+  },
+  differentFirstPage: {
+    label: 'Primera página diferente',
+    run: ({ ui }) => ui.setDifferentFirstPage(!ui.differentFirstPage),
+    isActive: ({ ui }) => ui.differentFirstPage
+  },
+  differentEvenPages: {
+    label: 'Pares e impares diferentes',
+    run: ({ ui }) => ui.setDifferentEvenPages(!ui.differentEvenPages),
+    isActive: ({ ui }) => ui.differentEvenPages
+  },
+  closeHeaderFooter: {
+    label: 'Cerrar encabezado y pie',
+    run: ({ ui }) => ui.closeHeaderFooterEditing()
+  },
+  sectionBreak: {
+    label: 'Salto de sección',
+    // Lo de detrás empieza en hoja nueva con la misma hoja que la sección actual; luego se cambia
+    // con Márgenes, Orientación o Tamaño, que ya actúan sobre la sección del cursor.
+    run: (context) => chain(context).setSectionBreak(context.ui.pageSetup).run(),
+    isEnabled: ({ editor }) =>
+      !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
+  },
+  columnBreak: {
+    label: 'Salto de columna',
+    run: (context) => chain(context).setColumnBreak().run(),
+    // Solo tiene sentido dentro de un bloque de columnas.
+    isEnabled: ({ editor }) => columnsAtCursor(editor) > 1 && !editor.isActive('table')
+  },
+  columns: {
+    label: 'Columnas',
+    run: (context, count: number) => chain(context).setColumns(count).run(),
+    isActive: ({ editor }, count: number) => columnsAtCursor(editor) === count,
+    isEnabled: ({ editor }) => !editor.isActive('table')
+  },
   addComment: {
     label: 'Comentario',
     run: ({ ui }) => ui.addComment(),
@@ -477,6 +549,11 @@ export const WRITER_COMMANDS = {
     run: ({ ui }, orientation: PageOrientation) => ui.setPageSetup(withOrientation(ui.pageSetup, orientation)),
     isActive: ({ ui }, orientation: PageOrientation) => ui.pageSetup.orientation === orientation
   },
+  hyphenation: {
+    label: 'Guiones',
+    run: ({ ui }, enabled: boolean) => ui.setHyphenation(enabled),
+    isActive: ({ ui }, enabled: boolean) => ui.hyphenation === enabled
+  },
   paperSize: {
     label: 'Tamaño',
     run: ({ ui }, paperId: string) => {
@@ -503,8 +580,13 @@ export const WRITER_COMMANDS = {
   zoom: {
     label: 'Zoom',
     run: ({ ui }, zoom: ZoomPreset | number) => ui.setZoom(zoom),
-    // Solo 100 % se puede marcar como activo: "Una página" depende del tamaño de la ventana.
-    isActive: ({ ui }, zoom: ZoomPreset | number) => (zoom === 'actual' ? ui.zoom === 1 : ui.zoom === zoom)
+    // "Varias páginas" pone las hojas en columnas iguales: con secciones de otro tamaño no cabe.
+    isEnabled: ({ ui }, zoom: ZoomPreset | number) => zoom !== 'multiPage' || !ui.hasSections,
+    // Solo 100 % y "Varias páginas" se pueden marcar como activos: "Una página" depende de la ventana.
+    isActive: ({ ui }, zoom: ZoomPreset | number) => {
+      if (zoom === 'multiPage') return ui.multiPage
+      return !ui.multiPage && (zoom === 'actual' ? ui.zoom === 1 : ui.zoom === zoom)
+    }
   },
   toggleSplit: { label: 'Dividir', run: ({ ui }) => ui.toggleSplit(), isActive: ({ ui }) => ui.splitOpen },
   wordCount: {
@@ -647,4 +729,14 @@ export function isInHeaderRow(editor: Editor): boolean {
     }
   }
   return false
+}
+
+/** Columnas del bloque donde está el cursor (1 si no está en un bloque de columnas). */
+export function columnsAtCursor(editor: Editor): number {
+  const { $from } = editor.state.selection
+  for (let depth = $from.depth; depth > 0; depth--) {
+    const node = $from.node(depth)
+    if (node.type.name === COLUMNS) return Number(node.attrs.count) || 2
+  }
+  return 1
 }

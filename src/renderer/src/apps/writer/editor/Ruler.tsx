@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
 import { formatCm, orientedSize, type PageSetup } from '../model/pageSetup'
 import type { TabStop } from '../model/paragraphFormat'
 import { clampIndents, dragDeltaCm, rulerTicks, RULER_STEP_CM, snapCm, type ParagraphIndents } from '../model/ruler'
@@ -13,6 +13,8 @@ interface RulerProps {
   /** Topes de tabulación del párrafo (fase 13): clic en la regla añade uno, clic en un tope lo quita. */
   tabStops: TabStop[]
   onTabStopsChange(stops: TabStop[]): void
+  /** Px desde el borde izquierdo del lienzo: con secciones de distinto ancho, la hoja va centrada. */
+  offset?: number
 }
 
 type Handle = 'marginLeft' | 'marginRight' | 'indentLeft' | 'firstLine'
@@ -39,6 +41,7 @@ interface Values {
  * Cada marca es también un `slider` accesible: con el foco, las flechas la mueven 0,25 cm.
  */
 export function Ruler({
+  offset = 0,
   pageSetup,
   indents,
   zoom,
@@ -49,6 +52,11 @@ export function Ruler({
 }: RulerProps) {
   const [drag, setDrag] = useState<Drag | null>(null)
   const [preview, setPreview] = useState<Values | null>(null)
+  /**
+   * Último valor movido con el teclado mientras las props aún no lo reflejan: con las flechas
+   * pulsadas seguidas, cada paso parte del anterior y no del valor que todavía no ha llegado.
+   */
+  const keyboardValue = useRef<Values | null>(null)
   const { width } = orientedSize(pageSetup)
   const contentWidth = (values: Values) => width - values.marginLeft - values.marginRight
 
@@ -105,7 +113,11 @@ export function Ruler({
     const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
     if (direction === 0) return
     event.preventDefault()
-    commit(handle, moved(handle, committed, direction * RULER_STEP_CM))
+    const pending = keyboardValue.current
+    const from = pending && !sameValues(pending, committed) ? pending : committed
+    const next = moved(handle, from, direction * RULER_STEP_CM)
+    keyboardValue.current = next
+    commit(handle, next)
   }
 
   const handleProps = (handle: Handle, label: string, valueCm: number) => ({
@@ -119,7 +131,11 @@ export function Ruler({
     onPointerMove,
     onPointerUp,
     onPointerCancel: onPointerUp,
-    onKeyDown: onKeyDown(handle)
+    onKeyDown: onKeyDown(handle),
+    // Sin foco, el valor puede cambiar por otro lado (otro párrafo): se vuelve a partir de las props.
+    onBlur: () => {
+      keyboardValue.current = null
+    }
   })
 
   const textStart = values.marginLeft
@@ -139,7 +155,13 @@ export function Ruler({
   }
 
   return (
-    <div className="writer-ruler" style={{ width: `${width}cm` }} aria-label="Regla" role="group" onClick={addTabStop}>
+    <div
+      className="writer-ruler"
+      style={{ width: `${width}cm`, marginLeft: offset }}
+      aria-label="Regla"
+      role="group"
+      onClick={addTabStop}
+    >
       <div className="writer-ruler__margin" style={{ left: 0, width: `${textStart}cm` }} />
       <div className="writer-ruler__margin" style={{ left: `${textEnd}cm`, right: 0 }} />
       {rulerTicks(width, values.marginLeft).map((tick) => (
@@ -215,4 +237,14 @@ function guideAt(handle: Handle, values: Values, width: number): number {
     case 'firstLine':
       return values.marginLeft + values.indents.left + values.indents.firstLine
   }
+}
+
+function sameValues(a: Values, b: Values): boolean {
+  const near = (x: number, y: number) => Math.abs(x - y) < 1e-6
+  return (
+    near(a.marginLeft, b.marginLeft) &&
+    near(a.marginRight, b.marginRight) &&
+    near(a.indents.left, b.indents.left) &&
+    near(a.indents.firstLine, b.indents.firstLine)
+  )
 }

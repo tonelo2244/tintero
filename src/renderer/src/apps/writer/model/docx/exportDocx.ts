@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import {
   BorderStyle,
+  ColumnBreak,
   CommentRangeEnd,
   CommentRangeStart,
   CommentReference,
@@ -15,6 +16,7 @@ import {
   PageNumber,
   PageOrientation,
   Paragraph,
+  SectionType,
   ShadingType,
   Tab,
   TabStopType,
@@ -55,6 +57,8 @@ import {
 import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
 import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
+import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
+import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
@@ -104,10 +108,19 @@ interface ListContext {
 export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const comments = content.comments ?? []
   const pageSetup = content.pageSetup ?? DEFAULT_PAGE_SETUP
+  // Secciones de Word: una por salto de sección y otra por cada bloque de columnas (fase 15).
+  const plans = planDocxSections(content.doc.content ?? [], pageSetup)
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
-  const children = converter.blocks(content.doc.content ?? [])
+  const sectionChildren = plans.map((plan) => {
+    converter.setContentWidth(contentWidthCm(plan.setup))
+    return converter.blocks(plan.blocks)
+  })
   const document = new Document({
     creator: 'Tintero',
+    // "Pares e impares diferentes" es un ajuste del documento entero en Word (settings.xml).
+    ...(content.evenPages && { evenAndOddHeaderAndFooters: true }),
+    // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
+    ...(content.hyphenation && { hyphenation: { autoHyphenation: true } }),
     styles: docxStylesFor(content.styles ?? DEFAULT_STYLES, content.numberedHeadings),
     comments: { children: comments.map(commentOptions) },
     numbering: {
@@ -124,21 +137,81 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
         ...(content.numberedHeadings ? [{ reference: HEADINGS_NUMBERING_REFERENCE, levels: headingLevels() }] : [])
       ]
     },
-    sections: [
-      {
-        properties: { page: pageProperties(pageSetup) },
-        headers: content.header
-          ? { default: new Header({ children: headerFooterParagraphs(content.header) }) }
-          : undefined,
-        footers: content.footer
-          ? { default: new Footer({ children: headerFooterParagraphs(content.footer) }) }
-          : undefined,
-        // Word exige al menos un párrafo por sección.
-        children: children.length > 0 ? children : [new Paragraph({})]
-      }
-    ]
+    sections: plans.map((plan, index) => ({
+      properties: {
+        page: pageProperties(plan.setup),
+        ...(index > 0 && { type: plan.continuous ? SectionType.CONTINUOUS : SectionType.NEXT_PAGE }),
+        ...(plan.columns > 1 && { column: { count: plan.columns, space: twips(COLUMN_GAP_CM) } }),
+        // "Primera página diferente" (w:titlePg).
+        ...(index === 0 && content.firstPage && { titlePage: true })
+      },
+      // Solo la primera: en Word, una sección sin encabezado propio usa el de la anterior.
+      ...(index === 0 && headersAndFooters(content)),
+      // Word exige al menos un párrafo por sección.
+      children: sectionChildren[index].length > 0 ? sectionChildren[index] : [new Paragraph({})]
+    }))
   })
   return new Uint8Array(await Packer.toArrayBuffer(document))
+}
+
+/**
+ * Encabezados y pies de la primera sección: el normal y, si están activados, el de la primera
+ * hoja y el de las pares. Una variante activada pero vacía se escribe vacía (si no, Word usaría la normal).
+ */
+function headersAndFooters(content: WriterContent) {
+  const part = (kind: 'header' | 'footer', value: HeaderFooter | undefined) =>
+    kind === 'header'
+      ? new Header({ children: value ? headerFooterParagraphs(value) : [new Paragraph({})] })
+      : new Footer({ children: value ? headerFooterParagraphs(value) : [new Paragraph({})] })
+  const set = (kind: 'header' | 'footer') => {
+    const variants = {
+      ...(content[kind] && { default: part(kind, content[kind]) }),
+      ...(content.firstPage && { first: part(kind, content.firstPage[kind]) }),
+      ...(content.evenPages && { even: part(kind, content.evenPages[kind]) })
+    }
+    return Object.keys(variants).length > 0 ? variants : undefined
+  }
+  return { headers: set('header'), footers: set('footer') }
+}
+
+/** Una sección de Word por escribir: su hoja, sus columnas y si empieza en la misma hoja. */
+interface DocxSectionPlan {
+  setup: PageSetup
+  columns: number
+  /** Continúa en la misma hoja (las columnas) en vez de empezar otra (el salto de sección). */
+  continuous: boolean
+  blocks: JSONContent[]
+}
+
+/**
+ * Reparte los bloques de primer nivel en secciones de Word. En Word las columnas son de la
+ * sección, así que un bloque de columnas se escribe como una sección continua con `w:cols`, entre
+ * otras dos continuas. Las secciones continuas vacías se quitan (en Word serían un renglón en blanco).
+ */
+export function planDocxSections(blocks: JSONContent[], documentSetup: PageSetup): DocxSectionPlan[] {
+  const plans: DocxSectionPlan[] = [{ setup: documentSetup, columns: 1, continuous: false, blocks: [] }]
+  const current = () => plans[plans.length - 1]
+  for (const block of blocks) {
+    if (block.type === SECTION_BREAK) {
+      const setup = sectionBreakSetup({ type: SECTION_BREAK, attrs: block.attrs }, current().setup)
+      plans.push({ setup, columns: 1, continuous: false, blocks: [] })
+    } else if (block.type === COLUMNS) {
+      const { setup } = current()
+      plans.push({
+        setup,
+        columns: normalizeColumnCount(block.attrs?.count),
+        continuous: true,
+        blocks: block.content ?? []
+      })
+      plans.push({ setup, columns: 1, continuous: true, blocks: [] })
+    } else {
+      current().blocks.push(block)
+    }
+  }
+  const kept = plans.filter((plan, index) => plan.blocks.length > 0 || (index > 0 && !plan.continuous))
+  if (kept.length === 0) return [plans[0]]
+  // La primera sección del documento no "continúa" nada.
+  return [{ ...kept[0], continuous: false }, ...kept.slice(1)]
 }
 
 /** Recorre el árbol de nodos. Guarda estado (listas abiertas) por eso es una clase y no funciones sueltas. */
@@ -157,15 +230,20 @@ class DocxConverter {
   private readonly pendingCommentTexts = new Map<string, number>()
   private readonly totalCommentTexts = new Map<string, number>()
   /** Ancho útil de la hoja: lo que ocupan las tablas y lo máximo que puede medir una imagen. */
-  private readonly contentWidthTwips: number
-  private readonly maxImageWidthPx: number
+  private contentWidthTwips = 0
+  private maxImageWidthPx = 0
 
   constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
-    this.contentWidthTwips = twips(contentWidthCm)
-    this.maxImageWidthPx = Math.round(contentWidthCm * PX_PER_CM)
+    this.setContentWidth(contentWidthCm)
     this.commentNumbers = new Map(comments.map((comment, index) => [comment.id, index]))
     countCommentTexts(doc, this.totalCommentTexts)
     for (const [id, count] of this.totalCommentTexts) this.pendingCommentTexts.set(id, count)
+  }
+
+  /** Cada sección tiene su ancho útil (una horizontal es más ancha). */
+  setContentWidth(contentWidthCm: number): void {
+    this.contentWidthTwips = twips(contentWidthCm)
+    this.maxImageWidthPx = Math.round(contentWidthCm * PX_PER_CM)
   }
 
   blocks(nodes: JSONContent[], list?: ListContext): DocxBlock[] {
@@ -214,6 +292,13 @@ class DocxConverter {
       case 'pageBreak':
         // Como hace Word con Ctrl+Intro: un párrafo que solo contiene el salto.
         return [new Paragraph({ children: [new PageBreak()] })]
+      case COLUMN_BREAK:
+        return [new Paragraph({ children: [new ColumnBreak()] })]
+      case COLUMNS:
+        // Solo dentro de otra cosa (una lista): las de primer nivel ya son secciones de Word.
+        return this.blocks(node.content ?? [])
+      case SECTION_BREAK:
+        return []
       case 'table':
         return [this.table(node, this.contentWidthTwips)]
       default:

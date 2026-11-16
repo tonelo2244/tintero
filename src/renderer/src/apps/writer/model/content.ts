@@ -30,6 +30,12 @@ export interface WriterComment {
   text: string
 }
 
+/** Encabezado y pie de una variante de hoja (primera, pares). */
+export interface HeaderFooterSet {
+  header?: HeaderFooter
+  footer?: HeaderFooter
+}
+
 /** Contenido de un documento de texto tal y como se guarda en disco. */
 export interface WriterContent {
   /** Documento en el formato JSON de ProseMirror/Tiptap. */
@@ -43,6 +49,15 @@ export interface WriterContent {
   styles?: WriterStyle[]
   /** Lista multinivel ligada a los títulos: 1, 1.1, 1.1.1… */
   numberedHeadings?: boolean
+  /** Guiones automáticos al final de renglón (fase 15). Sin él, no se parten palabras. */
+  hyphenation?: boolean
+  /**
+   * "Primera página diferente" (fase 15): si está, la primera hoja usa este encabezado y pie (sin
+   * nada dentro, la primera hoja va sin encabezado ni pie, que es para lo que más se usa).
+   */
+  firstPage?: HeaderFooterSet
+  /** "Pares e impares diferentes": si está, las hojas pares usan este encabezado y pie. */
+  evenPages?: HeaderFooterSet
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -56,6 +71,9 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.pageSetup) parts.pageSetup = content.pageSetup
   if (content.styles) parts.styles = content.styles
   if (content.numberedHeadings) parts.numberedHeadings = true
+  if (content.hyphenation) parts.hyphenation = true
+  if (content.firstPage) parts.firstPage = content.firstPage
+  if (content.evenPages) parts.evenPages = content.evenPages
   return parts
 }
 
@@ -68,6 +86,11 @@ export function withStyles(parts: WriterParts, styles: WriterStyle[]): WriterPar
 export function withNumberedHeadings(parts: WriterParts, numbered: boolean): WriterParts {
   const { numberedHeadings: _previous, ...rest } = parts
   return numbered ? { ...rest, numberedHeadings: true } : rest
+}
+
+export function withHyphenation(parts: WriterParts, hyphenation: boolean): WriterParts {
+  const { hyphenation: _previous, ...rest } = parts
+  return hyphenation ? { ...rest, hyphenation: true } : rest
 }
 
 /** Cambia la configuración de página. La de por defecto no se guarda: el archivo queda como en la v3. */
@@ -104,7 +127,23 @@ export function parseWriterContent(raw: unknown): WriterContent {
   const styles = normalizeStyles(candidate.styles)
   if (styles && !isDefaultStyles(styles)) content.styles = styles
   if (candidate.numberedHeadings === true) content.numberedHeadings = true
+  if (candidate.hyphenation === true) content.hyphenation = true
+  const firstPage = parseHeaderFooterSet(candidate.firstPage)
+  if (firstPage) content.firstPage = firstPage
+  const evenPages = parseHeaderFooterSet(candidate.evenPages)
+  if (evenPages) content.evenPages = evenPages
   return content
+}
+
+function parseHeaderFooterSet(raw: unknown): HeaderFooterSet | null {
+  if (!raw || typeof raw !== 'object') return null
+  const candidate = raw as Partial<Record<keyof HeaderFooterSet, unknown>>
+  const set: HeaderFooterSet = {}
+  const header = parseHeaderFooter(candidate.header)
+  if (header) set.header = header
+  const footer = parseHeaderFooter(candidate.footer)
+  if (footer) set.footer = footer
+  return set
 }
 
 function parseHeaderFooter(raw: unknown): HeaderFooter | null {

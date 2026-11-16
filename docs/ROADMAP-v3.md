@@ -290,6 +290,8 @@ Esfuerzo: 4–6 semanas, con riesgo de más.
 
 > **Una decisión que te toca a ti.** En la fase 11 descartamos `tiptap-pagination-plus` porque meter una dependencia es tu decisión. Antes de empezar esta fase merece la pena volver a mirarlo (y alternativas como el modo paginado de las versiones de pago de Tiptap). Si alguna parte bien los párrafos y respeta secciones, ahorra semanas. Si no, el enfoque propio de arriba funciona, pero es trabajo fino. Mi recomendación: un _spike_ de dos días para comparar antes de decidir.
 
+> **Estado (noviembre de 2026): hecha con la paginación propia.** Se miró `tiptap-pagination-plus` 3.1: reparte bloques con elementos flotantes y no tiene secciones, orientación por sección ni columnas, así que no ahorraba la parte difícil. Queda pendiente, para más adelante: el encabezado y el pie son texto plano (sin formato) y comunes a todas las secciones; unas columnas largas empiezan hoja aunque haya un título justo antes; los títulos dentro de columnas no salen en el panel de navegación; y Varias páginas se desactiva si el documento tiene secciones.
+
 ### Fase 16 · Insertar: objetos y vínculos
 
 Objetivo: completar Insertar y la parte de "Organizar" de Disposición. Mucho se reutiliza de Diapositivas y Hojas.

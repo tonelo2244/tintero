@@ -1,11 +1,13 @@
 import {
+  Columns2,
   SeparatorHorizontal,
   RectangleHorizontal,
   RectangleVertical,
   Scaling,
   Settings2,
   StickyNote,
-  TableColumnsSplit
+  TableColumnsSplit,
+  WrapText
 } from 'lucide-react'
 import { Dropdown, MenuItem, RibbonGroup } from '@/ui/Ribbon'
 import { formatCm, marginPresetOf, MARGIN_PRESETS, paperSizeOf, PAPER_SIZES } from '../../model/pageSetup'
@@ -16,13 +18,20 @@ import type { WriterToolbarState } from '../useWriterToolbarState'
 import { CommandButton, CommandMenuItem } from './CommandButton'
 import { useCommandContext } from './commandContext'
 
+/** Disposición > Columnas: con texto seleccionado, se aplica a esos párrafos; si no, al del cursor. */
+const COLUMN_CHOICES = [
+  { count: 1, label: 'Una' },
+  { count: 2, label: 'Dos' },
+  { count: 3, label: 'Tres' }
+]
+
 interface LayoutTabProps {
   state: WriterToolbarState
 }
 
 /**
  * Pestaña Disposición: configurar página y saltos (fase 12), y sangrías y espaciado con valores
- * exactos y tabulaciones (fase 13). Columnas y secciones llegan con la fase 15. La regla se
+ * exactos y tabulaciones (fase 13), y columnas, saltos de sección y guiones (fase 15). La regla se
  * enciende desde Vista > Mostrar, como en Word (fase 14).
  */
 export function LayoutTab({ state }: LayoutTabProps) {
@@ -110,6 +119,17 @@ export function LayoutTab({ state }: LayoutTabProps) {
             </>
           )}
         </Dropdown>
+        <Dropdown label="Columnas" large trigger={<Columns2 size={22} />}>
+          {(close) => (
+            <>
+              {COLUMN_CHOICES.map(({ count, label }) => (
+                <CommandMenuItem key={count} command="columns" arg={count} onDone={close}>
+                  {label}
+                </CommandMenuItem>
+              ))}
+            </>
+          )}
+        </Dropdown>
         <CommandButton command="pageSetupDialog" icon={<Settings2 size={16} />} />
       </RibbonGroup>
       <RibbonGroup label="Párrafo">
@@ -150,7 +170,42 @@ export function LayoutTab({ state }: LayoutTabProps) {
         <CommandButton command="tabStopsDialog" large icon={<TableColumnsSplit size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Saltos">
-        <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
+        <Dropdown label="Saltos" large trigger={<SeparatorHorizontal size={22} />}>
+          {(close) => (
+            <>
+              <CommandMenuItem command="pageBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Página</b>
+                  <small>Lo de detrás empieza en la hoja siguiente</small>
+                </span>
+              </CommandMenuItem>
+              <CommandMenuItem command="columnBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Columna</b>
+                  <small>Lo de detrás empieza en la columna siguiente</small>
+                </span>
+              </CommandMenuItem>
+              <CommandMenuItem command="sectionBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Sección (página siguiente)</b>
+                  <small>Hoja nueva que puede tener otra orientación, tamaño o márgenes</small>
+                </span>
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
+        <Dropdown label="Guiones" large trigger={<WrapText size={22} />}>
+          {(close) => (
+            <>
+              <CommandMenuItem command="hyphenation" arg={false} onDone={close}>
+                Ninguno
+              </CommandMenuItem>
+              <CommandMenuItem command="hyphenation" arg={true} onDone={close}>
+                Automático
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
       </RibbonGroup>
     </>
   )

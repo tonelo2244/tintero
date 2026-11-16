@@ -10,10 +10,12 @@ import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import {
   withHeaderFooter,
+  withHyphenation,
   withNumberedHeadings,
   withPageSetup,
   withStyles,
   writerParts,
+  type HeaderFooterAlign,
   type WriterContent,
   type WriterParts
 } from '../model/content'
@@ -22,9 +24,19 @@ import { runCommand } from '../model/commands'
 import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
+import { documentSections, type BlockLike } from '../model/sections'
+import {
+  headerFooterForPage,
+  headerFooterOf,
+  VARIANT_LABELS,
+  variantForPage,
+  withHeaderFooterPart,
+  withVariantEnabled,
+  type HeaderFooterKind
+} from '../model/headerFooter'
 import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
 import { isPaginated, showsRuler, type ReadingTheme, type ViewMode } from '../model/views'
-import { zoomForPreset, type ZoomPreset } from '../model/zoom'
+import { multiPageLayout, zoomForPreset, type ZoomPreset } from '../model/zoom'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
@@ -54,9 +66,12 @@ import { LayoutTab } from './ribbon/LayoutTab'
 import { OutlineTab } from './ribbon/OutlineTab'
 import { ReviewTab } from './ribbon/ReviewTab'
 import { TableTab } from './ribbon/TableTab'
-import { OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { HEADER_FOOTER_TAB, OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
+import { HeaderFooterTab } from './ribbon/HeaderFooterTab'
 import { ViewTab } from './ribbon/ViewTab'
 import { usePageMetrics } from './usePageMetrics'
+import { useCurrentSection } from './useCurrentSection'
+import type { SheetBox } from './Pagination'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
 import { useAskDocuments } from './useAskDocuments'
@@ -70,6 +85,8 @@ import { WriterStatusBar } from './WriterStatusBar'
 export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
   const [activeTab, setActiveTab] = useState('home')
   const [zoom, setZoom] = useState(1)
+  /** Hojas por fila: 1 es lo normal; más, "Varias páginas". */
+  const [pagesAcrossSetting, setPagesAcross] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
   const [showRuler, setShowRuler] = useState(true)
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
@@ -129,6 +146,30 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   )
   const comments = useWriterComments(editor, parts.comments ?? [], updateParts)
   const [headerFooterOpen, setHeaderFooterOpen] = useState(false)
+  /** Encabezado o pie que se edita sobre la hoja (doble clic en el margen superior o inferior). */
+  const [headerFooterEditing, setHeaderFooterEditing] = useState<{
+    page: number
+    kind: HeaderFooterKind
+    align: HeaderFooterAlign
+  } | null>(null)
+  const editingVariant = headerFooterEditing ? variantForPage(parts, headerFooterEditing.page) : null
+  const editingValue =
+    headerFooterEditing && editingVariant ? headerFooterOf(parts, editingVariant)[headerFooterEditing.kind] : undefined
+  /** Cambia el texto de lo que se edita; vacío, lo quita (el archivo no guarda partes vacías). */
+  const setEditingText = (text: string, align = editingValue?.align ?? headerFooterEditing?.align ?? 'left') => {
+    if (!headerFooterEditing || !editingVariant) return
+    const value = text.trim() === '' ? undefined : { text, align }
+    updateParts((current) => withHeaderFooterPart(current, editingVariant, headerFooterEditing.kind, value))
+  }
+  // Volver al texto del documento cierra el encabezado y pie, como en Word.
+  useEffect(() => {
+    if (!editor || !headerFooterEditing) return
+    const close = () => setHeaderFooterEditing(null)
+    editor.on('focus', close)
+    return () => {
+      editor.off('focus', close)
+    }
+  }, [editor, headerFooterEditing])
 
   const pageSetup = parts.pageSetup ?? DEFAULT_PAGE_SETUP
   const geometry = useMemo(() => pageGeometry(pageSetup), [pageSetup])
@@ -136,10 +177,31 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     (next: PageSetup) => updateParts((current) => withPageSetup(current, next)),
     [updateParts]
   )
-  // La paginación reparte con el alto útil de la hoja del documento.
+  // La paginación reparte con la hoja del documento (y la de cada sección, que lee del propio texto).
   useEffect(() => {
-    editor?.commands.setPageGeometry(geometry)
-  }, [editor, geometry])
+    editor?.commands.setPageSetup(pageSetup)
+  }, [editor, pageSetup])
+  // Disposición cambia la hoja de la sección del cursor: la primera es la del documento.
+  const section = useCurrentSection(editor, pageSetup)
+  const sectionSetup = section.pageSetup
+  const setSectionSetup = useCallback(
+    (next: PageSetup) => {
+      if (section.breakPos === null) setPageSetup(next)
+      else editor?.chain().focus().setSectionPageSetup(section.breakPos, next).run()
+    },
+    [editor, section.breakPos, setPageSetup]
+  )
+  /** Hoja de cada sección, para imprimir cada una en su tamaño. */
+  const sectionSetups = useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      if (!current) return [pageSetup]
+      const blocks: BlockLike[] = []
+      current.state.doc.forEach((node) => blocks.push({ type: node.type.name, attrs: node.attrs }))
+      return documentSections(blocks, pageSetup).setups
+    },
+    equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  }) ?? [pageSetup]
 
   const styles = parts.styles ?? DEFAULT_STYLES
   const numberedHeadings = parts.numberedHeadings ?? false
@@ -148,10 +210,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     [updateParts]
   )
   const documentCss = useMemo(() => stylesCss(styles, numberedHeadings), [styles, numberedHeadings])
-  // Un estilo más grande cambia la altura de los párrafos: hay que volver a repartir las páginas.
+  const hyphenation = parts.hyphenation ?? false
+  // Un estilo más grande o partir palabras cambia la altura de los párrafos: hay que volver a repartir.
   useEffect(() => {
     editor?.storage.pagination.requestLayout?.()
-  }, [editor, documentCss])
+  }, [editor, documentCss, hyphenation])
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false)
   /** Cuadro de estilo abierto: `null` cerrado; `{ styleId: undefined }` crea uno nuevo. */
   const [styleDialog, setStyleDialog] = useState<{ styleId?: string } | null>(null)
@@ -166,9 +229,26 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const askDocuments = useAskDocuments(getDoc, { documentName: session.documentName, filePath: session.filePath })
   /** Panel de IA abierto: ninguno, cómo preparar Ollama, redacción, crear presentación o preguntar. */
   const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation' | 'ask'>('closed')
-  const pages = usePageMetrics(editor, zoom)
+  const pages = usePageMetrics(editor)
   const readAloud = useReadAloud(editor)
   const paginated = isPaginated(viewMode)
+  // "Varias páginas" solo existe con hojas; en las otras vistas el texto va seguido.
+  const pagesAcross = paginated ? pagesAcrossSetting : 1
+  const multiPage = pagesAcross > 1
+  /** Ancho de `.writer-page`: el de la hoja más ancha (con secciones horizontales y verticales). */
+  const layoutWidth = multiPage ? geometry.width : (pages.layoutWidth ?? geometry.width)
+  // En "Varias páginas" las hojas van en filas y todas iguales (con secciones no se ofrece).
+  const sheets: SheetBox[] = multiPage
+    ? Array.from({ length: pages.total }, (_, index) => ({
+        top: Math.floor(index / pagesAcross) * geometry.pitch,
+        left: (index % pagesAcross) * (geometry.width + geometry.gap),
+        geometry
+      }))
+    : pages.sheets.length === pages.total
+      ? pages.sheets
+      : [{ top: 0, left: 0, geometry }]
+  const lastSheet = sheets[sheets.length - 1]
+  const sheetsHeight = lastSheet.top + lastSheet.geometry.height
 
   // Cada vista enciende o apaga lo suyo: las hojas, el esquema y si se puede escribir.
   useEffect(() => {
@@ -201,41 +281,44 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     return () => window.removeEventListener('keydown', onKey)
   }, [viewMode, viewBeforeReading])
 
-  /** Desplaza el lienzo para que la hoja `page` quede arriba. */
+  /** Desplaza el lienzo para que la hoja `page` quede arriba (en "Varias páginas", su fila). */
   const scrollToPage = useCallback(
-    (page: number) => {
+    (page: number, zoomNow = zoom, across = pagesAcross) => {
       const canvas = canvasRef.current
       const sheet = pageRef.current
       if (!canvas || !sheet) return
       const sheetTop = sheet.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop
-      canvas.scrollTop = sheetTop + (page - 1) * geometry.pitch * zoom - 8
+      canvas.scrollTop = sheetTop + Math.floor((page - 1) / across) * geometry.pitch * zoomNow - 8
     },
-    [geometry.pitch, zoom]
+    [geometry.pitch, zoom, pagesAcross]
   )
 
   /** Zoom exacto o un preset: las cuentas en model/zoom.ts, las medidas del lienzo aquí. */
   const changeZoom = (target: ZoomPreset | number) => {
-    if (typeof target === 'number') return setZoom(target)
+    if (typeof target === 'number') {
+      setPagesAcross(1)
+      return setZoom(target)
+    }
     const canvas = canvasRef.current
     if (!canvas) return
+    const area = { width: canvas.clientWidth, height: canvas.clientHeight }
+    if (target === 'multiPage') {
+      // Sin regla: con varias hojas por fila no hay un solo margen que enseñar.
+      const layout = multiPageLayout(area, geometry, geometry.gap, 24)
+      setZoom(layout.zoom)
+      setPagesAcross(layout.across)
+      const page = pages.current
+      requestAnimationFrame(() => scrollToPage(page, layout.zoom, layout.across))
+      return
+    }
+    setPagesAcross(1)
     const rulerHeight = showRuler && showsRuler(viewMode) ? 30 : 0
-    const next = zoomForPreset(
-      target,
-      { width: canvas.clientWidth, height: canvas.clientHeight },
-      { width: geometry.width, height: geometry.height + rulerHeight },
-      24
-    )
+    const next = zoomForPreset(target, area, { width: geometry.width, height: geometry.height + rulerHeight }, 24)
     setZoom(next)
     // "Una página": la hoja del cursor, entera a la vista.
     if (target === 'onePage') {
       const page = pages.current
-      requestAnimationFrame(() => {
-        const sheet = pageRef.current
-        const canvasNow = canvasRef.current
-        if (!sheet || !canvasNow) return
-        const sheetTop = sheet.getBoundingClientRect().top - canvasNow.getBoundingClientRect().top + canvasNow.scrollTop
-        canvasNow.scrollTop = sheetTop + (page - 1) * geometry.pitch * next - 8
-      })
+      requestAnimationFrame(() => scrollToPage(page, next, 1))
     }
   }
 
@@ -262,14 +345,36 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       closeSidePanels()
       comments.setOpen(!open)
     },
+    headerFooterEditing:
+      headerFooterEditing && editingVariant
+        ? {
+            kind: headerFooterEditing.kind,
+            variant: editingVariant,
+            align: editingValue?.align ?? headerFooterEditing.align
+          }
+        : null,
+    closeHeaderFooterEditing: () => setHeaderFooterEditing(null),
+    insertHeaderFooterToken: (token) => {
+      const text = editingValue?.text ?? ''
+      setEditingText(`${text}${text && !text.endsWith(' ') ? ' ' : ''}${token}`)
+    },
+    setHeaderFooterAlign: (align) => {
+      if (editingValue) setEditingText(editingValue.text, align)
+      else setHeaderFooterEditing((current) => current && { ...current, align })
+    },
+    differentFirstPage: parts.firstPage !== undefined,
+    setDifferentFirstPage: (enabled) => updateParts((current) => withVariantEnabled(current, 'first', enabled)),
+    differentEvenPages: parts.evenPages !== undefined,
+    setDifferentEvenPages: (enabled) => updateParts((current) => withVariantEnabled(current, 'even', enabled)),
     headerFooterOpen,
     toggleHeaderFooter: () => {
       const open = headerFooterOpen
       closeSidePanels()
       setHeaderFooterOpen(!open)
     },
-    pageSetup,
-    setPageSetup,
+    pageSetup: sectionSetup,
+    setPageSetup: setSectionSetup,
+    hasSections: sectionSetups.length > 1,
     openPageSetupDialog: () => {
       closeSidePanels()
       setPageSetupOpen(true)
@@ -285,6 +390,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     },
     numberedHeadings,
     setNumberedHeadings: (numbered) => updateParts((current) => withNumberedHeadings(current, numbered)),
+    hyphenation,
+    setHyphenation: (enabled) => updateParts((current) => withHyphenation(current, enabled)),
     openTabStopsDialog: () => {
       closeSidePanels()
       setTabStopsOpen(true)
@@ -296,6 +403,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     showRuler,
     toggleRuler: () => setShowRuler((value) => !value),
     zoom,
+    multiPage,
     setZoom: changeZoom,
     splitOpen,
     toggleSplit: () => setSplitOpen((open) => !open),
@@ -377,10 +485,17 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const readyModel = ai.status?.state === 'ready' ? ai.status.model : null
   const inTable = toolbar?.table.active ?? false
   const inOutline = viewMode === 'outline'
-  const tabs = visibleTabs(inTable, inOutline)
-  // Si una pestaña contextual desaparece (sales de la tabla o del Esquema), se vuelve a otra.
+  const inHeaderFooter = headerFooterEditing !== null
+  const tabs = visibleTabs(inTable, inOutline, inHeaderFooter)
+  // Si una pestaña contextual desaparece (sales de la tabla, del Esquema o del encabezado), se vuelve a otra.
   const visibleTab =
-    activeTab === TABLE_TAB.id && !inTable ? 'home' : activeTab === OUTLINE_TAB.id && !inOutline ? 'view' : activeTab
+    activeTab === TABLE_TAB.id && !inTable
+      ? 'home'
+      : activeTab === OUTLINE_TAB.id && !inOutline
+        ? 'view'
+        : activeTab === HEADER_FOOTER_TAB.id && !inHeaderFooter
+          ? 'insert'
+          : activeTab
 
   const renderRibbon = () => {
     if (!editor || !toolbar) return null
@@ -422,6 +537,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         )
       case TABLE_TAB.id:
         return <TableTab />
+      case HEADER_FOOTER_TAB.id:
+        return <HeaderFooterTab />
       default:
         return <HomeTab state={toolbar} />
     }
@@ -453,7 +570,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           totalPages={paginated ? pages.total : null}
           words={toolbar?.words ?? 0}
           zoom={zoom}
-          onZoomChange={setZoom}
+          onZoomChange={changeZoom}
           onWordCount={() => commandContext && runCommand(commandContext, 'wordCount')}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
@@ -516,7 +633,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         </WriterCommandsProvider>
       )}
       {pageSetupOpen && (
-        <PageSetupDialog pageSetup={pageSetup} onApply={setPageSetup} onClose={() => setPageSetupOpen(false)} />
+        <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />
       )}
       {headerFooterOpen && (
         <HeaderFooterPanel
@@ -571,46 +688,98 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             }}
           >
             <div className="writer-zoom" style={{ zoom }}>
-              {showRuler && showsRuler(viewMode) && (
+              {showRuler && showsRuler(viewMode) && !multiPage && (
                 <Ruler
-                  pageSetup={pageSetup}
+                  pageSetup={sectionSetup}
+                  offset={(layoutWidth - pageGeometry(sectionSetup).width) / 2}
                   indents={toolbar?.indents ?? null}
                   zoom={zoom}
-                  onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+                  onMarginsChange={(margins) => setSectionSetup(withMargins(sectionSetup, margins))}
                   tabStops={toolbar?.paragraph.tabStops ?? []}
                   onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
+                  // Sin focus(): con las flechas, el foco se queda en la marca de la regla para el paso siguiente.
                   onIndentsChange={(indents) =>
-                    editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
+                    editor?.chain().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
                   }
                 />
               )}
               <div
                 ref={pageRef}
-                className={`writer-page ${showMarks ? 'show-marks' : ''}`}
+                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''} ${hyphenation ? 'writer-page--hyphenate' : ''} ${inHeaderFooter ? 'writer-page--header-footer' : ''}`}
+                onDoubleClick={(event) => {
+                  // Doble clic en el margen superior o inferior de una hoja: editar su encabezado o pie.
+                  if (!paginated || multiPage || !pageRef.current) return
+                  const box = pageRef.current.getBoundingClientRect()
+                  const target = headerFooterAt(
+                    sheets,
+                    (event.clientX - box.left) / zoom,
+                    (event.clientY - box.top) / zoom
+                  )
+                  if (!target) return
+                  event.preventDefault()
+                  const current = headerFooterForPage(parts, target.page)[target.kind]
+                  setHeaderFooterEditing({
+                    ...target,
+                    align: current?.align ?? (target.kind === 'header' ? 'left' : 'center')
+                  })
+                  setActiveTab(HEADER_FOOTER_TAB.id)
+                }}
                 style={{
-                  ...(paginated && { minHeight: pages.total * geometry.pitch - geometry.gap }),
-                  ...pageCssVariables(geometry)
+                  ...(paginated && { minHeight: sheetsHeight }),
+                  ...pageCssVariables(geometry, pagesAcross, layoutWidth)
                 }}
               >
                 {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
                 {paginated && (
                   <div className="writer-sheets" aria-hidden>
-                    {Array.from({ length: pages.total }, (_, index) => (
+                    {sheets.map((sheet, index) => (
                       <div
                         key={index}
                         className="writer-sheet"
-                        style={{ top: index * geometry.pitch, height: geometry.height }}
+                        style={{
+                          top: sheet.top,
+                          left: sheet.left,
+                          width: sheet.geometry.width,
+                          height: sheet.geometry.height,
+                          ...sheetMarginVariables(sheet.geometry)
+                        }}
                       >
-                        {parts.header && (
-                          <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
-                            {headerFooterText(parts.header, index + 1, pages.total)}
-                          </div>
-                        )}
-                        {parts.footer && (
-                          <div className={`writer-sheet__footer writer-sheet__part--${parts.footer.align}`}>
-                            {headerFooterText(parts.footer, index + 1, pages.total)}
-                          </div>
-                        )}
+                        {(['header', 'footer'] as const).map((kind) => {
+                          const part = headerFooterForPage(parts, index + 1)[kind]
+                          const editing = headerFooterEditing?.page === index + 1 && headerFooterEditing.kind === kind
+                          const align = editing ? (editingValue?.align ?? headerFooterEditing.align) : part?.align
+                          const className = `writer-sheet__${kind} writer-sheet__part--${align ?? 'left'}`
+                          if (editing) {
+                            const label = `${kind === 'header' ? 'Encabezado' : 'Pie de página'}${
+                              editingVariant && editingVariant !== 'default'
+                                ? ` de ${VARIANT_LABELS[editingVariant]}`
+                                : ''
+                            }`
+                            return (
+                              <div key={kind} className={`${className} writer-sheet__editing`}>
+                                <span className="writer-sheet__editing-label">{label}</span>
+                                <textarea
+                                  autoFocus
+                                  aria-label={label}
+                                  rows={1}
+                                  value={editingValue?.text ?? ''}
+                                  onChange={(event) => setEditingText(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') {
+                                      setHeaderFooterEditing(null)
+                                      editor?.commands.focus()
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )
+                          }
+                          return part ? (
+                            <div key={kind} className={className}>
+                              {headerFooterText(part, index + 1, pages.total)}
+                            </div>
+                          ) : null
+                        })}
                       </div>
                     ))}
                   </div>
@@ -619,7 +788,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               </div>
             </div>
             {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
-            <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
+            <style>
+              {printPageCss(sectionSetups, parts.header, parts.footer, {
+                first: parts.firstPage,
+                even: parts.evenPages
+              })}
+            </style>
             {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
             <style>{documentCss}</style>
           </div>
@@ -636,11 +810,54 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
  * Medidas de la hoja como variables CSS: la hoja, el área de texto, el encabezado y el pie las
  * leen en global.css. Un solo sitio decide las medidas (model/pageSetup.ts); el CSS solo las usa.
  */
-function pageCssVariables(geometry: ReturnType<typeof pageGeometry>): CSSProperties {
+function pageCssVariables(
+  geometry: ReturnType<typeof pageGeometry>,
+  across = 1,
+  layoutWidth = geometry.width
+): CSSProperties {
+  const px = (value: number) => `${value.toFixed(2)}px`
+  const { width, gap, margins, contentWidth, contentHeight, pitch } = geometry
+  /** Holgura de cada columna en "Varias páginas": el último renglón puede asomar medio píxel. */
+  const columnSlack = 8
+  /** Con secciones más anchas, la hoja del documento va centrada en `.writer-page`. */
+  const inset = across > 1 ? 0 : (layoutWidth - width) / 2
+  return {
+    '--page-width': px(across > 1 ? across * width + (across - 1) * gap : layoutWidth),
+    '--page-content-height': px(contentHeight),
+    '--content-width': px(contentWidth),
+    '--margin-top': px(margins.top),
+    '--margin-right': px(margins.right + inset),
+    '--margin-bottom': px(margins.bottom),
+    '--margin-left': px(margins.left + inset),
+    // "Varias páginas": cada hoja es una columna del texto (ver .writer-page--multi en global.css).
+    '--pages-across': String(across),
+    '--multi-content-width': px(across * contentWidth + (across - 1) * (margins.left + margins.right + gap)),
+    '--multi-column-gap': px(margins.left + margins.right + gap),
+    '--multi-column-height': px(contentHeight + columnSlack),
+    '--multi-row-gap': px(pitch - contentHeight - columnSlack)
+  } as CSSProperties
+}
+
+/** Encabezado o pie de la hoja bajo un punto de `.writer-page` (px sin zoom), o null si cae en el texto. */
+function headerFooterAt(sheets: SheetBox[], x: number, y: number): { page: number; kind: HeaderFooterKind } | null {
+  const index = sheets.findIndex(
+    (sheet) =>
+      y >= sheet.top &&
+      y <= sheet.top + sheet.geometry.height &&
+      x >= sheet.left &&
+      x <= sheet.left + sheet.geometry.width
+  )
+  if (index < 0) return null
+  const { top, geometry } = sheets[index]
+  if (y < top + geometry.margins.top) return { page: index + 1, kind: 'header' }
+  if (y > top + geometry.height - geometry.margins.bottom) return { page: index + 1, kind: 'footer' }
+  return null
+}
+
+/** Márgenes de una hoja concreta: los leen su encabezado y su pie (cada sección tiene los suyos). */
+function sheetMarginVariables(geometry: ReturnType<typeof pageGeometry>): CSSProperties {
   const px = (value: number) => `${value.toFixed(2)}px`
   return {
-    '--page-width': px(geometry.width),
-    '--page-content-height': px(geometry.contentHeight),
     '--margin-top': px(geometry.margins.top),
     '--margin-right': px(geometry.margins.right),
     '--margin-bottom': px(geometry.margins.bottom),

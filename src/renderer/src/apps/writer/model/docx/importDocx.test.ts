@@ -1,3 +1,4 @@
+import JSZip from 'jszip'
 // @vitest-environment jsdom
 import type { JSONContent } from '@tiptap/core'
 import { describe, expect, it } from 'vitest'
@@ -35,6 +36,78 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     const bytes = await exportDocx({ doc: { type: 'doc', content: [paragraph([text('Hola')])] }, pageSetup })
     const { content } = await importDocx(bytes, createWriterExtensions())
     expect(content.pageSetup).toEqual(pageSetup)
+  })
+
+  it('conserva los guiones automáticos (w:autoHyphenation)', async () => {
+    const bytes = await exportDocx({ doc: { type: 'doc', content: [paragraph([text('Hola')])] }, hyphenation: true })
+    const settings = await (await JSZip.loadAsync(bytes)).file('word/settings.xml')!.async('string')
+    expect(settings).toContain('<w:autoHyphenation/>')
+    expect((await importDocx(bytes, createWriterExtensions())).content.hyphenation).toBe(true)
+    expect((await roundTrip([paragraph([text('Hola')])])).content.hyphenation).toBeUndefined()
+  })
+
+  it('cada salto de sección es una sección de Word y vuelve con su hoja', async () => {
+    const landscape = withOrientation(DEFAULT_PAGE_SETUP, 'landscape')
+    const bytes = await exportDocx({
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph([text('Vertical')]),
+          { type: 'sectionBreak', attrs: { pageSetup: landscape } },
+          paragraph([text('Horizontal')])
+        ]
+      }
+    })
+    const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml')!.async('string')
+    // La primera sección termina en su último párrafo; la segunda, en el cuerpo.
+    expect(xml.match(/<w:sectPr/g)).toHaveLength(2)
+    expect(xml).toContain('<w:type w:val="nextPage"/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    expect(content.pageSetup).toBeUndefined()
+    expect(blocks(content.doc).map((block) => block.type)).toEqual(['paragraph', 'sectionBreak', 'paragraph'])
+    expect(blocks(content.doc)[1].attrs?.pageSetup).toEqual(landscape)
+  })
+
+  it('un bloque de columnas es una sección continua con w:cols y vuelve como bloque de columnas', async () => {
+    const bytes = await exportDocx({
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph([text('Título')]),
+          {
+            type: 'columns',
+            attrs: { count: 2 },
+            content: [paragraph([text('Uno')]), { type: 'columnBreak' }, paragraph([text('Dos')])]
+          },
+          paragraph([text('Final')])
+        ]
+      }
+    })
+    const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml')!.async('string')
+    expect(xml).toContain('<w:type w:val="continuous"/>')
+    expect(xml).toMatch(/<w:cols [^>]*w:num="2"/)
+    expect(xml).toContain('<w:br w:type="column"/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    const types = blocks(content.doc).map((block) => block.type)
+    expect(types).toEqual(['paragraph', 'columns', 'paragraph'])
+    expect(blocks(content.doc)[1].attrs?.count).toBe(2)
+  })
+
+  it('conserva primera página y pares distintas (w:titlePg, w:evenAndOddHeaders)', async () => {
+    const footer = { text: 'Página {página}', align: 'center' as const }
+    const bytes = await exportDocx({
+      doc: { type: 'doc', content: [paragraph([text('Hola')])] },
+      footer,
+      firstPage: {},
+      evenPages: { footer: { text: 'Par {página}', align: 'left' } }
+    })
+    const zip = await JSZip.loadAsync(bytes)
+    expect(await zip.file('word/document.xml')!.async('string')).toContain('<w:titlePg/>')
+    expect(await zip.file('word/settings.xml')!.async('string')).toContain('<w:evenAndOddHeaders/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    expect(content.footer).toEqual(footer)
+    expect(content.firstPage).toEqual({})
+    expect(content.evenPages).toEqual({ footer: { text: 'Par {página}', align: 'left' } })
   })
 
   it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {

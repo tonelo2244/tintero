@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Compass, X } from 'lucide-react'
 import { headingIndexAt, headingsOf, planSectionMove, sectionEnd, type OutlineHeading } from '../model/outline'
 import { documentOutline, moveSection, topLevelIndexAt } from '../model/outlineEdits'
 import type { PageGeometry } from '../model/pageSetup'
+import { pageOfPosition } from '../model/pageLayout'
 
 type NavigationTab = 'headings' | 'pages'
 
@@ -224,8 +225,7 @@ function PageThumbnails({
     editor,
     selector: ({ editor: state }) => {
       const starts = state.storage.pagination?.pageStarts ?? [0]
-      const { from } = state.state.selection
-      return Math.max(1, starts.filter((start: number) => start <= from).length)
+      return pageOfPosition(starts, state.state.selection.from)
     }
   })
 
@@ -271,24 +271,28 @@ function PageThumbnails({
   )
 }
 
-/** HTML de los bloques de primer nivel de cada hoja. */
+/**
+ * HTML de cada hoja: el trozo del documento entre el principio de una hoja y el de la siguiente.
+ * Un párrafo o una tabla partidos salen en las dos miniaturas, cada uno con su parte.
+ */
 function pageHtml(editor: Editor): string[] {
+  const { doc } = editor.state
   const starts: number[] = editor.storage.pagination?.pageStarts ?? [0]
-  const pageCount: number = editor.storage.pagination?.pageCount ?? 1
   const serializer = DOMSerializer.fromSchema(editor.schema)
-  const pages = Array.from({ length: pageCount }, () => document.createElement('div'))
-  editor.state.doc.forEach((node, offset) => {
-    // Hoja donde empieza: la última cuyo principio está antes (una lista partida se queda en la primera).
-    const page = Math.max(0, starts.filter((start) => start <= offset).length - 1)
-    pages[Math.min(page, pages.length - 1)].appendChild(serializer.serializeNode(node))
+  return starts.map((start, index) => {
+    const end = index + 1 < starts.length ? starts[index + 1] : doc.content.size
+    const page = document.createElement('div')
+    page.appendChild(serializer.serializeFragment(doc.slice(start, Math.max(start, end)).content))
+    return page.innerHTML
   })
-  return pages.map((page) => page.innerHTML)
 }
 
 /** "Ir a la página": deja el cursor al principio de la hoja. */
 export function selectPageStart(editor: Editor, page: number): void {
   const starts: number[] = editor.storage.pagination?.pageStarts ?? [0]
   const { doc } = editor.state
-  const pos = TextSelection.near(doc.resolve(Math.min((starts[page - 1] ?? 0) + 1, doc.content.size))).from
+  // El principio de una hoja puede ser el de un bloque o estar dentro de un párrafo partido: se
+  // busca el primer sitio donde se puede escribir a partir de ahí.
+  const pos = TextSelection.near(doc.resolve(Math.min(starts[page - 1] ?? 0, doc.content.size)), 1).from
   editor.chain().focus().setTextSelection(pos).run()
 }

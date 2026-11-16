@@ -121,22 +121,52 @@ export function readComments(root: Element | null, createId: () => string): Docx
 
 /** Relación del encabezado/pie por defecto de la última sección (la que manda en casi todos los documentos). */
 export function defaultHeaderFooterIds(documentRoot: Element): { header: string | null; footer: string | null } {
+  return headerFooterIds(documentRoot, 'default')
+}
+
+/**
+ * Relaciones del encabezado y el pie de un tipo (`default`, `first`, `even`). Se buscan en la
+ * primera sección que los tenga: las demás, en Word, heredan los de la anterior.
+ */
+export function headerFooterIds(
+  documentRoot: Element,
+  type: 'default' | 'first' | 'even'
+): { header: string | null; footer: string | null } {
   const sections = descendants(documentRoot, 'sectPr')
-  const section = sections.at(-1)
   const reference = (name: string): string | null => {
-    const references = childElements(section, name)
-    const chosen = references.find((ref) => attr(ref, 'type') === 'default') ?? references[0]
-    return relationAttr(chosen, 'id')
+    for (const section of type === 'default' ? [...sections].reverse() : sections) {
+      const references = childElements(section, name)
+      const chosen =
+        references.find((ref) => attr(ref, 'type') === type) ?? (type === 'default' ? references[0] : undefined)
+      if (chosen) return relationAttr(chosen, 'id')
+    }
+    return null
   }
   return { header: reference('headerReference'), footer: reference('footerReference') }
 }
 
+/** "Primera página diferente": `w:titlePg` en la primera sección. */
+export function hasTitlePage(documentRoot: Element): boolean {
+  const flag = child(descendants(documentRoot, 'sectPr')[0] ?? null, 'titlePg')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
+}
+
+/** "Pares e impares diferentes": `w:evenAndOddHeaders` en settings.xml. */
+export function hasEvenAndOddHeaders(settingsRoot: Element | null): boolean {
+  const flag = child(settingsRoot, 'evenAndOddHeaders')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
+}
+
 /**
- * Tamaño, orientación y márgenes de la última sección (`w:pgSz`, `w:pgMar`, en twips). Un documento
- * con varias secciones se queda con la última: las secciones llegan en la fase 15.
+ * Tamaño, orientación y márgenes de la primera sección (`w:pgSz`, `w:pgMar`, en twips): la hoja
+ * del documento. Las demás secciones son saltos de sección dentro del texto (ver directFormatting).
  */
 export function readPageSetup(documentRoot: Element): PageSetup | null {
-  const section = descendants(documentRoot, 'sectPr').at(-1)
+  return readSectionSetup(descendants(documentRoot, 'sectPr')[0] ?? null)
+}
+
+/** Hoja de un `w:sectPr` concreto, o null si no trae tamaño. */
+export function readSectionSetup(section: Element | null): PageSetup | null {
   const size = child(section ?? null, 'pgSz')
   const cm = (element: Element | null, name: string) => {
     const value = Number(attr(element, name))
@@ -157,4 +187,10 @@ export function readPageSetup(documentRoot: Element): PageSetup | null {
       left: cm(margins, 'left')
     }
   })
+}
+
+/** `w:autoHyphenation` de settings.xml: Disposición > Guiones > Automático. */
+export function readAutoHyphenation(settingsRoot: Element | null): boolean {
+  const flag = child(settingsRoot, 'autoHyphenation')
+  return flag !== null && !['0', 'false', 'off'].includes(attr(flag, 'val') ?? '')
 }

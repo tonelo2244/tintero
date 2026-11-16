@@ -73,6 +73,8 @@ jobs:
       - name: Tests e2e
         run: |
           command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
+          # pdftotext (poppler-utils): la prueba de la fase 15 lee el texto de cada hoja del PDF.
+          command -v pdftotext || (sudo apt-get update && sudo apt-get install -y poppler-utils)
           xvfb-run -a npx playwright test
 
       # Si algo falla, el informe HTML (con capturas del momento del fallo) queda descargable en el resumen del run.

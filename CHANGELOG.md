@@ -86,6 +86,23 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
     barra de estado o con Ctrl/Cmd+Mayús+G), **Leer en voz alta** con las voces del sistema,
     resaltando la frase, con pausa, frase anterior y siguiente, velocidad y voz, y los comentarios.
   - La **Regla** pasa de Disposición a Vista > Mostrar, como en Word.
+- **Texto, disposición avanzada y secciones** (fase 15):
+  - **Paginación por renglones**: un párrafo que no cabe se parte entre dos hojas (con viudas y
+    huérfanas de dos renglones) y una tabla larga se parte por filas, **repitiendo la fila de
+    encabezado** en cada hoja. Los títulos y los encabezados de tabla no se quedan solos al final.
+    El PDF corta en los mismos sitios que la pantalla.
+  - Vista > **Varias páginas**: las hojas lado a lado, tantas como quepan (también en el zoom).
+  - Disposición > Saltos > **Sección (página siguiente)**: cada sección tiene su tamaño,
+    orientación y márgenes; la regla y Disposición cambian la sección del cursor. El PDF mezcla
+    hojas verticales y horizontales.
+  - Disposición > **Columnas** (una, dos o tres) y **salto de columna**. Unas columnas que no caben
+    en lo que queda de hoja empiezan hoja y siguen por filas de columnas.
+  - Disposición > **Guiones**: división automática de palabras, como opción del documento.
+  - **Encabezado y pie sobre la hoja**: doble clic en el margen superior o inferior, con la
+    pestaña contextual **Encabezado y pie** (número de página, total de páginas, alineación),
+    **primera página diferente** y **pares e impares diferentes**.
+  - .docx de ida y vuelta: secciones (`w:sectPr`), columnas (secciones continuas con `w:cols`),
+    salto de columna, guiones (`w:autoHyphenation`), `w:titlePg` y `w:evenAndOddHeaders`.
 
 ### Corregido
 
@@ -97,6 +114,8 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 6 (secciones, columnas, guiones y encabezados por variante de la fase
+  15). Los documentos anteriores se abren igual.
 - Formato de archivo versión 5 (estilos del documento y formato de párrafo de la fase 13). Un
   documento sin estilos guardados usa los de partida, que reproducen el aspecto de siempre.
 - Texto: el aspecto de párrafos y títulos sale de los estilos del documento, no de una hoja CSS fija.
