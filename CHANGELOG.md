@@ -103,6 +103,25 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
     **primera página diferente** y **pares e impares diferentes**.
   - .docx de ida y vuelta: secciones (`w:sectPr`), columnas (secciones continuas con `w:cols`),
     salto de columna, guiones (`w:autoHyphenation`), `w:titlePg` y `w:evenAndOddHeaders`.
+- **Texto, Insertar: objetos y vínculos** (fase 16):
+  - **Vínculos y marcadores**: Ctrl/Cmd+K abre el cuadro de vínculo (web o marcador del
+    documento); Ctrl/Cmd+clic lo sigue. Insertar > Marcador con su lista para ir a cada uno.
+  - **Campos** que se actualizan solos: fecha, número de página, número de páginas, nombre del
+    archivo y autor (con el autor del documento como dato nuevo).
+  - **Símbolos**: menú con los recientes y los más usados, y cuadro con búsqueda por nombre.
+  - **Imágenes de verdad**: tamaño exacto en cm, recortar, girar, texto alternativo y **ajuste de
+    texto** (en línea, cuadrado, arriba y abajo, detrás y delante del texto, que se mueven
+    libremente). Pestaña contextual **Imagen** que se abre al seleccionarla.
+  - **Formas** (las de Diapositivas) y **cuadros de texto**, con relleno, contorno, giro y la
+    misma colocación; traer adelante, enviar atrás y alinear.
+  - **Gráficos** de columnas, líneas o circular con su tabla de datos, pintados como los de Hojas.
+  - **Ecuaciones** escritas en LaTeX con vista previa, plantillas y ejemplos (Alt+=; doble clic
+    para editar).
+  - **Portada**, **letra capital** (en texto o en margen), **convertir texto en tabla**, **estilos
+    de tabla** y **bordes y sombreado de celda**.
+  - .docx: vínculos internos y marcadores, campos (`w:fldSimple`; al importar, también los de
+    Word), imágenes flotantes con recorte y giro, y formas, cuadros de texto, gráficos y
+    ecuaciones **nativos de Word**, que allí se siguen editando. Letra capital como `w:framePr`.
 
 ### Corregido
 
@@ -114,6 +133,9 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 7 (objetos, campos, marcadores, ecuaciones y estilos de tabla de la
+  fase 16). Los documentos anteriores se abren igual.
+- Dependencia nueva: [KaTeX](https://katex.org) para pintar las ecuaciones (MIT, sin red).
 - Formato de archivo versión 6 (secciones, columnas, guiones y encabezados por variante de la fase
   15). Los documentos anteriores se abren igual.
 - Formato de archivo versión 5 (estilos del documento y formato de párrafo de la fase 13). Un

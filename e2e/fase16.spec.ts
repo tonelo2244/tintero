@@ -103,6 +103,8 @@ test('Texto: formas, cuadro de texto y gráfico con su pestaña contextual', asy
   await editor.locator('p').first().click()
   await page.getByRole('tab', { name: 'Insertar' }).click()
   await page.getByRole('button', { name: 'Cuadro de texto' }).click()
+  // Se escribe cuando el cuadro ya tiene el cursor (su marco lo indica con "is-editing").
+  await expect(editor.locator('.writer-object[data-type="textBox"]')).toHaveClass(/is-editing/)
   await page.keyboard.insertText('Nota al margen')
   await expect(editor.locator('.writer-object[data-type="textBox"]')).toContainText('Nota al margen')
 })
