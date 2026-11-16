@@ -11,6 +11,7 @@ import {
   type PageOrientation,
   type PageSetup
 } from '../model/pageSetup'
+import { NumberField } from './NumberField'
 
 interface PageSetupDialogProps {
   pageSetup: PageSetup
@@ -68,7 +69,8 @@ export function PageSetupDialog({ pageSetup, onApply, onClose }: PageSetupDialog
           <legend>Márgenes</legend>
           <div className="writer-page-setup__grid">
             {MARGIN_FIELDS.map(({ side, label }) => (
-              <CmField
+              <NumberField
+                unit="cm"
                 key={side}
                 label={label}
                 value={draft.margins[side]}
@@ -104,8 +106,8 @@ export function PageSetupDialog({ pageSetup, onApply, onClose }: PageSetupDialog
             </option>
           </select>
           <div className="writer-page-setup__grid">
-            <CmField label="Ancho" value={shownSize.width} onChange={(cm) => setSize('width', cm)} />
-            <CmField label="Alto" value={shownSize.height} onChange={(cm) => setSize('height', cm)} />
+            <NumberField unit="cm" label="Ancho" value={shownSize.width} onChange={(cm) => setSize('width', cm)} />
+            <NumberField unit="cm" label="Alto" value={shownSize.height} onChange={(cm) => setSize('height', cm)} />
           </div>
         </fieldset>
         <div className="writer-page-setup__actions">
@@ -118,33 +120,5 @@ export function PageSetupDialog({ pageSetup, onApply, onClose }: PageSetupDialog
         </div>
       </form>
     </div>
-  )
-}
-
-/**
- * Campo numérico en centímetros. Guarda el texto que se escribe y solo avisa de valores válidos:
- * así se puede borrar el campo para escribir otro número sin que salte a 0.
- */
-function CmField({ label, value, onChange }: { label: string; value: number; onChange(cm: number): void }) {
-  const [text, setText] = useState<string | null>(null)
-  return (
-    <label className="writer-page-setup__field">
-      <span>{label}</span>
-      <span className="writer-page-setup__input">
-        <input
-          type="text"
-          inputMode="decimal"
-          aria-label={`${label} (cm)`}
-          value={text ?? value.toLocaleString('es-ES')}
-          onChange={(event) => {
-            setText(event.target.value)
-            const cm = Number(event.target.value.replace(',', '.'))
-            if (event.target.value.trim() !== '' && Number.isFinite(cm)) onChange(cm)
-          }}
-          onBlur={() => setText(null)}
-        />
-        cm
-      </span>
-    </label>
   )
 }

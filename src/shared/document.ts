@@ -17,8 +17,11 @@ export const FILE_FORMAT_ID = 'tintero'
  *   4. Texto: configuración de página (`pageSetup`: tamaño, orientación y márgenes) y saltos de
  *      página. Igual que en la 3, campos opcionales sin migración: un documento sin `pageSetup` es
  *      A4 con 2,5 cm, que es lo que siempre fue.
+ *   5. Texto: estilos del documento (`styles`, `numberedHeadings`), tabuladores y nuevos atributos
+ *      de párrafo (espaciado, bordes, sombreado, topes) y de lista (viñeta, formato de número).
+ *      Sin migración: un documento sin `styles` usa los de partida, que reproducen su aspecto.
  */
-export const FILE_FORMAT_VERSION = 4
+export const FILE_FORMAT_VERSION = 5
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

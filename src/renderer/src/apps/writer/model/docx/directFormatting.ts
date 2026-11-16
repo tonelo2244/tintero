@@ -1,5 +1,13 @@
 import { attr, child, descendants, path } from '@/core/office/xml'
 import { cssFontFamilyFor } from '@/ui/fonts'
+import {
+  BULLET_STYLES,
+  INDENT_STEP_CM,
+  type NumberFormat,
+  type ParagraphBorder,
+  type TabAlign,
+  type TabStop
+} from '../paragraphFormat'
 
 /**
  * Formato "directo" de Word (fuente, tamaño, color, resaltado, alineación) y comentarios.
@@ -45,6 +53,16 @@ export interface DocxParagraphFormat {
   firstLine?: number
   /** `w:pageBreakBefore`: el párrafo empieza hoja nueva. */
   pageBreakBefore?: boolean
+  /** Fase 13: espaciado (pt), interlineado múltiple, sangría derecha (cm), sombreado, bordes y topes. */
+  spaceBefore?: number
+  spaceAfter?: number
+  lineHeight?: number
+  indentRight?: number
+  shading?: string
+  border?: ParagraphBorder
+  tabStops?: TabStop[]
+  /** Formato de la lista a la que pertenece (solo el primer nivel; los anidados siguen la rotación). */
+  list?: { bullet: string } | { numberFormat: NumberFormat }
 }
 
 export interface DocxAnnotations {
@@ -90,7 +108,8 @@ const marker = (kind: string, payload = ''): string => `${OPEN}${kind}${payload}
  */
 export function annotateDocumentXml(
   documentXml: string,
-  stylesXml: string | null
+  stylesXml: string | null,
+  numberingXml: string | null = null
 ): {
   xml: string
   annotations: DocxAnnotations
@@ -100,6 +119,9 @@ export function annotateDocumentXml(
   const defaults = stylesXml ? readDefaultFormat(new DOMParser().parseFromString(stylesXml, 'application/xml')) : {}
   const formats: DocxRunFormat[] = []
   const paragraphs: DocxParagraphFormat[] = []
+  const listFormats = numberingXml
+    ? readListFormats(new DOMParser().parseFromString(numberingXml, 'application/xml'))
+    : null
 
   for (const run of descendants(root, 'r')) {
     const format = withoutDefaults(readRunFormat(child(run, 'rPr')), defaults)
@@ -111,7 +133,7 @@ export function annotateDocumentXml(
   }
 
   for (const paragraph of descendants(root, 'p')) {
-    const format = readParagraphFormat(child(paragraph, 'pPr'))
+    const format = readParagraphFormat(child(paragraph, 'pPr'), listFormats)
     if (Object.keys(format).length === 0) continue
     const firstText = descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
     if (!firstText) continue // párrafo vacío: ni alineación ni sangría se notan
@@ -156,7 +178,7 @@ function insertMarkerRun(anchor: Element, text: string): void {
   if (next) next.insertBefore(run, next.firstChild)
 }
 
-function readParagraphFormat(properties: Element | null): DocxParagraphFormat {
+function readParagraphFormat(properties: Element | null, listFormats: ListFormats | null): DocxParagraphFormat {
   if (!properties) return {}
   const format: DocxParagraphFormat = {}
   const align = ALIGNMENTS[attr(child(properties, 'jc'), 'val') ?? '']
@@ -176,7 +198,113 @@ function readParagraphFormat(properties: Element | null): DocxParagraphFormat {
   else if (firstLine !== null) format.firstLine = firstLine
   const pageBreak = child(properties, 'pageBreakBefore')
   if (pageBreak && !['0', 'false', 'off'].includes(attr(pageBreak, 'val') ?? '')) format.pageBreakBefore = true
+
+  const right = round2(cm('right') ?? cm('end'))
+  if (right !== null && right > 0) format.indentRight = right
+  const spacing = child(properties, 'spacing')
+  const points = (name: string) => {
+    const value = attr(spacing, name)
+    return value !== null && Number.isFinite(Number(value)) ? Number(value) / 20 : null
+  }
+  const before = points('before')
+  if (before !== null) format.spaceBefore = before
+  const after = points('after')
+  if (after !== null) format.spaceAfter = after
+  const line = Number(attr(spacing, 'line'))
+  if (line > 0 && (attr(spacing, 'lineRule') ?? 'auto') === 'auto')
+    format.lineHeight = Math.round((line / 240) * 100) / 100
+  const shading = hexColor(attr(child(properties, 'shd'), 'fill'))
+  if (shading) format.shading = shading
+  const border = readBorder(child(properties, 'pBdr'))
+  if (border) format.border = border
+  const tabStops = readTabStops(child(properties, 'tabs'))
+  if (tabStops.length > 0) format.tabStops = tabStops
+  const numbering = child(properties, 'numPr')
+  if (numbering && listFormats && (attr(child(numbering, 'ilvl'), 'val') ?? '0') === '0') {
+    const list = listFormats.get(attr(child(numbering, 'numId'), 'val') ?? '')
+    if (list) format.list = list
+  }
   return format
+}
+
+const TAB_ALIGNS: Record<string, TabAlign> = {
+  left: 'left',
+  start: 'left',
+  center: 'center',
+  right: 'right',
+  end: 'right',
+  decimal: 'decimal'
+}
+
+function readTabStops(tabs: Element | null): TabStop[] {
+  const stops: TabStop[] = []
+  for (const tab of tabs ? [...tabs.children].filter((element) => element.localName === 'tab') : []) {
+    const align = TAB_ALIGNS[attr(tab, 'val') ?? '']
+    const position = Number(attr(tab, 'pos'))
+    if (!align || !(position > 0)) continue // "clear" y "bar" no son topes de texto
+    const stop: TabStop = { position: Math.round((position / TWIPS_PER_CM) * 100) / 100, align }
+    if (['dot', 'middleDot'].includes(attr(tab, 'leader') ?? '')) stop.leader = 'dot'
+    stops.push(stop)
+  }
+  return stops.sort((a, b) => a.position - b.position)
+}
+
+/** Bordes de Word -> los del editor: los cuatro es "cuadro"; si no, el más significativo. */
+function readBorder(borders: Element | null): ParagraphBorder | null {
+  if (!borders) return null
+  const has = (side: string) => {
+    const value = attr(child(borders, side), 'val')
+    return value !== null && value !== 'nil' && value !== 'none'
+  }
+  if (has('top') && has('bottom') && has('left') && has('right')) return 'box'
+  if (has('left')) return 'left'
+  if (has('bottom')) return 'bottom'
+  if (has('top')) return 'top'
+  return null
+}
+
+/** numId -> formato del primer nivel de su lista (word/numbering.xml). */
+type ListFormats = Map<string, NonNullable<DocxParagraphFormat['list']>>
+
+const WORD_NUMBER_FORMATS: Record<string, Record<string, NumberFormat>> = {
+  decimal: { '.': 'decimal', ')': 'decimal-paren' },
+  lowerLetter: { '.': 'lower-alpha', ')': 'lower-alpha-paren' },
+  upperLetter: { '.': 'upper-alpha' },
+  lowerRoman: { '.': 'lower-roman' },
+  upperRoman: { '.': 'upper-roman' }
+}
+
+function readListFormats(numbering: Document): ListFormats {
+  const root = numbering.documentElement
+  const abstract = new Map<string, NonNullable<DocxParagraphFormat['list']>>()
+  for (const definition of descendants(root, 'abstractNum')) {
+    const levels = descendants(definition, 'lvl')
+    const level = (index: string) => levels.find((lvl) => attr(lvl, 'ilvl') === index)
+    const first = level('0')
+    const kind = attr(child(first ?? null, 'numFmt'), 'val')
+    const text = attr(child(first ?? null, 'lvlText'), 'val') ?? ''
+    let format: NonNullable<DocxParagraphFormat['list']> | null = null
+    if (kind === 'bullet') {
+      const bullet = BULLET_STYLES.find((candidate) => candidate.symbol === text.trim())
+      if (bullet && bullet.id !== 'disc') format = { bullet: bullet.id }
+    } else if (kind) {
+      const second = attr(child(level('1') ?? null, 'lvlText'), 'val') ?? ''
+      const numberFormat =
+        kind === 'decimal' && /^%1\.%2\.?$/.test(second)
+          ? 'legal'
+          : WORD_NUMBER_FORMATS[kind]?.[text.replace('%1', '').trim()]
+      if (numberFormat && numberFormat !== 'decimal') format = { numberFormat }
+    }
+    const id = attr(definition, 'abstractNumId')
+    if (format && id) abstract.set(id, format)
+  }
+  const formats: ListFormats = new Map()
+  for (const num of descendants(root, 'num')) {
+    const format = abstract.get(attr(child(num, 'abstractNumId'), 'val') ?? '')
+    const id = attr(num, 'numId')
+    if (format && id) formats.set(id, format)
+  }
+  return formats
 }
 
 function readRunFormat(properties: Element | null): DocxRunFormat {
@@ -269,7 +397,12 @@ export function applyAnnotations(
         const format = annotations.paragraphs[Number(payload)]
         const block = node.parentElement?.closest(ALIGNABLE_BLOCKS)
         if (format && block instanceof HTMLElement) applyParagraphFormat(block, format)
-        else if (format?.align) losses.alignedParagraphs++
+        else {
+          // mammoth escribe los elementos de lista sin <p>: ahí solo se aprovecha el formato de la lista.
+          const item = node.parentElement?.closest('li')
+          if (format?.list && item) applyListFormat(item, format.list)
+          if (format?.align) losses.alignedParagraphs++
+        }
       } else if (kind === 'c') {
         const id = commentIds.get(payload)
         if (id) openComments.push(id)
@@ -293,9 +426,6 @@ export function applyAnnotations(
   return losses
 }
 
-/** Paso de la sangría del editor (ver editor/ParagraphFormat.ts): se guarda en pasos de 1,27 cm. */
-const INDENT_STEP_CM = 1.27
-
 function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): void {
   if (format.align) block.style.textAlign = format.align
   // En las listas, la sangría la pone la propia lista (numbering.xml): aplicarla otra vez la duplicaría.
@@ -304,12 +434,29 @@ function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): 
     block.setAttribute('data-indent', String(Math.round((format.indentLeft / INDENT_STEP_CM) * 1000) / 1000))
   }
   if (!inList && format.firstLine) block.style.textIndent = `${format.firstLine}cm`
+  // Fase 13: lo que lee la extensión ParagraphFormat (las mismas unidades que escribe).
+  if (format.spaceBefore !== undefined) block.style.marginTop = `${format.spaceBefore}pt`
+  if (format.spaceAfter !== undefined) block.style.marginBottom = `${format.spaceAfter}pt`
+  if (format.lineHeight) block.style.lineHeight = String(format.lineHeight)
+  if (format.indentRight) block.style.marginRight = `${format.indentRight}cm`
+  if (format.shading) block.setAttribute('data-shading', format.shading)
+  if (format.border) block.setAttribute('data-border', format.border)
+  if (format.tabStops) block.setAttribute('data-tab-stops', JSON.stringify(format.tabStops))
+  if (inList && format.list) applyListFormat(block, format.list)
   // Solo entre bloques del documento: en una tabla o una lista no hay hoja nueva que empezar.
   if (format.pageBreakBefore && block.parentElement === block.ownerDocument.body) {
     const pageBreak = block.ownerDocument.createElement('hr')
     pageBreak.setAttribute('data-page-break', '')
     block.before(pageBreak)
   }
+}
+
+/** Viñeta o formato de número en la lista que contiene `element` (la primera vez que se sabe). */
+function applyListFormat(element: HTMLElement, format: NonNullable<DocxParagraphFormat['list']>): void {
+  const list = element.closest('ul, ol')
+  if (!list || list.hasAttribute('data-bullet') || list.hasAttribute('data-number-format')) return
+  if ('bullet' in format && list.tagName === 'UL') list.setAttribute('data-bullet', format.bullet)
+  if ('numberFormat' in format && list.tagName === 'OL') list.setAttribute('data-number-format', format.numberFormat)
 }
 
 function wrapSegment(

@@ -8,10 +8,13 @@ import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
+import { CharStyle } from './CharStyle'
 import { CommentMark } from './CommentMark'
+import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
 import { ParagraphFormat } from './ParagraphFormat'
 import { SearchAndReplace } from './SearchAndReplace'
+import { Tab } from './Tab'
 
 /**
  * Lista única de extensiones. La usan el editor y las plantillas (para convertir
@@ -20,7 +23,7 @@ import { SearchAndReplace } from './SearchAndReplace'
 export function createWriterExtensions(): Extensions {
   return [
     StarterKit.configure({
-      heading: { levels: [1, 2, 3] },
+      heading: { levels: [1, 2, 3, 4, 5, 6] },
       link: { openOnClick: false }
     }),
     TextStyle,
@@ -39,6 +42,9 @@ export function createWriterExtensions(): Extensions {
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
     ParagraphFormat,
     PageBreak,
+    Tab,
+    CharStyle,
+    FormatPainter,
     CommentMark,
     SearchAndReplace
   ]

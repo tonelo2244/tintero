@@ -8,11 +8,21 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
-import { withHeaderFooter, withPageSetup, writerParts, type WriterContent, type WriterParts } from '../model/content'
+import {
+  withHeaderFooter,
+  withNumberedHeadings,
+  withPageSetup,
+  withStyles,
+  writerParts,
+  type WriterContent,
+  type WriterParts
+} from '../model/content'
 import type { CommandContext, WriterUi } from '../model/commands'
 import { runCommand } from '../model/commands'
+import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
+import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
@@ -25,6 +35,10 @@ import { PageSetupDialog } from './PageSetupDialog'
 import { Pagination } from './Pagination'
 import { PresentationPanel } from './PresentationPanel'
 import { Ruler } from './Ruler'
+import { StyleDialog } from './StyleDialog'
+import { StylesPanel } from './StylesPanel'
+import { TabStops } from './TabStops'
+import { TabStopsDialog } from './TabStopsDialog'
 import { WriterCommandsProvider } from './ribbon/commandContext'
 import { HomeTab } from './ribbon/HomeTab'
 import { InsertTab } from './ribbon/InsertTab'
@@ -56,11 +70,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   /** El contexto de los comandos cambia en cada render; los atajos de teclado leen siempre el último. */
   const commandContextRef = useRef<CommandContext | null>(null)
-  // Paginación y atajos solo hacen falta en pantalla: no cambian el esquema, así que no van en la lista común.
+  // Paginación, tabulaciones y atajos solo hacen falta en pantalla: no cambian el esquema, así que no van en la lista común.
   const extensions = useMemo(
     () => [
       ...createWriterExtensions(),
       Pagination,
+      TabStops,
       CommandShortcuts.configure({ getContext: () => commandContextRef.current })
     ],
     []
@@ -101,6 +116,22 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     editor?.commands.setPageGeometry(geometry)
   }, [editor, geometry])
 
+  const styles = parts.styles ?? DEFAULT_STYLES
+  const numberedHeadings = parts.numberedHeadings ?? false
+  const setStyles = useCallback(
+    (next: WriterStyle[]) => updateParts((current) => withStyles(current, next)),
+    [updateParts]
+  )
+  const documentCss = useMemo(() => stylesCss(styles, numberedHeadings), [styles, numberedHeadings])
+  // Un estilo más grande cambia la altura de los párrafos: hay que volver a repartir las páginas.
+  useEffect(() => {
+    editor?.storage.pagination.requestLayout?.()
+  }, [editor, documentCss])
+  const [stylesPanelOpen, setStylesPanelOpen] = useState(false)
+  /** Cuadro de estilo abierto: `null` cerrado; `{ styleId: undefined }` crea uno nuevo. */
+  const [styleDialog, setStyleDialog] = useState<{ styleId?: string } | null>(null)
+  const [tabStopsOpen, setTabStopsOpen] = useState(false)
+
   const toolbar = useWriterToolbarState(editor)
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
   const ai = useAiStatus()
@@ -114,6 +145,15 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
 
+  /** Los paneles laterales van en el mismo sitio: abrir uno cierra los demás. */
+  const closeSidePanels = () => {
+    comments.setOpen(false)
+    setHeaderFooterOpen(false)
+    setPageSetupOpen(false)
+    setStylesPanelOpen(false)
+    setTabStopsOpen(false)
+  }
+
   /** Lo que los comandos pueden pedir a esta pantalla (paneles, buscar, configuración de página). */
   const ui: WriterUi = {
     showMarks,
@@ -122,22 +162,36 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     addComment: comments.add,
     commentsOpen: comments.open,
     toggleComments: () => {
-      setHeaderFooterOpen(false) // los paneles van en el mismo sitio
-      setPageSetupOpen(false)
-      comments.setOpen(!comments.open)
+      const open = comments.open
+      closeSidePanels()
+      comments.setOpen(!open)
     },
     headerFooterOpen,
     toggleHeaderFooter: () => {
-      comments.setOpen(false)
-      setPageSetupOpen(false)
-      setHeaderFooterOpen((open) => !open)
+      const open = headerFooterOpen
+      closeSidePanels()
+      setHeaderFooterOpen(!open)
     },
     pageSetup,
     setPageSetup,
     openPageSetupDialog: () => {
-      comments.setOpen(false)
-      setHeaderFooterOpen(false)
+      closeSidePanels()
       setPageSetupOpen(true)
+    },
+    styles,
+    setStyles,
+    openStyleDialog: (styleId) => setStyleDialog({ styleId }),
+    stylesPanelOpen,
+    toggleStylesPanel: () => {
+      const open = stylesPanelOpen
+      closeSidePanels()
+      setStylesPanelOpen(!open)
+    },
+    numberedHeadings,
+    setNumberedHeadings: (numbered) => updateParts((current) => withNumberedHeadings(current, numbered)),
+    openTabStopsDialog: () => {
+      closeSidePanels()
+      setTabStopsOpen(true)
     }
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
@@ -220,7 +274,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       case 'insert':
         return <InsertTab commentCount={comments.count} />
       case 'layout':
-        return <LayoutTab showRuler={showRuler} onToggleRuler={() => setShowRuler((value) => !value)} />
+        return <LayoutTab state={toolbar} showRuler={showRuler} onToggleRuler={() => setShowRuler((value) => !value)} />
       case 'assistant':
         return (
           <WriterAssistantTab
@@ -314,6 +368,29 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           onClose={() => comments.setOpen(false)}
         />
       )}
+      {stylesPanelOpen && commandContext && (
+        <WriterCommandsProvider value={commandContext}>
+          <StylesPanel onClose={() => setStylesPanelOpen(false)} />
+        </WriterCommandsProvider>
+      )}
+      {styleDialog && editor && (
+        <StyleDialog
+          styles={styles}
+          styleId={styleDialog.styleId}
+          editor={editor}
+          onSave={(nextStyles, created) => {
+            setStyles(nextStyles)
+            // Como en Word: un estilo nuevo se aplica al párrafo desde el que se creó.
+            if (created) applyStyle(editor, created)
+          }}
+          onClose={() => setStyleDialog(null)}
+        />
+      )}
+      {tabStopsOpen && commandContext && (
+        <WriterCommandsProvider value={commandContext}>
+          <TabStopsDialog editor={commandContext.editor} onClose={() => setTabStopsOpen(false)} />
+        </WriterCommandsProvider>
+      )}
       {pageSetupOpen && (
         <PageSetupDialog pageSetup={pageSetup} onApply={setPageSetup} onClose={() => setPageSetupOpen(false)} />
       )}
@@ -345,6 +422,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               indents={toolbar?.indents ?? null}
               zoom={zoom}
               onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+              tabStops={toolbar?.paragraph.tabStops ?? []}
+              onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
               onIndentsChange={(indents) =>
                 editor?.chain().focus().setIndentCm(indents.left).setFirstLineIndent(indents.firstLine).run()
               }
@@ -380,6 +459,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         </div>
         {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
         <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
+        {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
+        <style>{documentCss}</style>
       </div>
     </EditorLayout>
   )

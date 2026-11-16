@@ -923,6 +923,40 @@ button {
   background: rgba(47, 90, 168, 0.18);
   outline: none;
 }
+/* Topes de tabulación: una "L" en la parte baja de la regla (como en Word); centrado y decimal, una "T". */
+.writer-ruler__tab {
+  position: absolute;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  margin-left: -1px;
+  padding: 0;
+  border: 0;
+  border-left: 2px solid #333;
+  border-bottom: 2px solid #333;
+  background: none;
+  cursor: pointer;
+}
+.writer-ruler__tab--right {
+  margin-left: -6px;
+  border-left: 0;
+  border-right: 2px solid #333;
+}
+.writer-ruler__tab--center,
+.writer-ruler__tab--decimal {
+  margin-left: -4px;
+  border-left: 0;
+  background: linear-gradient(#333, #333) center / 2px 100% no-repeat;
+}
+.writer-ruler__tab--decimal::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 1px;
+  width: 2px;
+  height: 2px;
+  background: #333;
+}
 .writer-ruler__marker {
   position: absolute;
   width: 0;
@@ -1195,48 +1229,11 @@ button {
   color: #111;
   min-height: var(--page-content-height, 24.7cm);
 }
-.writer-content p {
-  margin: 0 0 8pt;
-}
-.writer-content h1 {
-  font-size: 16pt;
-  color: #2f5496;
-  font-weight: 400;
-  margin: 18pt 0 6pt;
-}
-.writer-content h2 {
-  font-size: 13pt;
-  color: #2f5496;
-  font-weight: 400;
-  margin: 12pt 0 4pt;
-}
-.writer-content h3 {
-  font-size: 12pt;
-  color: #1f3763;
-  font-weight: 400;
-  margin: 10pt 0 4pt;
-}
-.writer-content p[data-style='title'] {
-  font-size: 28pt;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
-  margin-bottom: 4pt;
-}
-.writer-content p[data-style='subtitle'] {
-  font-size: 14pt;
-  color: #5a5a5a;
-  letter-spacing: 0.5px;
-  margin-bottom: 14pt;
-}
-.writer-content p[data-style='no-spacing'] {
-  margin: 0;
-}
-.writer-content p[data-style='quote'] {
-  font-style: italic;
-  color: #404040;
-  text-align: center;
-  margin: 12pt 1.5cm;
-}
+/*
+ * Párrafos, títulos y demás estilos no se pintan aquí: su aspecto sale de los estilos del documento
+ * (model/styles.ts -> stylesCss), que WriterEditor inyecta en un <style>. Aquí solo queda lo que no
+ * es un estilo de Word: listas, tablas, código, tabuladores...
+ */
 .writer-content ul,
 .writer-content ol {
   margin: 0 0 8pt;
@@ -1454,7 +1451,10 @@ button {
 .show-marks .writer-content p::after,
 .show-marks .writer-content h1::after,
 .show-marks .writer-content h2::after,
-.show-marks .writer-content h3::after {
+.show-marks .writer-content h3::after,
+.show-marks .writer-content h4::after,
+.show-marks .writer-content h5::after,
+.show-marks .writer-content h6::after {
   content: '¶';
   color: #8aa4d6;
   margin-left: 2px;
@@ -1463,7 +1463,7 @@ button {
 .style-gallery {
   display: flex;
   gap: 4px;
-  max-width: 640px;
+  max-width: 320px;
   overflow-x: auto;
   padding: 2px;
 }
@@ -1498,30 +1498,201 @@ button {
   white-space: nowrap;
   font-size: 11px;
 }
-.style-preview--h1 {
-  color: #2f5496;
-  font-size: 14px;
+.style-gallery__menu {
+  position: fixed;
+  z-index: 60;
 }
-.style-preview--h2 {
-  color: #2f5496;
+
+/* Panel de estilos */
+.writer-styles-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+.writer-styles-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+}
+.writer-styles-panel__item.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.writer-styles-panel__apply {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.writer-styles-panel__apply small {
+  color: var(--text-muted, #777);
+}
+.writer-styles-panel__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
   font-size: 12px;
 }
-.style-preview--h3 {
-  color: #1f3763;
+.writer-styles-panel__footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+}
+.writer-style-dialog__preview {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fff;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.writer-style-dialog__error {
+  color: #c0392b;
+  font-size: 12px;
+  margin: 0;
+}
+.writer-style-dialog__hint {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  margin: 0;
+}
+.writer-tab-stops__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.writer-tab-stops__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+/* Campos numéricos de la pestaña Disposición (sangría y espaciado exactos). */
+.ribbon-number-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 11px;
 }
-.style-preview--title {
-  font-size: 19px;
-  line-height: 1;
+.ribbon-number-fields__title {
+  font-weight: 600;
 }
-.style-preview--subtitle {
-  color: #5a5a5a;
-  font-size: 10px;
-  letter-spacing: 0.4px;
+.ribbon-number-fields .writer-page-setup__field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
-.style-preview--quote {
-  font-style: italic;
-  color: #404040;
+.ribbon-number-fields .writer-page-setup__input input {
+  width: 48px;
+}
+.list-option__symbol {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+}
+.menu-separator {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+.dropdown__spacer {
+  display: inline-block;
+  width: 0;
+}
+
+/* Copiar formato: el cursor avisa de que el siguiente clic o selección recibe el formato. */
+.writer-content.format-painter-active {
+  cursor: copy;
+}
+
+/* Tabulador: un hueco cuyo ancho calcula TabStops.ts; con relleno, una línea de puntos. */
+.writer-content .writer-tab {
+  display: inline-block;
+  width: 1.25cm;
+  /* Un hueco vacío no tendría alto: sin él no se verían los puntos del relleno. */
+  height: 0.9em;
+  white-space: pre;
+}
+.writer-content .writer-tab--dotted {
+  background-image: radial-gradient(circle, currentColor 0.6px, transparent 0.8px);
+  background-size: 4px 4px;
+  background-repeat: repeat-x;
+  background-position: 0 100%;
+}
+.show-marks .writer-content .writer-tab::before {
+  content: '→';
+  color: #8aa4d6;
+}
+
+/* Biblioteca de viñetas y formatos de número (mismos ids que model/paragraphFormat.ts). */
+.writer-content ul[data-bullet='circle'] {
+  list-style-type: circle;
+}
+.writer-content ul[data-bullet='square'] {
+  list-style-type: square;
+}
+.writer-content ul[data-bullet='dash'] {
+  list-style-type: '–  ';
+}
+.writer-content ul[data-bullet='arrow'] {
+  list-style-type: '➢  ';
+}
+.writer-content ul[data-bullet='check'] {
+  list-style-type: '✓  ';
+}
+@counter-style decimal-paren {
+  system: extends decimal;
+  suffix: ') ';
+}
+@counter-style lower-alpha-paren {
+  system: extends lower-alpha;
+  suffix: ') ';
+}
+.writer-content ol[data-number-format='decimal-paren'] {
+  list-style-type: decimal-paren;
+}
+.writer-content ol[data-number-format='lower-alpha'] {
+  list-style-type: lower-alpha;
+}
+.writer-content ol[data-number-format='lower-alpha-paren'] {
+  list-style-type: lower-alpha-paren;
+}
+.writer-content ol[data-number-format='upper-alpha'] {
+  list-style-type: upper-alpha;
+}
+.writer-content ol[data-number-format='lower-roman'] {
+  list-style-type: lower-roman;
+}
+.writer-content ol[data-number-format='upper-roman'] {
+  list-style-type: upper-roman;
+}
+/* Numeración legal (1., 1.1., 1.1.1.): contadores anidados; las sublistas la heredan. */
+.writer-content ol[data-number-format='legal'],
+.writer-content ol[data-number-format='legal'] ol {
+  counter-reset: legal;
+}
+.writer-content ol[data-number-format='legal'] li {
+  counter-increment: legal;
+}
+.writer-content ol[data-number-format='legal'] li::marker {
+  content: counters(legal, '.') '. ';
 }
 
 /* ===== Slides ===== */

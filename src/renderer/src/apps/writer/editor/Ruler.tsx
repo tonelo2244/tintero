@@ -1,5 +1,6 @@
-import { useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { orientedSize, type PageSetup } from '../model/pageSetup'
+import { useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react'
+import { formatCm, orientedSize, type PageSetup } from '../model/pageSetup'
+import type { TabStop } from '../model/paragraphFormat'
 import { clampIndents, dragDeltaCm, rulerTicks, RULER_STEP_CM, snapCm, type ParagraphIndents } from '../model/ruler'
 
 interface RulerProps {
@@ -9,6 +10,9 @@ interface RulerProps {
   zoom: number
   onMarginsChange(margins: { left: number; right: number }): void
   onIndentsChange(indents: ParagraphIndents): void
+  /** Topes de tabulación del párrafo (fase 13): clic en la regla añade uno, clic en un tope lo quita. */
+  tabStops: TabStop[]
+  onTabStopsChange(stops: TabStop[]): void
 }
 
 type Handle = 'marginLeft' | 'marginRight' | 'indentLeft' | 'firstLine'
@@ -34,7 +38,15 @@ interface Values {
  *
  * Cada marca es también un `slider` accesible: con el foco, las flechas la mueven 0,25 cm.
  */
-export function Ruler({ pageSetup, indents, zoom, onMarginsChange, onIndentsChange }: RulerProps) {
+export function Ruler({
+  pageSetup,
+  indents,
+  zoom,
+  onMarginsChange,
+  onIndentsChange,
+  tabStops,
+  onTabStopsChange
+}: RulerProps) {
   const [drag, setDrag] = useState<Drag | null>(null)
   const [preview, setPreview] = useState<Values | null>(null)
   const { width } = orientedSize(pageSetup)
@@ -115,8 +127,19 @@ export function Ruler({ pageSetup, indents, zoom, onMarginsChange, onIndentsChan
   const leftIndentAt = textStart + values.indents.left
   const firstLineAt = leftIndentAt + values.indents.firstLine
 
+  /** Como en Word: un clic en la zona de texto de la regla pone un tope izquierdo ahí. */
+  const addTabStop = (event: MouseEvent<HTMLDivElement>) => {
+    if (!indents || (event.target as HTMLElement).closest('[role="slider"], .writer-ruler__tab')) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = snapCm(((event.clientX - rect.left) / rect.width) * width - values.marginLeft)
+    if (position <= 0 || position >= contentWidth(values)) return
+    if (tabStops.some((stop) => Math.abs(stop.position - position) < 0.01)) return
+    const added: TabStop = { position, align: 'left' }
+    onTabStopsChange([...tabStops, added].sort((a, b) => a.position - b.position))
+  }
+
   return (
-    <div className="writer-ruler" style={{ width: `${width}cm` }} aria-label="Regla" role="group">
+    <div className="writer-ruler" style={{ width: `${width}cm` }} aria-label="Regla" role="group" onClick={addTabStop}>
       <div className="writer-ruler__margin" style={{ left: 0, width: `${textStart}cm` }} />
       <div className="writer-ruler__margin" style={{ left: `${textEnd}cm`, right: 0 }} />
       {rulerTicks(width, values.marginLeft).map((tick) => (
@@ -152,9 +175,28 @@ export function Ruler({ pageSetup, indents, zoom, onMarginsChange, onIndentsChan
           />
         </>
       )}
+      {indents &&
+        tabStops.map((stop) => (
+          <button
+            key={stop.position}
+            type="button"
+            className={`writer-ruler__tab writer-ruler__tab--${stop.align}`}
+            style={{ left: `${textStart + stop.position}cm` }}
+            title={`Tope ${TAB_LABELS[stop.align]} en ${formatCm(stop.position)} (clic para quitarlo)`}
+            aria-label={`Quitar el tope de ${formatCm(stop.position)}`}
+            onClick={() => onTabStopsChange(tabStops.filter((other) => other !== stop))}
+          />
+        ))}
       {drag && <div className="writer-ruler__guide" style={{ left: `${guideAt(drag.handle, values, width)}cm` }} />}
     </div>
   )
+}
+
+const TAB_LABELS: Record<TabStop['align'], string> = {
+  left: 'izquierdo',
+  center: 'centrado',
+  right: 'derecho',
+  decimal: 'decimal'
 }
 
 /** Un margen va de 0 a lo que deje 2 cm de texto (la misma regla que `withMargins`). */

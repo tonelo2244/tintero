@@ -8,6 +8,14 @@ import type { HeaderFooter, WriterContent } from '../content'
 import { annotateDocumentXml, applyAnnotations, type DocxAnnotations } from './directFormatting'
 import { defaultHeaderFooterIds, readComments, readHeaderFooter, readPageSetup, type DocxComment } from './docxParts'
 import { isDefaultPageSetup, type PageSetup } from '../pageSetup'
+import { isDefaultStyles } from '../styles'
+import {
+  CHARACTER_STYLE_CLASS,
+  PARAGRAPH_STYLE_CLASS,
+  readDocxStyles,
+  usedStyleIds,
+  type DocxStyleImport
+} from './docxStylesImport'
 
 /**
  * Importación de .docx en dos pasos:
@@ -30,10 +38,9 @@ const STYLE_MAP = [
   "p[style-name='Block Text'] => blockquote > p:fresh",
   "p[style-name='Intense Quote'] => blockquote > p:fresh",
   "p[style-name='HTML Preformatted'] => pre:separator('\\n')",
-  // El editor solo tiene Título 1 a 3: los niveles inferiores pasan a ser Título 3.
-  "p[style-name='Heading 4'] => h3:fresh",
-  "p[style-name='Heading 5'] => h3:fresh",
-  "p[style-name='Heading 6'] => h3:fresh",
+  "p[style-name='Heading 4'] => h4:fresh",
+  "p[style-name='Heading 5'] => h5:fresh",
+  "p[style-name='Heading 6'] => h6:fresh",
   // Por defecto mammoth descarta el subrayado; aquí lo conservamos.
   'u => u',
   // Salto de página (Ctrl+Intro en Word): pasa a ser el nodo pageBreak del editor.
@@ -62,7 +69,8 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
   const input = { arrayBuffer, buffer: arrayBuffer } as unknown as { arrayBuffer: ArrayBuffer }
 
   const result = await mammoth.convertToHtml(input, {
-    styleMap: STYLE_MAP,
+    // Los estilos propios del documento van delante: mammoth usa la primera regla que encaja.
+    styleMap: [...(parts?.styles?.styleMap ?? []), ...STYLE_MAP],
     // Conservar los párrafos vacíos: en un procesador de texto son espacio intencionado.
     ignoreEmptyParagraphs: false,
     convertImage: mammoth.images.imgElement(async (image) => {
@@ -83,6 +91,8 @@ export async function importDocx(bytes: Uint8Array, extensions: Extensions): Pro
   if (parts?.header) content.header = parts.header
   if (parts?.footer) content.footer = parts.footer
   if (parts?.pageSetup && !isDefaultPageSetup(parts.pageSetup)) content.pageSetup = parts.pageSetup
+  if (parts?.styles && !isDefaultStyles(parts.styles.styles)) content.styles = parts.styles.styles
+  if (parts?.styles?.numberedHeadings) content.numberedHeadings = true
   if (parts && parts.comments.length > 0) content.comments = parts.comments.map(({ comment }) => comment)
   return { content, warnings: describeLosses(lost) }
 }
@@ -95,6 +105,8 @@ interface DocxParts {
   footer: HeaderFooter | null
   comments: DocxComment[]
   pageSetup: PageSetup | null
+  /** Estilos de word/styles.xml (fase 13). */
+  styles: DocxStyleImport | null
 }
 
 /**
@@ -113,7 +125,8 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
   const documentXml = await readText(WORD_DOCUMENT)
   if (!documentXml) return null
 
-  const { xml, annotations } = annotateDocumentXml(documentXml, await readText('word/styles.xml'))
+  const stylesXml = await readText('word/styles.xml')
+  const { xml, annotations } = annotateDocumentXml(documentXml, stylesXml, await readText('word/numbering.xml'))
   zip.file(WORD_DOCUMENT, xml)
 
   const rels = readRelationships(parseOptionalXml(await readText(relsPathFor(WORD_DOCUMENT))), WORD_DOCUMENT)
@@ -131,6 +144,7 @@ async function readDocxParts(bytes: Uint8Array): Promise<DocxParts | null> {
     header: readHeaderFooter(await readPart(header)),
     footer: readHeaderFooter(await readPart(footer)),
     pageSetup: readPageSetup(documentRoot),
+    styles: readDocxStyles(stylesXml, usedStyleIds(documentRoot)),
     comments: commentsTarget
       ? readComments(parseOptionalXml(await readText(commentsTarget)), () => createId('comment'))
       : []
@@ -155,11 +169,52 @@ export function prepareHtml(html: string, transform?: (body: HTMLElement) => voi
       paragraph.removeAttribute('class')
     })
   }
+  applyStyleClasses(dom.body)
+  convertTabs(dom.body)
   dom.querySelectorAll('img[src=""]').forEach((image) => image.remove())
   normalizePageBreaks(dom.body)
   // mammoth añade enlaces de vuelta en las notas al pie ("↑"); en el editor no llevan a ningún sitio.
   dom.querySelectorAll('a[href^="#"]').forEach((link) => link.replaceWith(...link.childNodes))
   return dom.body.innerHTML
+}
+
+/** Clases que pone el mapa de estilos (tstyle-<id>, tchar-<id>) -> atributos que lee el editor. */
+function applyStyleClasses(body: HTMLElement): void {
+  for (const element of body.querySelectorAll<HTMLElement>(
+    `[class*="${PARAGRAPH_STYLE_CLASS}"], [class*="${CHARACTER_STYLE_CLASS}"]`
+  )) {
+    for (const className of [...element.classList]) {
+      if (className.startsWith(PARAGRAPH_STYLE_CLASS)) {
+        element.setAttribute('data-style', className.slice(PARAGRAPH_STYLE_CLASS.length))
+      } else if (className.startsWith(CHARACTER_STYLE_CLASS)) {
+        element.setAttribute('data-char-style', className.slice(CHARACTER_STYLE_CLASS.length))
+      } else continue
+      element.classList.remove(className)
+    }
+    if (element.classList.length === 0) element.removeAttribute('class')
+  }
+}
+
+/** mammoth escribe el tabulador de Word como "\t"; en el editor es un nodo propio (con su ancho). */
+function convertTabs(body: HTMLElement): void {
+  const walker = body.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+  const texts: Text[] = []
+  while (walker.nextNode()) {
+    const text = walker.currentNode as Text
+    if (text.data.includes('\t') && !text.parentElement?.closest('pre')) texts.push(text)
+  }
+  for (const text of texts) {
+    const fragment = body.ownerDocument.createDocumentFragment()
+    text.data.split('\t').forEach((part, index) => {
+      if (index > 0) {
+        const tab = body.ownerDocument.createElement('span')
+        tab.setAttribute('data-tab', '')
+        fragment.appendChild(tab)
+      }
+      if (part) fragment.appendChild(body.ownerDocument.createTextNode(part))
+    })
+    text.replaceWith(fragment)
+  }
 }
 
 /**

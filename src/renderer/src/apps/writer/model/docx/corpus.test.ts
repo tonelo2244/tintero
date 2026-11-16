@@ -81,3 +81,36 @@ describe.each(['word-pagina.docx', 'libreoffice-pagina.docx'])('corpus: %s (fase
     expect(findBlock(content.doc, 'Sangría francesa')?.attrs).toMatchObject({ indent: 1, firstLineIndent: -1.27 })
   })
 })
+
+describe.each(['word-estilos.docx', 'libreoffice-estilos.docx'])('corpus: %s (fase 13)', (name) => {
+  it('toma los estilos del archivo: el Título 1 modificado y los propios que se usan', async () => {
+    const { content } = await importDocx(fixture(name), createWriterExtensions())
+    const styles = content.styles ?? []
+    expect(styles.find((style) => style.id === 'heading-1')?.props).toMatchObject({ fontSize: 20, color: '#7b1fa2' })
+    const notice = styles.find((style) => style.name === 'Aviso')
+    expect(notice).toMatchObject({ type: 'paragraph', props: { italic: true, color: '#c0392b', spaceAfter: 4 } })
+    const key = styles.find((style) => style.name === 'Clave')
+    expect(key).toMatchObject({ type: 'character', props: { bold: true } })
+    const paragraph = findBlock(content.doc, 'Ojo: importante')
+    expect(paragraph?.attrs?.blockStyle).toBe(notice?.id)
+    const marked = paragraph?.content?.find((node) => node.text === 'importante')
+    expect(markAttrs(marked, 'charStyle')?.styleId).toBe(key?.id)
+    expect((content.doc.content ?? []).find((block) => textOf(block) === 'Detalle')).toMatchObject({
+      type: 'heading',
+      attrs: { level: 5 }
+    })
+  })
+
+  it('lee tabulaciones con relleno, espaciado, sangría derecha, bordes y sombreado', async () => {
+    const { content } = await importDocx(fixture(name), createWriterExtensions())
+    const index = (content.doc.content ?? []).find((block) => block.content?.some((node) => node.type === 'tab'))
+    expect(index?.attrs?.tabStops).toEqual([{ position: 8, align: 'right', leader: 'dot' }])
+    expect(findBlock(content.doc, 'Párrafo con borde y sombreado')?.attrs).toMatchObject({
+      spaceBefore: 6,
+      spaceAfter: 0,
+      indentRight: 2,
+      border: 'box',
+      shading: '#ffeeaa'
+    })
+  })
+})

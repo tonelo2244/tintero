@@ -1,6 +1,7 @@
 import { useEditorState, type Editor } from '@tiptap/react'
 import { isInHeaderRow } from '../model/commands'
-import { activeParagraphStyleId } from '../model/paragraphStyles'
+import { activeCharStyleId, activeParagraphStyleId } from '../model/paragraphStyles'
+import type { TabStop } from '../model/paragraphFormat'
 import type { ParagraphIndents } from '../model/ruler'
 import { INDENT_STEP_CM } from './ParagraphFormat'
 
@@ -34,9 +35,15 @@ export function useWriterToolbarState(editor: Editor | null) {
         fontSize: (textStyle.fontSize as string | undefined) ?? null,
         color: (textStyle.color as string | undefined) ?? null,
         highlight: (current.getAttributes('highlight').color as string | undefined) ?? null,
+        shading: (current.state.selection.$from.parent.attrs.shading as string | null | undefined) ?? null,
         align: ALIGNMENTS.find((align) => current.isActive({ textAlign: align })) ?? 'left',
-        lineHeight: (current.getAttributes('paragraph').lineHeight as string | undefined) ?? null,
         paragraphStyleId: activeParagraphStyleId(current),
+        charStyleId: activeCharStyleId(current),
+        // Formato de párrafo de la fase 13: los menús marcan con ✓ lo que tiene el párrafo.
+        paragraph: paragraphAttrs(current),
+        bulletStyle: (current.getAttributes('bulletList').bulletStyle as string | undefined) ?? null,
+        numberFormat: (current.getAttributes('orderedList').numberFormat as string | undefined) ?? null,
+        formatPainter: !!current.storage.formatPainter?.copied,
         indents: paragraphIndents(current),
         table: {
           active: current.isActive('table'),
@@ -50,6 +57,19 @@ export function useWriterToolbarState(editor: Editor | null) {
       }
     }
   })
+}
+
+/** Atributos del bloque del cursor que enseñan la cinta y la pestaña Disposición. */
+function paragraphAttrs(editor: Editor) {
+  const attrs = editor.state.selection.$from.parent.attrs
+  return {
+    lineHeight: (attrs.lineHeight as string | null | undefined) ?? null,
+    spaceBefore: (attrs.spaceBefore as number | null | undefined) ?? null,
+    spaceAfter: (attrs.spaceAfter as number | null | undefined) ?? null,
+    indentRight: (attrs.indentRight as number | null | undefined) ?? null,
+    border: (attrs.border as string | null | undefined) ?? null,
+    tabStops: (attrs.tabStops as TabStop[] | null | undefined) ?? []
+  }
 }
 
 /**

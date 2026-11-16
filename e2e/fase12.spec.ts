@@ -44,7 +44,7 @@ test('Texto: página horizontal con márgenes estrechos, salto de página y sang
   await page.getByRole('button', { name: 'Guardar (Ctrl/Cmd+S)' }).click()
   await expect.poll(() => readFile(filePath, 'utf8').catch(() => '')).toContain('landscape')
   const saved = JSON.parse(await readFile(filePath, 'utf8'))
-  expect(saved.version).toBe(4)
+  expect(saved.version).toBeGreaterThanOrEqual(4)
   expect(saved.content.pageSetup).toMatchObject({ orientation: 'landscape', margins: { top: 1.27, left: 1.27 } })
   expect(saved.content.doc.content.map((node: { type: string }) => node.type)).toEqual([
     'paragraph',

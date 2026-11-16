@@ -165,6 +165,54 @@ def word_page_layout(path):
     document.save(path)
 
 
+def word_styles(path):
+    """Fase 13: estilos modificados y propios, tabulaciones con relleno, espaciado, bordes y sombreado."""
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.enum.text import WD_TAB_ALIGNMENT, WD_TAB_LEADER
+
+    document = Document()
+    heading = document.styles["Heading 1"]
+    heading.font.size = Pt(20)
+    heading.font.color.rgb = RGBColor(0x7B, 0x1F, 0xA2)
+
+    notice = document.styles.add_style("Aviso", WD_STYLE_TYPE.PARAGRAPH)
+    notice.base_style = document.styles["Normal"]
+    notice.font.italic = True
+    notice.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
+    notice.paragraph_format.space_after = Pt(4)
+    key = document.styles.add_style("Clave", WD_STYLE_TYPE.CHARACTER)
+    key.font.bold = True
+
+    document.add_paragraph("Introducción", style="Heading 1")
+    paragraph = document.add_paragraph("Ojo: ", style="Aviso")
+    paragraph.add_run("importante", style="Clave")
+    document.add_paragraph("Detalle", style="Heading 5")
+
+    index = document.add_paragraph("Capítulo\t12")
+    index.paragraph_format.tab_stops.add_tab_stop(Cm(8), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+
+    boxed = document.add_paragraph("Párrafo con borde y sombreado")
+    boxed.paragraph_format.space_before = Pt(6)
+    boxed.paragraph_format.space_after = Pt(0)
+    boxed.paragraph_format.right_indent = Cm(2)
+    properties = boxed._p.get_or_add_pPr()
+    borders = OxmlElement("w:pBdr")
+    for side in ("top", "left", "bottom", "right"):
+        line = OxmlElement(f"w:{side}")
+        line.set(qn("w:val"), "single")
+        line.set(qn("w:sz"), "6")
+        line.set(qn("w:space"), "1")
+        line.set(qn("w:color"), "595959")
+        borders.append(line)
+    properties.append(borders)
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:val"), "clear")
+    shading.set(qn("w:color"), "auto")
+    shading.set(qn("w:fill"), "FFEEAA")
+    properties.append(shading)
+    document.save(path)
+
+
 def libreoffice_copy(source, target, extension):
     """Abre el archivo con LibreOffice y lo vuelve a guardar: otro programa, otro XML."""
     with tempfile.TemporaryDirectory() as folder:
@@ -179,10 +227,12 @@ def libreoffice_copy(source, target, extension):
 if __name__ == "__main__":
     word_document(HERE / "word-formato-directo.docx")
     word_page_layout(HERE / "word-pagina.docx")
+    word_styles(HERE / "word-estilos.docx")
     excel_workbook(HERE / "excel-formato.xlsx")
     powerpoint_presentation(HERE / "powerpoint-tema.pptx")
     libreoffice_copy(HERE / "word-formato-directo.docx", HERE / "libreoffice-formato-directo.docx", "docx")
     libreoffice_copy(HERE / "word-pagina.docx", HERE / "libreoffice-pagina.docx", "docx")
+    libreoffice_copy(HERE / "word-estilos.docx", HERE / "libreoffice-estilos.docx", "docx")
     libreoffice_copy(HERE / "excel-formato.xlsx", HERE / "libreoffice-formato.xlsx", "xlsx")
     libreoffice_copy(HERE / "powerpoint-tema.pptx", HERE / "libreoffice-tema.pptx", "pptx")
     print("Corpus regenerado en", HERE)
