@@ -41,6 +41,7 @@ function setup(html: string) {
     setPageSetup: (next) => {
       pageSetup = next
     },
+    hasSections: false,
     openPageSetupDialog: () => calls.push('pageSetupDialog'),
     get styles() {
       return styles

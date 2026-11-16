@@ -1,5 +1,7 @@
 import { attr, child, descendants, path } from '@/core/office/xml'
 import { cssFontFamilyFor } from '@/ui/fonts'
+import type { PageSetup } from '../pageSetup'
+import { readSectionSetup } from './docxParts'
 import {
   BULLET_STYLES,
   INDENT_STEP_CM,
@@ -63,6 +65,11 @@ export interface DocxParagraphFormat {
   tabStops?: TabStop[]
   /** Formato de la lista a la que pertenece (solo el primer nivel; los anidados siguen la rotación). */
   list?: { bullet: string } | { numberFormat: NumberFormat }
+  /**
+   * El párrafo cierra una sección (lleva `w:sectPr`): detrás va un salto de sección con la hoja de
+   * la sección siguiente (fase 15).
+   */
+  nextSection?: PageSetup
 }
 
 export interface DocxAnnotations {
@@ -132,10 +139,18 @@ export function annotateDocumentXml(
     }
   }
 
+  // Secciones: Word guarda la hoja de cada una al final (en el último párrafo, y la última en el
+  // cuerpo). Tintero la guarda en el salto que la abre: la del párrafo n es la sección n + 1.
+  const sections = descendants(root, 'sectPr')
   for (const paragraph of descendants(root, 'p')) {
     const format = readParagraphFormat(child(paragraph, 'pPr'), listFormats)
+    const sectionIndex = sections.indexOf(child(child(paragraph, 'pPr'), 'sectPr') as Element)
+    const nextSection = sectionIndex >= 0 ? readSectionSetup(sections[sectionIndex + 1] ?? null) : null
+    if (nextSection) format.nextSection = nextSection
     if (Object.keys(format).length === 0) continue
-    const firstText = descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
+    let firstText = descendants(paragraph, 't').find((text) => ownParagraph(text) === paragraph)
+    // Word suele cerrar la sección en un párrafo vacío: se le da un texto vacío para llevar la marca.
+    if (!firstText && nextSection) firstText = appendEmptyRun(paragraph)
     if (!firstText) continue // párrafo vacío: ni alineación ni sangría se notan
     const id = paragraphs.push(format) - 1
     firstText.textContent = `${marker('p', String(id))}${firstText.textContent ?? ''}`
@@ -146,6 +161,16 @@ export function annotateDocumentXml(
   for (const end of descendants(root, 'commentRangeEnd')) insertMarkerRun(end, marker('C', attr(end, 'id') ?? ''))
 
   return { xml: new XMLSerializer().serializeToString(document), annotations: { formats, paragraphs } }
+}
+
+/** Añade `<w:r><w:t/></w:r>` al párrafo y devuelve el `w:t`. */
+function appendEmptyRun(paragraph: Element): Element {
+  const namespace = paragraph.namespaceURI
+  const run = paragraph.ownerDocument.createElementNS(namespace, 'w:r')
+  const text = paragraph.ownerDocument.createElementNS(namespace, 'w:t')
+  run.appendChild(text)
+  paragraph.appendChild(run)
+  return text
 }
 
 /** Párrafo al que pertenece un texto (un cuadro de texto puede tener párrafos dentro de otro). */
@@ -448,6 +473,12 @@ function applyParagraphFormat(block: HTMLElement, format: DocxParagraphFormat): 
     const pageBreak = block.ownerDocument.createElement('hr')
     pageBreak.setAttribute('data-page-break', '')
     block.before(pageBreak)
+  }
+  if (format.nextSection && block.parentElement === block.ownerDocument.body) {
+    const sectionBreak = block.ownerDocument.createElement('hr')
+    sectionBreak.setAttribute('data-section-break', '')
+    sectionBreak.setAttribute('data-page-setup', JSON.stringify(format.nextSection))
+    block.after(sectionBreak)
   }
 }
 

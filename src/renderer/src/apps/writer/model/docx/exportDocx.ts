@@ -15,6 +15,7 @@ import {
   PageNumber,
   PageOrientation,
   Paragraph,
+  SectionType,
   ShadingType,
   Tab,
   TabStopType,
@@ -55,6 +56,7 @@ import {
 import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
 import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
+import { documentSections, SECTION_BREAK } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
 const INDENT_STEP_TWIPS = 720 // 1,27 cm, el mismo paso que la sangría del editor
@@ -104,8 +106,20 @@ interface ListContext {
 export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const comments = content.comments ?? []
   const pageSetup = content.pageSetup ?? DEFAULT_PAGE_SETUP
+  // Un grupo de bloques por sección: el salto de sección (fase 15) es una sección nueva de Word.
+  const { setups, sectionOf } = documentSections(
+    (content.doc.content ?? []).map((block) => ({ type: block.type ?? '', attrs: block.attrs })),
+    pageSetup
+  )
+  const groups = setups.map((): JSONContent[] => [])
+  ;(content.doc.content ?? []).forEach((block, index) => {
+    if (block.type !== SECTION_BREAK) groups[sectionOf[index]].push(block)
+  })
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
-  const children = converter.blocks(content.doc.content ?? [])
+  const sectionChildren = groups.map((blocks, index) => {
+    converter.setContentWidth(contentWidthCm(setups[index]))
+    return converter.blocks(blocks)
+  })
   const document = new Document({
     creator: 'Tintero',
     // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
@@ -126,19 +140,23 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
         ...(content.numberedHeadings ? [{ reference: HEADINGS_NUMBERING_REFERENCE, levels: headingLevels() }] : [])
       ]
     },
-    sections: [
-      {
-        properties: { page: pageProperties(pageSetup) },
+    sections: setups.map((setup, index) => ({
+      properties: {
+        page: pageProperties(setup),
+        ...(index > 0 && { type: SectionType.NEXT_PAGE })
+      },
+      // Solo la primera: en Word, una sección sin encabezado propio usa el de la anterior.
+      ...(index === 0 && {
         headers: content.header
           ? { default: new Header({ children: headerFooterParagraphs(content.header) }) }
           : undefined,
         footers: content.footer
           ? { default: new Footer({ children: headerFooterParagraphs(content.footer) }) }
-          : undefined,
-        // Word exige al menos un párrafo por sección.
-        children: children.length > 0 ? children : [new Paragraph({})]
-      }
-    ]
+          : undefined
+      }),
+      // Word exige al menos un párrafo por sección.
+      children: sectionChildren[index].length > 0 ? sectionChildren[index] : [new Paragraph({})]
+    }))
   })
   return new Uint8Array(await Packer.toArrayBuffer(document))
 }
@@ -159,15 +177,20 @@ class DocxConverter {
   private readonly pendingCommentTexts = new Map<string, number>()
   private readonly totalCommentTexts = new Map<string, number>()
   /** Ancho útil de la hoja: lo que ocupan las tablas y lo máximo que puede medir una imagen. */
-  private readonly contentWidthTwips: number
-  private readonly maxImageWidthPx: number
+  private contentWidthTwips = 0
+  private maxImageWidthPx = 0
 
   constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
-    this.contentWidthTwips = twips(contentWidthCm)
-    this.maxImageWidthPx = Math.round(contentWidthCm * PX_PER_CM)
+    this.setContentWidth(contentWidthCm)
     this.commentNumbers = new Map(comments.map((comment, index) => [comment.id, index]))
     countCommentTexts(doc, this.totalCommentTexts)
     for (const [id, count] of this.totalCommentTexts) this.pendingCommentTexts.set(id, count)
+  }
+
+  /** Cada sección tiene su ancho útil (una horizontal es más ancha). */
+  setContentWidth(contentWidthCm: number): void {
+    this.contentWidthTwips = twips(contentWidthCm)
+    this.maxImageWidthPx = Math.round(contentWidthCm * PX_PER_CM)
   }
 
   blocks(nodes: JSONContent[], list?: ListContext): DocxBlock[] {

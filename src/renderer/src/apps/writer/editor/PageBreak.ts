@@ -1,5 +1,5 @@
-import { mergeAttributes, Node } from '@tiptap/core'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { mergeAttributes, Node, type ChainedCommands, type JSONContent } from '@tiptap/core'
+import { NodeSelection, TextSelection, type EditorState } from '@tiptap/pm/state'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -37,24 +37,31 @@ export const PageBreak = Node.create({
     return {
       setPageBreak:
         () =>
-        ({ chain, state }) => {
-          const { $to } = state.selection
-          // Al final del documento hace falta un párrafo detrás: la hoja nueva necesita dónde escribir.
-          const atDocumentEnd = $to.after(1) === state.doc.content.size
-          const content = atDocumentEnd ? [{ type: this.name }, { type: 'paragraph' }] : [{ type: this.name }]
-          return chain()
-            .insertContent(content)
-            .command(({ tr }) => {
-              // insertContent deja a veces seleccionado el salto (selección de nodo): lo siguiente que
-              // escribieras lo sustituiría. El cursor va al principio de la hoja nueva, como en Word.
-              const { selection } = tr
-              if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
-                tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to), 1))
-              }
-              return true
-            })
-            .run()
-        }
+        ({ chain, state }) =>
+          insertBreak(chain, state, { type: this.name })
     }
   }
 })
+
+/**
+ * Inserta un salto (de página o de sección) donde está el cursor, partiendo el párrafo si hace
+ * falta, y deja el cursor al principio de lo que va detrás, como en Word.
+ */
+export function insertBreak(chain: () => ChainedCommands, state: EditorState, node: JSONContent): boolean {
+  const { $to } = state.selection
+  // Al final del documento hace falta un párrafo detrás: la hoja nueva necesita dónde escribir.
+  const atDocumentEnd = $to.after(1) === state.doc.content.size
+  const content = atDocumentEnd ? [node, { type: 'paragraph' }] : [node]
+  return chain()
+    .insertContent(content)
+    .command(({ tr }) => {
+      // insertContent deja a veces seleccionado el salto (selección de nodo): lo siguiente que
+      // escribieras lo sustituiría.
+      const { selection } = tr
+      if (selection instanceof NodeSelection && selection.node.type.name === node.type) {
+        tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to), 1))
+      }
+      return true
+    })
+    .run()
+}

@@ -13,6 +13,8 @@ interface RulerProps {
   /** Topes de tabulación del párrafo (fase 13): clic en la regla añade uno, clic en un tope lo quita. */
   tabStops: TabStop[]
   onTabStopsChange(stops: TabStop[]): void
+  /** Px desde el borde izquierdo del lienzo: con secciones de distinto ancho, la hoja va centrada. */
+  offset?: number
 }
 
 type Handle = 'marginLeft' | 'marginRight' | 'indentLeft' | 'firstLine'
@@ -39,6 +41,7 @@ interface Values {
  * Cada marca es también un `slider` accesible: con el foco, las flechas la mueven 0,25 cm.
  */
 export function Ruler({
+  offset = 0,
   pageSetup,
   indents,
   zoom,
@@ -139,7 +142,13 @@ export function Ruler({
   }
 
   return (
-    <div className="writer-ruler" style={{ width: `${width}cm` }} aria-label="Regla" role="group" onClick={addTabStop}>
+    <div
+      className="writer-ruler"
+      style={{ width: `${width}cm`, marginLeft: offset }}
+      aria-label="Regla"
+      role="group"
+      onClick={addTabStop}
+    >
       <div className="writer-ruler__margin" style={{ left: 0, width: `${textStart}cm` }} />
       <div className="writer-ruler__margin" style={{ left: `${textEnd}cm`, right: 0 }} />
       {rulerTicks(width, values.marginLeft).map((tick) => (

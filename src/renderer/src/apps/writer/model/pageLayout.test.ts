@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { cssContent, headerFooterText, pageOfPosition, paginate, printPageCss } from './pageLayout'
+import {
+  cssContent,
+  headerFooterText,
+  pageOfPosition,
+  paginate,
+  paginateSections,
+  printPageCss,
+  type PageLayout
+} from './pageLayout'
 import { DEFAULT_PAGE_SETUP, withOrientation } from './pageSetup'
 
 // Números redondos para leer los tests: hojas de 100 de alto útil, cada 150 (50 de márgenes y hueco).
@@ -14,21 +22,24 @@ const blocks = (...heights: number[]) => {
   })
 }
 
+/** Los saltos sin el número de hoja, para leer los tests con menos ruido. */
+const breaksOf = (layout: PageLayout) => layout.breaks.map(({ page: _page, ...rest }) => rest)
+
 describe('paginate', () => {
   it('un documento corto ocupa una hoja y no tiene saltos', () => {
-    expect(paginate(blocks(20, 20, 20), PITCH, CONTENT)).toEqual({ breaks: [], pageCount: 1 })
+    expect(paginate(blocks(20, 20, 20), PITCH, CONTENT)).toMatchObject({ breaks: [], pageCount: 1 })
   })
 
   it('el bloque que no cabe entero baja al principio de la hoja siguiente', () => {
     // 0-40, 50-90, 100-140: el tercero empieza fuera del área útil (>= 98 con la holgura).
     const layout = paginate(blocks(40, 40, 40), PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 2, shift: 50 }])
+    expect(breaksOf(layout)).toEqual([{ index: 2, shift: 50 }])
     expect(layout.pageCount).toBe(2)
   })
 
   it('un bloque que cruza el final de la hoja también baja', () => {
     // 0-60 y 70-110: el segundo se saldría por abajo.
-    expect(paginate(blocks(60, 40), PITCH, CONTENT).breaks).toEqual([{ index: 1, shift: 80 }])
+    expect(breaksOf(paginate(blocks(60, 40), PITCH, CONTENT))).toEqual([{ index: 1, shift: 80 }])
   })
 
   it('los saltos se acumulan de hoja en hoja', () => {
@@ -40,20 +51,20 @@ describe('paginate', () => {
 
   it('un bloque más alto que una hoja no se mueve si ya está arriba', () => {
     const layout = paginate(blocks(250), PITCH, CONTENT)
-    expect(layout.breaks).toEqual([])
+    expect(breaksOf(layout)).toEqual([])
     expect(layout.pageCount).toBe(2)
   })
 
   it('un salto de página manda el bloque siguiente a la hoja nueva aunque quepa', () => {
     const [first, second, third] = blocks(20, 20, 20)
     const layout = paginate([first, { ...second, breakBefore: true }, third], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, shift: 120 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, shift: 120 }])
     expect(layout.pageCount).toBe(2)
   })
 
   it('un salto de página al principio de una hoja no deja otra en blanco', () => {
     const layout = paginate([{ top: 0, bottom: 20, breakBefore: true }], PITCH, CONTENT)
-    expect(layout).toEqual({ breaks: [], pageCount: 1 })
+    expect(layout).toMatchObject({ breaks: [], pageCount: 1 })
   })
 
   /** Un párrafo de `count` renglones de 10 que empieza en `top`. */
@@ -65,30 +76,30 @@ describe('paginate', () => {
   it('un párrafo que no cabe se parte por el renglón que ya no entra', () => {
     // 0-60 y luego un párrafo de 8 renglones en 70-150: caben 70-80 y 80-90 (hasta 98).
     const layout = paginate([{ top: 0, bottom: 60 }, paragraph(70, 8)], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, line: 2, shift: 60 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, line: 2, shift: 60 }])
     expect(layout.pageCount).toBe(2)
   })
 
   it('no deja un renglón huérfano al pie: si solo cabe uno, baja el párrafo entero', () => {
     const layout = paginate([{ top: 0, bottom: 75 }, paragraph(80, 6)], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, shift: 70 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, shift: 70 }])
   })
 
   it('no deja un renglón viudo arriba: pasan al menos dos', () => {
     // Caben 4 de 5 renglones (50-90), pero pasarían solo uno: se parte en el 3.
     const layout = paginate([{ top: 0, bottom: 40 }, paragraph(50, 5)], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, line: 3, shift: 70 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, line: 3, shift: 70 }])
   })
 
   it('un párrafo de menos de cuatro renglones no se parte', () => {
     const layout = paginate([{ top: 0, bottom: 70 }, paragraph(80, 3)], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, shift: 70 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, shift: 70 }])
   })
 
   it('un párrafo más largo que una hoja se parte varias veces', () => {
     const layout = paginate([paragraph(0, 25)], PITCH, CONTENT)
     // 9 renglones por hoja (0-90; el décimo acabaría en 100 > 98).
-    expect(layout.breaks).toEqual([
+    expect(breaksOf(layout)).toEqual([
       { index: 0, line: 9, shift: 60 },
       { index: 0, line: 18, shift: 60 }
     ])
@@ -105,12 +116,12 @@ describe('paginate', () => {
       PITCH,
       CONTENT
     )
-    expect(layout.breaks).toEqual([{ index: 1, shift: 85 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, shift: 85 }])
   })
 
   it('un título junto a un párrafo que se parte se queda con sus dos primeros renglones', () => {
     const layout = paginate([{ top: 0, bottom: 40, keepWithNext: true }, paragraph(50, 8)], PITCH, CONTENT)
-    expect(layout.breaks).toEqual([{ index: 1, line: 4, shift: 60 }])
+    expect(breaksOf(layout)).toEqual([{ index: 1, line: 4, shift: 60 }])
   })
 
   it('la fila de encabezado repetida empuja también lo que sigue', () => {
@@ -122,8 +133,46 @@ describe('paginate', () => {
     ]
     const layout = paginate(rows, PITCH, CONTENT)
     // La fila 2 baja: el encabezado repetido ocupa 150-170 y ella 170-220.
-    expect(layout.breaks).toEqual([{ index: 2, shift: 90 }])
+    expect(breaksOf(layout)).toEqual([{ index: 2, shift: 90 }])
     expect(layout.pageCount).toBe(2)
+  })
+
+  it('cada sección tiene su alto de hoja y su primer bloque empieza hoja', () => {
+    const portrait = { contentHeight: 100, marginTop: 20, marginBottom: 20 }
+    const landscape = { contentHeight: 60, marginTop: 10, marginBottom: 10 }
+    const layout = paginateSections(
+      [
+        { top: 0, bottom: 30 },
+        { top: 40, bottom: 70, section: 1 },
+        { top: 80, bottom: 110, section: 1 }
+      ],
+      [portrait, landscape],
+      10
+    )
+    // Hoja 2 (horizontal): 0 + 100 + 20 + 10 + 10 = 140; la 3, 140 + 60 + 10 + 10 + 10 = 230.
+    expect(layout.pages).toEqual([
+      { top: 0, section: 0 },
+      { top: 140, section: 1 },
+      { top: 230, section: 1 }
+    ])
+    expect(layout.breaks).toEqual([
+      { index: 1, shift: 100, page: 1 },
+      { index: 2, shift: 50, page: 2 }
+    ])
+  })
+
+  it('cuenta las hojas que ocupa un bloque más alto que una y no deja una vacía de más', () => {
+    expect(paginate([{ top: 0, bottom: 120 }], PITCH, CONTENT).pageCount).toBe(1)
+    expect(
+      paginate(
+        [
+          { top: 0, bottom: 230 },
+          { top: 235, bottom: 245 }
+        ],
+        PITCH,
+        CONTENT
+      ).pageCount
+    ).toBe(2)
   })
 
   it('pageOfPosition dice en qué hoja está una posición del documento', () => {

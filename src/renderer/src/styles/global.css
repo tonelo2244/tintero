@@ -914,12 +914,34 @@ button {
 }
 
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
-.writer-content hr.writer-page-break {
+.writer-content hr.writer-page-break,
+.writer-content hr.writer-section-break {
   position: relative;
   border: 0;
   height: 0;
   margin: 0;
   overflow: visible;
+}
+/* Salto de sección: igual, con su rótulo (como la línea doble de Word). */
+.show-marks .writer-content hr.writer-section-break::after,
+.writer-content hr.writer-section-break.ProseMirror-selectednode::after,
+.writer-canvas--draft .writer-content hr.writer-section-break::after {
+  content: 'Salto de sección (página siguiente)';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  border-top: 3px double #8aa4d6;
+  font-size: 9pt;
+  line-height: 1;
+  color: #8aa4d6;
+  padding-top: 2px;
+  pointer-events: none;
+}
+/* Bloques de una sección con otra hoja: desplazados y con su ancho (la paginación pone los valores). */
+.writer-content > .writer-section-block {
+  position: relative;
+  box-sizing: border-box;
 }
 .show-marks .writer-content hr.writer-page-break::after,
 .writer-content hr.writer-page-break.ProseMirror-selectednode::after {
@@ -2642,7 +2664,12 @@ p.writer-outline-block--body::after {
   p.writer-outline-block--body::after {
     display: none;
   }
+  .writer-content > .writer-section-block {
+    left: 0 !important;
+    width: auto !important;
+  }
   .writer-sheets,
+  .writer-section-break,
   .writer-comments,
   .writer-split,
   .writer-reading-bar,

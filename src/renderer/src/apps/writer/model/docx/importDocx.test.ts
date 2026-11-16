@@ -46,6 +46,28 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     expect((await roundTrip([paragraph([text('Hola')])])).content.hyphenation).toBeUndefined()
   })
 
+  it('cada salto de sección es una sección de Word y vuelve con su hoja', async () => {
+    const landscape = withOrientation(DEFAULT_PAGE_SETUP, 'landscape')
+    const bytes = await exportDocx({
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph([text('Vertical')]),
+          { type: 'sectionBreak', attrs: { pageSetup: landscape } },
+          paragraph([text('Horizontal')])
+        ]
+      }
+    })
+    const xml = await (await JSZip.loadAsync(bytes)).file('word/document.xml')!.async('string')
+    // La primera sección termina en su último párrafo; la segunda, en el cuerpo.
+    expect(xml.match(/<w:sectPr/g)).toHaveLength(2)
+    expect(xml).toContain('<w:type w:val="nextPage"/>')
+    const { content } = await importDocx(bytes, createWriterExtensions())
+    expect(content.pageSetup).toBeUndefined()
+    expect(blocks(content.doc).map((block) => block.type)).toEqual(['paragraph', 'sectionBreak', 'paragraph'])
+    expect(blocks(content.doc)[1].attrs?.pageSetup).toEqual(landscape)
+  })
+
   it('un A4 con márgenes normales no guarda configuración (es la de siempre)', async () => {
     const { content } = await roundTrip([paragraph([text('Hola')])])
     expect(content.pageSetup).toBeUndefined()

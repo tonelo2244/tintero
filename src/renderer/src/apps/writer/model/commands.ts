@@ -55,7 +55,10 @@ export interface WriterUi {
   toggleComments(): void
   headerFooterOpen: boolean
   toggleHeaderFooter(): void
+  /** Hoja de la sección donde está el cursor (sin secciones, la del documento). */
   pageSetup: PageSetup
+  /** El documento tiene saltos de sección (más de un tamaño de hoja). */
+  hasSections: boolean
   setPageSetup(setup: PageSetup): void
   openPageSetupDialog(): void
   /** Estilos del documento (fase 13). */
@@ -453,6 +456,14 @@ export const WRITER_COMMANDS = {
     isEnabled: ({ editor }) =>
       !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
   },
+  sectionBreak: {
+    label: 'Salto de sección',
+    // Lo de detrás empieza en hoja nueva con la misma hoja que la sección actual; luego se cambia
+    // con Márgenes, Orientación o Tamaño, que ya actúan sobre la sección del cursor.
+    run: (context) => chain(context).setSectionBreak(context.ui.pageSetup).run(),
+    isEnabled: ({ editor }) =>
+      !editor.isActive('table') && !editor.isActive('listItem') && !editor.isActive('codeBlock')
+  },
   addComment: {
     label: 'Comentario',
     run: ({ ui }) => ui.addComment(),
@@ -513,6 +524,8 @@ export const WRITER_COMMANDS = {
   zoom: {
     label: 'Zoom',
     run: ({ ui }, zoom: ZoomPreset | number) => ui.setZoom(zoom),
+    // "Varias páginas" pone las hojas en columnas iguales: con secciones de otro tamaño no cabe.
+    isEnabled: ({ ui }, zoom: ZoomPreset | number) => zoom !== 'multiPage' || !ui.hasSections,
     // Solo 100 % y "Varias páginas" se pueden marcar como activos: "Una página" depende de la ventana.
     isActive: ({ ui }, zoom: ZoomPreset | number) => {
       if (zoom === 'multiPage') return ui.multiPage

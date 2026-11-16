@@ -132,11 +132,15 @@ export function defaultHeaderFooterIds(documentRoot: Element): { header: string 
 }
 
 /**
- * Tamaño, orientación y márgenes de la última sección (`w:pgSz`, `w:pgMar`, en twips). Un documento
- * con varias secciones se queda con la última: las secciones llegan en la fase 15.
+ * Tamaño, orientación y márgenes de la primera sección (`w:pgSz`, `w:pgMar`, en twips): la hoja
+ * del documento. Las demás secciones son saltos de sección dentro del texto (ver directFormatting).
  */
 export function readPageSetup(documentRoot: Element): PageSetup | null {
-  const section = descendants(documentRoot, 'sectPr').at(-1)
+  return readSectionSetup(descendants(documentRoot, 'sectPr')[0] ?? null)
+}
+
+/** Hoja de un `w:sectPr` concreto, o null si no trae tamaño. */
+export function readSectionSetup(section: Element | null): PageSetup | null {
   const size = child(section ?? null, 'pgSz')
   const cm = (element: Element | null, name: string) => {
     const value = Number(attr(element, name))

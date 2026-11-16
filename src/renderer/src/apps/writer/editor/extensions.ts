@@ -12,6 +12,7 @@ import { CharStyle } from './CharStyle'
 import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
+import { SectionBreak } from './SectionBreak'
 import { ParagraphFormat } from './ParagraphFormat'
 import { SearchAndReplace } from './SearchAndReplace'
 import { Tab } from './Tab'
@@ -42,6 +43,7 @@ export function createWriterExtensions(): Extensions {
     Placeholder.configure({ placeholder: 'Empieza a escribir…' }),
     ParagraphFormat,
     PageBreak,
+    SectionBreak,
     Tab,
     CharStyle,
     FormatPainter,

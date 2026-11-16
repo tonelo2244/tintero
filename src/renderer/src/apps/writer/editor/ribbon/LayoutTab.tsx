@@ -23,7 +23,7 @@ interface LayoutTabProps {
 
 /**
  * Pestaña Disposición: configurar página y saltos (fase 12), y sangrías y espaciado con valores
- * exactos y tabulaciones (fase 13). Columnas y secciones llegan con la fase 15. La regla se
+ * exactos y tabulaciones (fase 13), y saltos de sección y guiones (fase 15). La regla se
  * enciende desde Vista > Mostrar, como en Word (fase 14).
  */
 export function LayoutTab({ state }: LayoutTabProps) {
@@ -151,7 +151,24 @@ export function LayoutTab({ state }: LayoutTabProps) {
         <CommandButton command="tabStopsDialog" large icon={<TableColumnsSplit size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Saltos">
-        <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
+        <Dropdown label="Saltos" large trigger={<SeparatorHorizontal size={22} />}>
+          {(close) => (
+            <>
+              <CommandMenuItem command="pageBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Página</b>
+                  <small>Lo de detrás empieza en la hoja siguiente</small>
+                </span>
+              </CommandMenuItem>
+              <CommandMenuItem command="sectionBreak" onDone={close}>
+                <span className="layout-option">
+                  <b>Sección (página siguiente)</b>
+                  <small>Hoja nueva que puede tener otra orientación, tamaño o márgenes</small>
+                </span>
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
         <Dropdown label="Guiones" large trigger={<WrapText size={22} />}>
           {(close) => (
             <>

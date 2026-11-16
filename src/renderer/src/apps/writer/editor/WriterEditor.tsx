@@ -23,6 +23,7 @@ import { runCommand } from '../model/commands'
 import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
+import { documentSections, type BlockLike } from '../model/sections'
 import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
 import { isPaginated, showsRuler, type ReadingTheme, type ViewMode } from '../model/views'
 import { multiPageLayout, zoomForPreset, type ZoomPreset } from '../model/zoom'
@@ -58,6 +59,8 @@ import { TableTab } from './ribbon/TableTab'
 import { OUTLINE_TAB, TABLE_TAB, visibleTabs } from './ribbon/tabs'
 import { ViewTab } from './ribbon/ViewTab'
 import { usePageMetrics } from './usePageMetrics'
+import { useCurrentSection } from './useCurrentSection'
+import type { SheetBox } from './Pagination'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
 import { useAskDocuments } from './useAskDocuments'
@@ -139,10 +142,31 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     (next: PageSetup) => updateParts((current) => withPageSetup(current, next)),
     [updateParts]
   )
-  // La paginación reparte con el alto útil de la hoja del documento.
+  // La paginación reparte con la hoja del documento (y la de cada sección, que lee del propio texto).
   useEffect(() => {
-    editor?.commands.setPageGeometry(geometry)
-  }, [editor, geometry])
+    editor?.commands.setPageSetup(pageSetup)
+  }, [editor, pageSetup])
+  // Disposición cambia la hoja de la sección del cursor: la primera es la del documento.
+  const section = useCurrentSection(editor, pageSetup)
+  const sectionSetup = section.pageSetup
+  const setSectionSetup = useCallback(
+    (next: PageSetup) => {
+      if (section.breakPos === null) setPageSetup(next)
+      else editor?.chain().focus().setSectionPageSetup(section.breakPos, next).run()
+    },
+    [editor, section.breakPos, setPageSetup]
+  )
+  /** Hoja de cada sección, para imprimir cada una en su tamaño. */
+  const sectionSetups = useEditorState({
+    editor,
+    selector: ({ editor: current }) => {
+      if (!current) return [pageSetup]
+      const blocks: BlockLike[] = []
+      current.state.doc.forEach((node) => blocks.push({ type: node.type.name, attrs: node.attrs }))
+      return documentSections(blocks, pageSetup).setups
+    },
+    equalityFn: (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  }) ?? [pageSetup]
 
   const styles = parts.styles ?? DEFAULT_STYLES
   const numberedHeadings = parts.numberedHeadings ?? false
@@ -176,6 +200,20 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   // "Varias páginas" solo existe con hojas; en las otras vistas el texto va seguido.
   const pagesAcross = paginated ? pagesAcrossSetting : 1
   const multiPage = pagesAcross > 1
+  /** Ancho de `.writer-page`: el de la hoja más ancha (con secciones horizontales y verticales). */
+  const layoutWidth = multiPage ? geometry.width : (pages.layoutWidth ?? geometry.width)
+  // En "Varias páginas" las hojas van en filas y todas iguales (con secciones no se ofrece).
+  const sheets: SheetBox[] = multiPage
+    ? Array.from({ length: pages.total }, (_, index) => ({
+        top: Math.floor(index / pagesAcross) * geometry.pitch,
+        left: (index % pagesAcross) * (geometry.width + geometry.gap),
+        geometry
+      }))
+    : pages.sheets.length === pages.total
+      ? pages.sheets
+      : [{ top: 0, left: 0, geometry }]
+  const lastSheet = sheets[sheets.length - 1]
+  const sheetsHeight = lastSheet.top + lastSheet.geometry.height
 
   // Cada vista enciende o apaga lo suyo: las hojas, el esquema y si se puede escribir.
   useEffect(() => {
@@ -278,8 +316,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       closeSidePanels()
       setHeaderFooterOpen(!open)
     },
-    pageSetup,
-    setPageSetup,
+    pageSetup: sectionSetup,
+    setPageSetup: setSectionSetup,
+    hasSections: sectionSetups.length > 1,
     openPageSetupDialog: () => {
       closeSidePanels()
       setPageSetupOpen(true)
@@ -529,7 +568,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         </WriterCommandsProvider>
       )}
       {pageSetupOpen && (
-        <PageSetupDialog pageSetup={pageSetup} onApply={setPageSetup} onClose={() => setPageSetupOpen(false)} />
+        <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />
       )}
       {headerFooterOpen && (
         <HeaderFooterPanel
@@ -586,10 +625,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             <div className="writer-zoom" style={{ zoom }}>
               {showRuler && showsRuler(viewMode) && !multiPage && (
                 <Ruler
-                  pageSetup={pageSetup}
+                  pageSetup={sectionSetup}
+                  offset={(layoutWidth - pageGeometry(sectionSetup).width) / 2}
                   indents={toolbar?.indents ?? null}
                   zoom={zoom}
-                  onMarginsChange={(margins) => setPageSetup(withMargins(pageSetup, margins))}
+                  onMarginsChange={(margins) => setSectionSetup(withMargins(sectionSetup, margins))}
                   tabStops={toolbar?.paragraph.tabStops ?? []}
                   onTabStopsChange={(stops) => commandContext && runCommand(commandContext, 'tabStops', stops)}
                   onIndentsChange={(indents) =>
@@ -601,24 +641,23 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
                 ref={pageRef}
                 className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''} ${hyphenation ? 'writer-page--hyphenate' : ''}`}
                 style={{
-                  ...(paginated && {
-                    minHeight: Math.ceil(pages.total / pagesAcross) * geometry.pitch - geometry.gap
-                  }),
-                  ...pageCssVariables(geometry, pagesAcross)
+                  ...(paginated && { minHeight: sheetsHeight }),
+                  ...pageCssVariables(geometry, pagesAcross, layoutWidth)
                 }}
               >
                 {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
                 {paginated && (
                   <div className="writer-sheets" aria-hidden>
-                    {Array.from({ length: pages.total }, (_, index) => (
+                    {sheets.map((sheet, index) => (
                       <div
                         key={index}
                         className="writer-sheet"
                         style={{
-                          top: Math.floor(index / pagesAcross) * geometry.pitch,
-                          left: (index % pagesAcross) * (geometry.width + geometry.gap),
-                          width: geometry.width,
-                          height: geometry.height
+                          top: sheet.top,
+                          left: sheet.left,
+                          width: sheet.geometry.width,
+                          height: sheet.geometry.height,
+                          ...sheetMarginVariables(sheet.geometry)
                         }}
                       >
                         {parts.header && (
@@ -639,7 +678,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               </div>
             </div>
             {/* Impresión y PDF: la hoja del documento con sus márgenes, y encabezado y pie. */}
-            <style>{printPageCss(pageSetup, parts.header, parts.footer)}</style>
+            <style>{printPageCss(sectionSetups, parts.header, parts.footer)}</style>
             {/* El aspecto de cada estilo (Normal, Título 1...) sale de los estilos del documento. */}
             <style>{documentCss}</style>
           </div>
@@ -656,24 +695,41 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
  * Medidas de la hoja como variables CSS: la hoja, el área de texto, el encabezado y el pie las
  * leen en global.css. Un solo sitio decide las medidas (model/pageSetup.ts); el CSS solo las usa.
  */
-function pageCssVariables(geometry: ReturnType<typeof pageGeometry>, across = 1): CSSProperties {
+function pageCssVariables(
+  geometry: ReturnType<typeof pageGeometry>,
+  across = 1,
+  layoutWidth = geometry.width
+): CSSProperties {
   const px = (value: number) => `${value.toFixed(2)}px`
   const { width, gap, margins, contentWidth, contentHeight, pitch } = geometry
   /** Holgura de cada columna en "Varias páginas": el último renglón puede asomar medio píxel. */
   const columnSlack = 8
+  /** Con secciones más anchas, la hoja del documento va centrada en `.writer-page`. */
+  const inset = across > 1 ? 0 : (layoutWidth - width) / 2
   return {
-    '--page-width': px(across * width + (across - 1) * gap),
+    '--page-width': px(across > 1 ? across * width + (across - 1) * gap : layoutWidth),
     '--page-content-height': px(contentHeight),
     '--content-width': px(contentWidth),
     '--margin-top': px(margins.top),
-    '--margin-right': px(margins.right),
+    '--margin-right': px(margins.right + inset),
     '--margin-bottom': px(margins.bottom),
-    '--margin-left': px(margins.left),
+    '--margin-left': px(margins.left + inset),
     // "Varias páginas": cada hoja es una columna del texto (ver .writer-page--multi en global.css).
     '--pages-across': String(across),
     '--multi-content-width': px(across * contentWidth + (across - 1) * (margins.left + margins.right + gap)),
     '--multi-column-gap': px(margins.left + margins.right + gap),
     '--multi-column-height': px(contentHeight + columnSlack),
     '--multi-row-gap': px(pitch - contentHeight - columnSlack)
+  } as CSSProperties
+}
+
+/** Márgenes de una hoja concreta: los leen su encabezado y su pie (cada sección tiene los suyos). */
+function sheetMarginVariables(geometry: ReturnType<typeof pageGeometry>): CSSProperties {
+  const px = (value: number) => `${value.toFixed(2)}px`
+  return {
+    '--margin-top': px(geometry.margins.top),
+    '--margin-right': px(geometry.margins.right),
+    '--margin-bottom': px(geometry.margins.bottom),
+    '--margin-left': px(geometry.margins.left)
   } as CSSProperties
 }

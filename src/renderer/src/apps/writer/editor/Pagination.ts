@@ -2,8 +2,9 @@ import { Extension } from '@tiptap/core'
 import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
-import { DEFAULT_GEOMETRY, paginate, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
-import type { PageGeometry } from '../model/pageSetup'
+import { paginateSections, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
+import { DEFAULT_PAGE_SETUP, pageGeometry, type PageGeometry, type PageSetup } from '../model/pageSetup'
+import { documentSections, SECTION_BREAK } from '../model/sections'
 
 declare module '@tiptap/core' {
   interface Storage {
@@ -11,18 +12,31 @@ declare module '@tiptap/core' {
   }
   interface Commands<ReturnType> {
     pagination: {
-      /** Cambia el tamaño útil de la hoja (configuración de página) y vuelve a repartir los bloques. */
-      setPageGeometry: (geometry: PageGeometry) => ReturnType
+      /** Cambia la hoja del documento (la de la primera sección) y vuelve a repartir los bloques. */
+      setPageSetup: (pageSetup: PageSetup) => ReturnType
       /** Enciende o apaga las hojas (las vistas Borrador, Esquema y Lectura van sin paginar). */
       setPaginationEnabled: (enabled: boolean) => ReturnType
     }
   }
 }
 
+/** Una hoja tal como se pinta detrás del texto, en píxeles desde la esquina de `.writer-page`. */
+export interface SheetBox {
+  top: number
+  left: number
+  /** Medidas y márgenes de su sección. */
+  geometry: PageGeometry
+}
+
 export interface PaginationStorage {
   /** Hojas que ocupa el documento según la última medición. */
   pageCount: number
-  geometry: PageGeometry
+  /** Hoja del documento (la de la primera sección). */
+  pageSetup: PageSetup
+  /** Dónde va cada hoja; con secciones, cada una con su tamaño. */
+  sheets: SheetBox[]
+  /** Ancho de la hoja más ancha: el de `.writer-page`. Las demás se centran en él. */
+  layoutWidth: number
   /** Sin paginar, el texto va seguido (vistas Borrador, Esquema y Lectura). */
   enabled: boolean
   /**
@@ -58,13 +72,22 @@ export const Pagination = Extension.create<object, PaginationStorage>({
   name: 'pagination',
 
   addStorage() {
-    return { pageCount: 1, geometry: DEFAULT_GEOMETRY, enabled: true, pageStarts: [0], requestLayout: null }
+    const geometry = pageGeometry(DEFAULT_PAGE_SETUP)
+    return {
+      pageCount: 1,
+      pageSetup: DEFAULT_PAGE_SETUP,
+      sheets: [{ top: 0, left: 0, geometry }],
+      layoutWidth: geometry.width,
+      enabled: true,
+      pageStarts: [0],
+      requestLayout: null
+    }
   },
 
   addCommands() {
     return {
-      setPageGeometry: (geometry) => () => {
-        this.storage.geometry = geometry
+      setPageSetup: (pageSetup) => () => {
+        this.storage.pageSetup = pageSetup
         this.storage.requestLayout?.()
         return true
       },
@@ -147,6 +170,7 @@ interface Unit {
   table?: TableInfo
   /** Primera fila: si baja, baja la tabla entera (con margen, como un bloque). */
   firstRow?: boolean
+  section: number
 }
 
 /** Un renglón medido, con el bloque de texto al que pertenece (para saber dónde partir). */
@@ -167,16 +191,19 @@ type MeasuredUnit = Unit & MeasuredBlock & { textLines?: Line[] }
  * Bloques que pueden abrir una hoja, en orden: los de primer nivel, los elementos de las listas y
  * las filas de las tablas. Los saltos de página no son unidades (no ocupan sitio): marcan la siguiente.
  */
-function collectUnits(doc: ProseMirrorNode): Unit[] {
+function collectUnits(doc: ProseMirrorNode, sectionOf: number[]): Unit[] {
   const units: Unit[] = []
   let breakBefore = false
-  const push = (unit: Omit<Unit, 'breakBefore'>) => {
-    units.push({ ...unit, breakBefore })
+  let section = 0
+  const push = (unit: Omit<Unit, 'breakBefore' | 'section'>) => {
+    units.push({ ...unit, breakBefore, section })
     breakBefore = false
   }
-  doc.forEach((node, offset) => {
-    if (node.type.name === 'pageBreak') {
-      breakBefore = true
+  doc.forEach((node, offset, index) => {
+    section = sectionOf[index] ?? section
+    if (node.type.name === 'pageBreak' || node.type.name === SECTION_BREAK) {
+      // El salto de sección también abre hoja, pero eso ya lo sabe paginate por el cambio de sección.
+      if (node.type.name === 'pageBreak') breakBefore = true
     } else if (SPLITTABLE.has(node.type.name)) {
       node.forEach((item, itemOffset) => push({ pos: offset + 1 + itemOffset, node: item }))
     } else if (node.type.name === 'table') {
@@ -189,6 +216,47 @@ function collectUnits(doc: ProseMirrorNode): Unit[] {
     }
   })
   return units
+}
+
+/** Hoja de cada sección y sección de cada bloque de primer nivel. */
+interface SectionLayout {
+  geometries: PageGeometry[]
+  sectionOf: number[]
+}
+
+function sectionLayout(doc: ProseMirrorNode, pageSetup: PageSetup): SectionLayout {
+  const blocks: { type: string; attrs: Record<string, unknown> }[] = []
+  doc.forEach((node) => blocks.push({ type: node.type.name, attrs: node.attrs }))
+  const { setups, sectionOf } = documentSections(blocks, pageSetup)
+  return { geometries: setups.map(pageGeometry), sectionOf }
+}
+
+/**
+ * Bloques de una sección cuya hoja es más ancha o más estrecha que la primera: se desplazan y se
+ * ensanchan para caer dentro de su hoja (las hojas se centran unas sobre otras, como en Word).
+ * Todos los bloques de una sección distinta de la primera llevan además `writer-section-N`: al
+ * imprimir, esa clase les da su hoja (`@page` con nombre, ver printPageCss).
+ */
+function sectionDecorations(view: EditorView, sections: SectionLayout): Decoration[] {
+  const base = sections.geometries[0]
+  const decorations: Decoration[] = []
+  view.state.doc.forEach((node, offset, index) => {
+    const section = sections.sectionOf[index] ?? 0
+    if (section === 0 || node.type.name === 'pageBreak' || node.type.name === SECTION_BREAK) return
+    const geometry = sections.geometries[section]
+    const dx = (base.width - geometry.width) / 2 + geometry.margins.left - base.margins.left
+    const attrs: { class: string; style?: string } = { class: `writer-section-${section}` }
+    if (Math.abs(dx) > 0.5 || Math.abs(geometry.contentWidth - base.contentWidth) > 0.5) {
+      // El ancho es el del área de texto menos los márgenes propios del bloque (sus sangrías).
+      const dom = view.nodeDOM(offset)
+      const style = dom instanceof HTMLElement ? getComputedStyle(dom) : null
+      const ownMargins = style ? (parseFloat(style.marginLeft) || 0) + (parseFloat(style.marginRight) || 0) : 0
+      attrs.class += ' writer-section-block'
+      attrs.style = `left: ${dx.toFixed(2)}px; width: ${(geometry.contentWidth - ownMargins).toFixed(2)}px`
+    }
+    decorations.push(Decoration.node(offset, offset + node.nodeSize, attrs))
+  })
+  return decorations
 }
 
 function headerRow(table: ProseMirrorNode): ProseMirrorNode | null {
@@ -211,56 +279,83 @@ function columnCount(table: ProseMirrorNode): number {
 
 /** Mide, reparte y aplica los saltos, y anota el número de hojas. */
 function layout(view: EditorView, storage: PaginationStorage): void {
-  const hadBreaks = paginationKey.getState(view.state) !== DecorationSet.empty
-  // En "Varias páginas" las hojas son columnas: se mide con el texto en una sola tira (ver global.css).
-  const host = view.dom.closest<HTMLElement>('.writer-page')
-  host?.setAttribute('data-measuring', '')
-  try {
-    if (hadBreaks) {
-      view.dispatch(view.state.tr.setMeta(paginationKey, DecorationSet.empty).setMeta('addToHistory', false))
-    }
-
-    if (!storage.enabled) {
-      // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
-      const changed = storage.pageCount !== 1
-      storage.pageCount = 1
-      storage.pageStarts = [0]
-      if (changed) view.dispatch(view.state.tr.setMeta('addToHistory', false))
-      return
-    }
-
-    const measured = measureUnits(view)
-    const { breaks, pageCount } = paginate(measured, storage.geometry.pitch, storage.geometry.contentHeight)
-    const decorations: Decoration[] = []
-    const pageStarts = [0]
-    for (const pageBreak of breaks) {
-      const placed = breakDecorations(view, measured, pageBreak)
-      decorations.push(...placed.decorations)
-      pageStarts.push(placed.pageStart)
-    }
-    storage.pageStarts = pageStarts
-    // Sin saltos antes ni ahora y con las mismas hojas no hay nada que avisar: nos ahorramos la transacción.
-    if (!hadBreaks && decorations.length === 0 && storage.pageCount === pageCount) return
-    // Antes de despachar: quien lea las hojas al recibir la transacción (la barra de estado) ve el valor nuevo.
-    storage.pageCount = pageCount
+  const hadDecorations = paginationKey.getState(view.state) !== DecorationSet.empty
+  const replaceDecorations = (decorations: Decoration[]) =>
     view.dispatch(
       view.state.tr
         .setMeta(paginationKey, DecorationSet.create(view.state.doc, decorations))
         .setMeta('addToHistory', false)
     )
+  // En "Varias páginas" las hojas son columnas: se mide con el texto en una sola tira (ver global.css).
+  const host = view.dom.closest<HTMLElement>('.writer-page')
+  host?.setAttribute('data-measuring', '')
+  try {
+    const sections = sectionLayout(view.state.doc, storage.pageSetup)
+    const base = sections.geometries[0]
+    if (!storage.enabled) {
+      // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
+      if (hadDecorations) replaceDecorations([])
+      const changed = storage.pageCount !== 1
+      storage.pageCount = 1
+      storage.pageStarts = [0]
+      storage.sheets = [{ top: 0, left: 0, geometry: base }]
+      storage.layoutWidth = base.width
+      if (changed) view.dispatch(view.state.tr.setMeta('addToHistory', false))
+      return
+    }
+
+    // 1. Sin saltos, pero cada sección ya con su ancho (el ancho cambia el alto de los párrafos).
+    const sectionDecos = sectionDecorations(view, sections)
+    if (hadDecorations || sectionDecos.length > 0) replaceDecorations(sectionDecos)
+    // 2. Medir y repartir.
+    const measured = measureUnits(view, sections)
+    const formats = sections.geometries.map((geometry) => ({
+      contentHeight: geometry.contentHeight,
+      marginTop: geometry.margins.top,
+      marginBottom: geometry.margins.bottom
+    }))
+    const { breaks, pages } = paginateSections(measured, formats, base.gap)
+    // 3. Aplicar los saltos.
+    const decorations: Decoration[] = [...sectionDecos]
+    const pageStarts: number[] = [0]
+    for (const pageBreak of breaks) {
+      const placed = breakDecorations(view, measured, pageBreak)
+      decorations.push(...placed.decorations)
+      pageStarts[pageBreak.page] = placed.pageStart
+    }
+    // Una hoja que solo continúa un bloque enorme empieza donde la anterior.
+    for (let page = 1; page < pages.length; page++) pageStarts[page] ??= pageStarts[page - 1]
+    storage.pageStarts = pageStarts
+    const layoutWidth = Math.max(...sections.geometries.map((geometry) => geometry.width))
+    storage.layoutWidth = layoutWidth
+    const previousSheets = JSON.stringify(storage.sheets)
+    storage.sheets = pages.map((page) => {
+      const geometry = sections.geometries[page.section] ?? base
+      return {
+        top: base.margins.top + page.top - geometry.margins.top,
+        left: (layoutWidth - geometry.width) / 2,
+        geometry
+      }
+    })
+    // Sin decoraciones antes ni ahora y con las mismas hojas no hay nada que avisar: nos ahorramos la transacción.
+    const sheetsChanged = JSON.stringify(storage.sheets) !== previousSheets
+    if (!hadDecorations && decorations.length === 0 && storage.pageCount === pages.length && !sheetsChanged) return
+    // Antes de despachar: quien lea las hojas al recibir la transacción (la barra de estado) ve el valor nuevo.
+    storage.pageCount = pages.length
+    replaceDecorations(decorations)
   } finally {
     host?.removeAttribute('data-measuring')
   }
 }
 
 /** Cajas de cada unidad (y sus renglones, si es texto que se puede partir) relativas al principio del texto. */
-function measureUnits(view: EditorView): MeasuredUnit[] {
+function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[] {
   const origin = view.dom.getBoundingClientRect()
   // Con zoom, getBoundingClientRect da píxeles de pantalla; offsetHeight, píxeles del documento.
   const scale = view.dom.offsetHeight > 0 ? origin.height / view.dom.offsetHeight : 1
   const toY = (screenY: number) => (screenY - origin.top) / scale
   const measured: MeasuredUnit[] = []
-  for (const unit of collectUnits(view.state.doc)) {
+  for (const unit of collectUnits(view.state.doc, sections.sectionOf)) {
     const dom = view.nodeDOM(unit.pos)
     if (!(dom instanceof HTMLElement)) continue
     // La primera fila de una tabla mueve la tabla entera: cuenta desde el borde de la tabla.
