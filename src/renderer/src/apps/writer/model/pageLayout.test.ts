@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cssContent, headerFooterText, pageAt, paginate, printPageCss } from './pageLayout'
+import { DEFAULT_PAGE_SETUP, withOrientation } from './pageSetup'
 
 // Números redondos para leer los tests: hojas de 100 de alto útil, cada 150 (50 de márgenes y hueco).
 const PITCH = 150
@@ -43,6 +44,18 @@ describe('paginate', () => {
     expect(layout.pageCount).toBe(2)
   })
 
+  it('un salto de página manda el bloque siguiente a la hoja nueva aunque quepa', () => {
+    const [first, second, third] = blocks(20, 20, 20)
+    const layout = paginate([first, { ...second, breakBefore: true }, third], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, shift: 120 }])
+    expect(layout.pageCount).toBe(2)
+  })
+
+  it('un salto de página al principio de una hoja no deja otra en blanco', () => {
+    const layout = paginate([{ top: 0, bottom: 20, breakBefore: true }], PITCH, CONTENT)
+    expect(layout).toEqual({ breaks: [], pageCount: 1 })
+  })
+
   it('pageAt dice en qué hoja cae una altura', () => {
     expect(pageAt(0, 3, PITCH)).toBe(1)
     expect(pageAt(160, 3, PITCH)).toBe(2)
@@ -63,10 +76,18 @@ describe('encabezado y pie', () => {
   })
 
   it('cada parte va a la caja de margen de su alineación', () => {
-    const css = printPageCss({ text: 'Informe', align: 'right' }, footer)
-    expect(css).toContain('size: A4; margin: 2.5cm;')
+    const css = printPageCss(DEFAULT_PAGE_SETUP, { text: 'Informe', align: 'right' }, footer)
+    expect(css).toContain('size: 21cm 29.7cm; margin: 2.5cm 2.5cm 2.5cm 2.5cm;')
     expect(css).toContain('@top-right { content: "Informe";')
     expect(css).toContain('@bottom-center { content: "Página " counter(page)')
-    expect(printPageCss()).not.toContain('@top')
+    expect(printPageCss(DEFAULT_PAGE_SETUP)).not.toContain('@top')
+  })
+
+  it('la hoja impresa tiene el tamaño, la orientación y los márgenes del documento', () => {
+    const landscape = withOrientation(
+      { ...DEFAULT_PAGE_SETUP, margins: { top: 1, right: 2, bottom: 3, left: 4 } },
+      'landscape'
+    )
+    expect(printPageCss(landscape)).toContain('size: 29.7cm 21cm; margin: 4cm 1cm 2cm 3cm;')
   })
 })

@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
+import { isDefaultPageSetup, normalizePageSetup, type PageSetup } from './pageSetup'
 
 export type HeaderFooterAlign = 'left' | 'center' | 'right'
 
@@ -35,6 +36,8 @@ export interface WriterContent {
   header?: HeaderFooter
   footer?: HeaderFooter
   comments?: WriterComment[]
+  /** Tamaño, orientación y márgenes. Sin él, A4 vertical con 2,5 cm (formato v4; ver pageSetup.ts). */
+  pageSetup?: PageSetup
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -45,7 +48,14 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.header) parts.header = content.header
   if (content.footer) parts.footer = content.footer
   if (content.comments && content.comments.length > 0) parts.comments = content.comments
+  if (content.pageSetup) parts.pageSetup = content.pageSetup
   return parts
+}
+
+/** Cambia la configuración de página. La de por defecto no se guarda: el archivo queda como en la v3. */
+export function withPageSetup(parts: WriterParts, pageSetup: PageSetup): WriterParts {
+  const { pageSetup: _previous, ...rest } = parts
+  return isDefaultPageSetup(pageSetup) ? rest : { ...rest, pageSetup }
 }
 
 /** Cambia el encabezado o el pie sin tocar lo demás; sin valor, lo quita. */
@@ -71,6 +81,8 @@ export function parseWriterContent(raw: unknown): WriterContent {
   if (footer) content.footer = footer
   const comments = Array.isArray(candidate.comments) ? candidate.comments.filter(isComment) : []
   if (comments.length > 0) content.comments = comments
+  const pageSetup = normalizePageSetup(candidate.pageSetup)
+  if (pageSetup && !isDefaultPageSetup(pageSetup)) content.pageSetup = pageSetup
   return content
 }
 
