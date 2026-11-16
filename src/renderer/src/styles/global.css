@@ -3238,3 +3238,59 @@ p.writer-outline-block--body::after {
     print-color-adjust: exact;
   }
 }
+
+/* ---------- Fase 16: Insertar objetos y vínculos ---------- */
+
+.writer-content a[href] {
+  color: #1d5fb8;
+  text-decoration: underline;
+}
+/* Marcador: no ocupa sitio; con las marcas de párrafo a la vista, una "I" gris como en Word. */
+.writer-content .writer-bookmark {
+  display: none;
+}
+.show-marks .writer-content .writer-bookmark {
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  border-left: 2px solid #9a9a9a;
+  vertical-align: text-bottom;
+}
+.writer-dialog__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.writer-dialog__hint--error {
+  color: #b3392f;
+}
+.writer-bookmark-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+.writer-bookmark-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.writer-bookmark-list li span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.writer-bookmark-list button,
+.writer-dialog-button {
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}

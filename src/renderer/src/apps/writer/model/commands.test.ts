@@ -82,7 +82,8 @@ function setup(html: string) {
     toggleSplit: () => calls.push('split'),
     openWordCount: () => calls.push('wordCount'),
     readAloudOpen: false,
-    toggleReadAloud: () => calls.push('readAloud')
+    toggleReadAloud: () => calls.push('readAloud'),
+    openDialog: (dialog) => calls.push(`dialog:${dialog}`)
   }
   const context: CommandContext = { editor, ui }
   return { context, calls, editor, page: () => pageSetup, styles: () => styles, numbered: () => numbered }

@@ -8,6 +8,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import Image from '@tiptap/extension-image'
 import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
+import { Bookmark } from './Bookmark'
 import { CharStyle } from './CharStyle'
 import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
@@ -51,6 +52,7 @@ export function createWriterExtensions(): Extensions {
     CharStyle,
     FormatPainter,
     CommentMark,
-    SearchAndReplace
+    SearchAndReplace,
+    Bookmark
   ]
 }

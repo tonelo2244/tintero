@@ -19,7 +19,7 @@ import {
   type WriterContent,
   type WriterParts
 } from '../model/content'
-import type { CommandContext, WriterUi } from '../model/commands'
+import type { CommandContext, WriterDialogId, WriterUi } from '../model/commands'
 import { runCommand } from '../model/commands'
 import { applyStyle } from '../model/paragraphStyles'
 import { headerFooterText, printPageCss } from '../model/pageLayout'
@@ -45,6 +45,7 @@ import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
 import { HeaderFooterPanel } from './HeaderFooterPanel'
+import { InsertDialogs } from './InsertDialogs'
 import { NavigationPanel, selectPageStart } from './NavigationPanel'
 import { OutlineView } from './OutlineView'
 import { PageSetupDialog } from './PageSetupDialog'
@@ -219,6 +220,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   /** Cuadro de estilo abierto: `null` cerrado; `{ styleId: undefined }` crea uno nuevo. */
   const [styleDialog, setStyleDialog] = useState<{ styleId?: string } | null>(null)
   const [tabStopsOpen, setTabStopsOpen] = useState(false)
+  /** Cuadro de Insertar abierto (vínculo, marcador, símbolo...): uno a la vez. */
+  const [insertDialog, setInsertDialog] = useState<WriterDialogId | null>(null)
 
   const toolbar = useWriterToolbarState(editor)
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
@@ -331,6 +334,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     setPageSetupOpen(false)
     setStylesPanelOpen(false)
     setTabStopsOpen(false)
+    setInsertDialog(null)
   }
 
   /** Lo que los comandos pueden pedir a esta pantalla (paneles, buscar, configuración de página). */
@@ -412,7 +416,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       setWordCountOpen(true)
     },
     readAloudOpen: readAloud.open,
-    toggleReadAloud: readAloud.toggle
+    toggleReadAloud: readAloud.toggle,
+    openDialog: (dialog) => {
+      closeSidePanels()
+      setInsertDialog(dialog)
+    }
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
@@ -631,6 +639,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         <WriterCommandsProvider value={commandContext}>
           <TabStopsDialog editor={commandContext.editor} onClose={() => setTabStopsOpen(false)} />
         </WriterCommandsProvider>
+      )}
+      {insertDialog && editor && (
+        <InsertDialogs dialog={insertDialog} editor={editor} onClose={() => setInsertDialog(null)} />
       )}
       {pageSetupOpen && (
         <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />

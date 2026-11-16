@@ -1,5 +1,6 @@
 import type { JSONContent } from '@tiptap/core'
 import {
+  Bookmark,
   BorderStyle,
   ColumnBreak,
   CommentRangeEnd,
@@ -11,6 +12,7 @@ import {
   Header,
   HeadingLevel,
   ImageRun,
+  InternalHyperlink,
   Packer,
   PageBreak,
   PageNumber,
@@ -58,6 +60,7 @@ import type { NumberFormat, ParagraphBorder, TabStop } from '../paragraphFormat'
 import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
+import { BOOKMARK, bookmarkOfHref } from '../links'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
@@ -437,12 +440,15 @@ class DocxConverter {
       const image = imageRun(node, this.maxImageWidthPx)
       return image ? [image] : []
     }
+    if (node.type === BOOKMARK) {
+      // Un marcador de Tintero es un punto: en Word, un w:bookmarkStart y su w:bookmarkEnd seguidos.
+      const name = node.attrs?.name
+      return typeof name === 'string' && name ? [new Bookmark({ id: name, children: [] })] : []
+    }
     if (node.type !== 'text' || !node.text) return []
 
     const run = new TextRun({ text: node.text, ...runOptions(marks) })
-    const link = marks.find((mark) => mark.type === 'link')?.attrs?.href
-    const text = typeof link === 'string' && link ? new ExternalHyperlink({ link, children: [run] }) : run
-    return this.withCommentRange(text, commentIdOf(marks))
+    return this.withCommentRange(linked(run, marks), commentIdOf(marks))
   }
 
   private withCommentRange(text: ParagraphChild, commentId: string | null): ParagraphChild[] {
@@ -459,6 +465,16 @@ class DocxConverter {
     }
     return children
   }
+}
+
+/** Texto dentro de su vínculo, si lo tiene: a un marcador (`#nombre`) o a una dirección. */
+function linked(run: TextRun, marks: NonNullable<JSONContent['marks']>): ParagraphChild {
+  const href = marks.find((mark) => mark.type === 'link')?.attrs?.href
+  if (typeof href !== 'string' || !href) return run
+  const anchor = bookmarkOfHref(href)
+  return anchor
+    ? new InternalHyperlink({ anchor, children: [run] })
+    : new ExternalHyperlink({ link: href, children: [run] })
 }
 
 type MutableRunOptions = { -readonly [K in keyof IRunOptions]: IRunOptions[K] }

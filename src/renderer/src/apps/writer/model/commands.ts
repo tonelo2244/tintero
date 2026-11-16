@@ -104,7 +104,15 @@ export interface WriterUi {
   openWordCount(): void
   readAloudOpen: boolean
   toggleReadAloud(): void
+  /** Cuadros de Insertar (fase 16): vínculo, marcador, símbolo, ecuación, gráfico... */
+  openDialog(dialog: WriterDialogId): void
 }
+
+/**
+ * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
+ * (ecuación, gráfico) lo leen de la selección al abrirse.
+ */
+export type WriterDialogId = 'link' | 'bookmark'
 
 export interface CommandContext {
   editor: Editor
@@ -450,6 +458,20 @@ export const WRITER_COMMANDS = {
   },
   horizontalRule: { label: 'Línea horizontal', run: (context) => chain(context).setHorizontalRule().run() },
   insertDate: { label: 'Fecha', run: (context) => chain(context).insertContent(longDate()).run() },
+  // --- Vínculos (fase 16) ---
+  link: {
+    label: 'Vínculo',
+    shortcut: 'Ctrl/Cmd+K',
+    keys: 'Mod-k',
+    run: ({ ui }) => ui.openDialog('link'),
+    isActive: ({ editor }) => editor.isActive('link')
+  },
+  removeLink: {
+    label: 'Quitar vínculo',
+    run: (context) => chain(context).extendMarkRange('link').unsetLink().run(),
+    isEnabled: ({ editor }) => editor.isActive('link')
+  },
+  bookmark: { label: 'Marcador', run: ({ ui }) => ui.openDialog('bookmark') },
   blockquote: {
     label: 'Cita',
     run: (context) => chain(context).toggleBlockquote().run(),

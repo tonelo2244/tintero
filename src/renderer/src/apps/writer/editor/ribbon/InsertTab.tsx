@@ -1,6 +1,8 @@
 import type { ChangeEvent } from 'react'
 import {
+  Bookmark,
   CalendarDays,
+  Link2,
   Code2,
   SeparatorHorizontal,
   ImagePlus,
@@ -43,6 +45,10 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
           <span className="tool-button__label">Imagen</span>
           <input type="file" accept="image/*" hidden onChange={(event) => void insertImage(event)} />
         </label>
+      </RibbonGroup>
+      <RibbonGroup label="Vínculos">
+        <CommandButton command="link" large icon={<Link2 size={22} />} />
+        <CommandButton command="bookmark" large icon={<Bookmark size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Elementos">
         <CommandButton command="horizontalRule" large icon={<Minus size={22} />} />
