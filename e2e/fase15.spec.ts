@@ -47,69 +47,32 @@ test('Texto: un párrafo y una tabla largos se parten entre hojas igual en panta
   await page.keyboard.insertText(LONG_SENTENCE.repeat(30))
   await page.keyboard.press('Enter')
 
-  // Una tabla con fila de encabezado y filas de sobra para pasar de hoja aunque empiece arriba.
+  // Una tabla con fila de encabezado y muchas filas.
   await page.getByRole('tab', { name: 'Insertar' }).click()
   await page.getByRole('button', { name: 'Tabla' }).first().click()
   await page.getByRole('button', { name: 'Tabla de 2 columnas por 2 filas' }).click()
-  console.log(
-    'DBGA',
-    await editor.evaluate((dom) =>
-      [...dom.children]
-        .slice(8)
-        .map((c) =>
-          c.outerHTML
-            .replace(/<col[^>]*>|style="[^"]*"|<br[^>]*>/g, '')
-            .replace(
-              /Este párrafo es largo a propósito para que cruce el final de la hoja y se tenga que partir por renglones. /g,
-              '~'
-            )
-        )
-        .join('\n')
-    )
-  )
+  // El menú se cierra y el foco vuelve al editor, ya dentro de la primera celda: hasta entonces,
+  // lo que se escribe no llega a la tabla.
+  await expect(editor).toBeFocused()
+  await expect(editor.locator('table')).toHaveCount(1)
   await page.keyboard.insertText('Nombre')
   await page.keyboard.press('Tab')
   await page.keyboard.insertText('Valor')
   await page.getByRole('tab', { name: 'Tabla' }).click()
   await page.getByRole('button', { name: 'Fila de encabezado' }).click()
   await expect(editor.locator('th')).toHaveCount(2)
-  console.log(
-    'DBG0',
-    await editor
-      .locator('table')
-      .evaluateAll((tables) => tables.map((t) => (t as HTMLElement).innerText.replace(/\s+/g, ' ')))
-  )
   // La primera celda de verdad (si la tabla ya cruza de hoja, antes van el hueco y el encabezado repetido).
   await editor.locator('tr:not(.ProseMirror-widget) > td').first().click()
-  for (let row = 1; row <= 70; row++) {
+  for (let row = 1; row <= 45; row++) {
     await page.keyboard.insertText(`Fila ${row}`)
     await page.keyboard.press('Tab')
     await page.keyboard.insertText(String(row * 10))
-    if (row < 70) await page.keyboard.press('Tab')
-    if (row === 2)
-      console.log(
-        'DBG2',
-        await editor
-          .locator('table')
-          .evaluateAll((tables) => tables.map((t) => (t as HTMLElement).innerText.replace(/\s+/g, ' ')))
-      )
+    if (row < 45) await page.keyboard.press('Tab')
   }
 
   // El párrafo largo se parte (un hueco dentro de él) y la tabla repite su encabezado en cada hoja.
   await expect(editor.locator('p .writer-page-split')).toHaveCount(1)
-  try {
-    await expect(editor.locator('tr.writer-table-repeat').first()).toBeAttached()
-  } catch (error) {
-    console.log(
-      'DBG',
-      await editor.evaluate((dom) =>
-        [...dom.children]
-          .map((child) => child.tagName + ':' + (child as HTMLElement).innerText.slice(0, 60).replace(/\s+/g, ' '))
-          .join(' || ')
-      )
-    )
-    throw error
-  }
+  await expect(editor.locator('tr.writer-table-repeat').first()).toBeAttached()
   const sheetCount = await page.locator('.writer-sheet').count()
   expect(sheetCount).toBeGreaterThanOrEqual(3)
   // El primer renglón que pasa de hoja empieza justo debajo del margen superior de la hoja 2.
