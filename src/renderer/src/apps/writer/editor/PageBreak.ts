@@ -1,4 +1,5 @@
 import { mergeAttributes, Node } from '@tiptap/core'
+import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -41,7 +42,18 @@ export const PageBreak = Node.create({
           // Al final del documento hace falta un párrafo detrás: la hoja nueva necesita dónde escribir.
           const atDocumentEnd = $to.after(1) === state.doc.content.size
           const content = atDocumentEnd ? [{ type: this.name }, { type: 'paragraph' }] : [{ type: this.name }]
-          return chain().insertContent(content).run()
+          return chain()
+            .insertContent(content)
+            .command(({ tr }) => {
+              // insertContent deja a veces seleccionado el salto (selección de nodo): lo siguiente que
+              // escribieras lo sustituiría. El cursor va al principio de la hoja nueva, como en Word.
+              const { selection } = tr
+              if (selection instanceof NodeSelection && selection.node.type.name === this.name) {
+                tr.setSelection(TextSelection.near(tr.doc.resolve(selection.to), 1))
+              }
+              return true
+            })
+            .run()
         }
     }
   }

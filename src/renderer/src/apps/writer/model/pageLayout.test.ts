@@ -60,6 +60,8 @@ describe('paginate', () => {
     expect(pageAt(0, 3, PITCH)).toBe(1)
     expect(pageAt(160, 3, PITCH)).toBe(2)
     expect(pageAt(9999, 3, PITCH)).toBe(3)
+    // El primer renglón de la hoja 2 medido medio píxel por encima de su sitio sigue siendo de la 2.
+    expect(pageAt(PITCH - 0.4, 3, PITCH)).toBe(2)
   })
 })
 
