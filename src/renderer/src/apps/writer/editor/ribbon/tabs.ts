@@ -8,12 +8,17 @@ export const WRITER_TABS: RibbonTab[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'insert', label: 'Insertar' },
   { id: 'layout', label: 'Disposición' },
+  { id: 'review', label: 'Revisar' },
+  { id: 'view', label: 'Vista' },
   { id: 'assistant', label: 'Asistente' }
 ]
 
 /** Pestaña contextual: solo existe mientras el cursor está dentro de una tabla. */
 export const TABLE_TAB: RibbonTab = { id: 'table', label: 'Tabla' }
 
-export function visibleTabs(inTable: boolean): RibbonTab[] {
-  return inTable ? [...WRITER_TABS, TABLE_TAB] : WRITER_TABS
+/** Pestaña contextual: solo existe en la vista Esquema. */
+export const OUTLINE_TAB: RibbonTab = { id: 'outline', label: 'Esquema' }
+
+export function visibleTabs(inTable: boolean, inOutline = false): RibbonTab[] {
+  return [...(inOutline ? [OUTLINE_TAB] : []), ...WRITER_TABS, ...(inTable ? [TABLE_TAB] : [])]
 }

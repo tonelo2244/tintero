@@ -24,6 +24,8 @@ interface EditorLayoutProps {
   activeTab: string
   onTabChange(id: string): void
   ribbon: ReactNode
+  /** Esconde pestañas y cinta (el modo lectura de Texto): solo queda el documento. */
+  hideRibbon?: boolean
   statusBar: ReactNode
   children: ReactNode
 }
@@ -66,24 +68,28 @@ export function EditorLayout(props: EditorLayoutProps) {
             </span>
           )}
         </div>
-        <nav className="titlebar__tabs" role="tablist">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={tab.id === activeTab}
-              className="ribbon-tab"
-              onClick={() => onTabChange(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        {!props.hideRibbon && (
+          <nav className="titlebar__tabs" role="tablist">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={tab.id === activeTab}
+                className="ribbon-tab"
+                onClick={() => onTabChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        )}
       </header>
-      <div className="ribbon" role="toolbar">
-        {props.ribbon}
-      </div>
+      {!props.hideRibbon && (
+        <div className="ribbon" role="toolbar">
+          {props.ribbon}
+        </div>
+      )}
       <div className="editor-layout__body">{props.children}</div>
       <footer className="statusbar">{props.statusBar}</footer>
     </div>

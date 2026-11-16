@@ -2,7 +2,6 @@ import {
   SeparatorHorizontal,
   RectangleHorizontal,
   RectangleVertical,
-  Ruler,
   Scaling,
   Settings2,
   StickyNote,
@@ -19,15 +18,14 @@ import { useCommandContext } from './commandContext'
 
 interface LayoutTabProps {
   state: WriterToolbarState
-  showRuler: boolean
-  onToggleRuler(): void
 }
 
 /**
  * Pestaña Disposición: configurar página y saltos (fase 12), y sangrías y espaciado con valores
- * exactos y tabulaciones (fase 13). Columnas y secciones llegan con la fase 15.
+ * exactos y tabulaciones (fase 13). Columnas y secciones llegan con la fase 15. La regla se
+ * enciende desde Vista > Mostrar, como en Word (fase 14).
  */
-export function LayoutTab({ state, showRuler, onToggleRuler }: LayoutTabProps) {
+export function LayoutTab({ state }: LayoutTabProps) {
   const context = useCommandContext()
   // Sin valor puesto a mano, los campos enseñan el del estilo del párrafo (lo que se ve).
   const styleProps = resolveStyle(context.ui.styles, state.paragraphStyleId ?? NORMAL_STYLE_ID)
@@ -153,19 +151,6 @@ export function LayoutTab({ state, showRuler, onToggleRuler }: LayoutTabProps) {
       </RibbonGroup>
       <RibbonGroup label="Saltos">
         <CommandButton command="pageBreak" large icon={<SeparatorHorizontal size={22} />} />
-      </RibbonGroup>
-      <RibbonGroup label="Mostrar">
-        <button
-          type="button"
-          className={`tool-button tool-button--large ${showRuler ? 'is-active' : ''}`}
-          aria-pressed={showRuler}
-          title="Regla"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={onToggleRuler}
-        >
-          <Ruler size={22} />
-          <span className="tool-button__label">Regla</span>
-        </button>
       </RibbonGroup>
     </>
   )
