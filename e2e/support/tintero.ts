@@ -36,7 +36,15 @@ export const test = base.extend<Options & { tintero: Tintero }>({
     await mkdir(workDir)
     const app = await electron.launch({
       // --no-sandbox: los runners de Linux de CI no permiten el sandbox de Chromium.
-      args: [MAIN_ENTRY, '--no-sandbox'],
+      // Sin gestor de ventanas (xvfb), Chromium puede creer la ventana tapada y frenar
+      // requestAnimationFrame y los temporizadores, de los que viven la paginación y las tabulaciones.
+      args: [
+        MAIN_ENTRY,
+        '--no-sandbox',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-background-timer-throttling'
+      ],
       env: {
         ...(process.env as Record<string, string>),
         TINTERO_USER_DATA_DIR: join(root, 'datos'),
