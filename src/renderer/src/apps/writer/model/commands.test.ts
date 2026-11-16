@@ -65,6 +65,7 @@ function setup(html: string) {
     showRuler: true,
     toggleRuler: () => calls.push('ruler'),
     zoom: 1,
+    multiPage: false,
     setZoom: (zoom) => calls.push(`zoom:${zoom}`),
     splitOpen: false,
     toggleSplit: () => calls.push('split'),

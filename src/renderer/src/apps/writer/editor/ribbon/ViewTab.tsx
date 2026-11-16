@@ -5,6 +5,7 @@ import {
   ListTree,
   MoveHorizontal,
   RectangleVertical,
+  Columns2,
   Ruler,
   ScrollText,
   SquareSplitVertical,
@@ -78,7 +79,16 @@ export function ViewTab() {
           icon={<span className="ribbon-zoom-100">1:1</span>}
         />
         {paginated && (
-          <CommandButton command="zoom" arg="onePage" label="Una página" large icon={<RectangleVertical size={22} />} />
+          <>
+            <CommandButton
+              command="zoom"
+              arg="onePage"
+              label="Una página"
+              large
+              icon={<RectangleVertical size={22} />}
+            />
+            <CommandButton command="zoom" arg="multiPage" label="Varias páginas" large icon={<Columns2 size={22} />} />
+          </>
         )}
         <CommandButton
           command="zoom"

@@ -76,6 +76,8 @@ export interface WriterUi {
   showRuler: boolean
   toggleRuler(): void
   zoom: number
+  /** "Varias páginas": las hojas en filas, unas al lado de otras. */
+  multiPage: boolean
   /** Un preset ("Una página"...) o un factor exacto (1 = 100 %). */
   setZoom(zoom: ZoomPreset | number): void
   splitOpen: boolean
@@ -503,8 +505,11 @@ export const WRITER_COMMANDS = {
   zoom: {
     label: 'Zoom',
     run: ({ ui }, zoom: ZoomPreset | number) => ui.setZoom(zoom),
-    // Solo 100 % se puede marcar como activo: "Una página" depende del tamaño de la ventana.
-    isActive: ({ ui }, zoom: ZoomPreset | number) => (zoom === 'actual' ? ui.zoom === 1 : ui.zoom === zoom)
+    // Solo 100 % y "Varias páginas" se pueden marcar como activos: "Una página" depende de la ventana.
+    isActive: ({ ui }, zoom: ZoomPreset | number) => {
+      if (zoom === 'multiPage') return ui.multiPage
+      return !ui.multiPage && (zoom === 'actual' ? ui.zoom === 1 : ui.zoom === zoom)
+    }
   },
   toggleSplit: { label: 'Dividir', run: ({ ui }) => ui.toggleSplit(), isActive: ({ ui }) => ui.splitOpen },
   wordCount: {

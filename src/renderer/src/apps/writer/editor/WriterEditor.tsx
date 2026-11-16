@@ -24,7 +24,7 @@ import { headerFooterText, printPageCss } from '../model/pageLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, withMargins, type PageSetup } from '../model/pageSetup'
 import { DEFAULT_STYLES, stylesCss, type WriterStyle } from '../model/styles'
 import { isPaginated, showsRuler, type ReadingTheme, type ViewMode } from '../model/views'
-import { zoomForPreset, type ZoomPreset } from '../model/zoom'
+import { multiPageLayout, zoomForPreset, type ZoomPreset } from '../model/zoom'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
@@ -70,6 +70,8 @@ import { WriterStatusBar } from './WriterStatusBar'
 export function WriterEditor({ initialContent, session, onChange }: EditorProps<WriterContent>) {
   const [activeTab, setActiveTab] = useState('home')
   const [zoom, setZoom] = useState(1)
+  /** Hojas por fila: 1 es lo normal; más, "Varias páginas". */
+  const [pagesAcrossSetting, setPagesAcross] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
   const [showRuler, setShowRuler] = useState(true)
   const [pageSetupOpen, setPageSetupOpen] = useState(false)
@@ -169,6 +171,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const pages = usePageMetrics(editor)
   const readAloud = useReadAloud(editor)
   const paginated = isPaginated(viewMode)
+  // "Varias páginas" solo existe con hojas; en las otras vistas el texto va seguido.
+  const pagesAcross = paginated ? pagesAcrossSetting : 1
+  const multiPage = pagesAcross > 1
 
   // Cada vista enciende o apaga lo suyo: las hojas, el esquema y si se puede escribir.
   useEffect(() => {
@@ -201,41 +206,44 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     return () => window.removeEventListener('keydown', onKey)
   }, [viewMode, viewBeforeReading])
 
-  /** Desplaza el lienzo para que la hoja `page` quede arriba. */
+  /** Desplaza el lienzo para que la hoja `page` quede arriba (en "Varias páginas", su fila). */
   const scrollToPage = useCallback(
-    (page: number) => {
+    (page: number, zoomNow = zoom, across = pagesAcross) => {
       const canvas = canvasRef.current
       const sheet = pageRef.current
       if (!canvas || !sheet) return
       const sheetTop = sheet.getBoundingClientRect().top - canvas.getBoundingClientRect().top + canvas.scrollTop
-      canvas.scrollTop = sheetTop + (page - 1) * geometry.pitch * zoom - 8
+      canvas.scrollTop = sheetTop + Math.floor((page - 1) / across) * geometry.pitch * zoomNow - 8
     },
-    [geometry.pitch, zoom]
+    [geometry.pitch, zoom, pagesAcross]
   )
 
   /** Zoom exacto o un preset: las cuentas en model/zoom.ts, las medidas del lienzo aquí. */
   const changeZoom = (target: ZoomPreset | number) => {
-    if (typeof target === 'number') return setZoom(target)
+    if (typeof target === 'number') {
+      setPagesAcross(1)
+      return setZoom(target)
+    }
     const canvas = canvasRef.current
     if (!canvas) return
+    const area = { width: canvas.clientWidth, height: canvas.clientHeight }
+    if (target === 'multiPage') {
+      // Sin regla: con varias hojas por fila no hay un solo margen que enseñar.
+      const layout = multiPageLayout(area, geometry, geometry.gap, 24)
+      setZoom(layout.zoom)
+      setPagesAcross(layout.across)
+      const page = pages.current
+      requestAnimationFrame(() => scrollToPage(page, layout.zoom, layout.across))
+      return
+    }
+    setPagesAcross(1)
     const rulerHeight = showRuler && showsRuler(viewMode) ? 30 : 0
-    const next = zoomForPreset(
-      target,
-      { width: canvas.clientWidth, height: canvas.clientHeight },
-      { width: geometry.width, height: geometry.height + rulerHeight },
-      24
-    )
+    const next = zoomForPreset(target, area, { width: geometry.width, height: geometry.height + rulerHeight }, 24)
     setZoom(next)
     // "Una página": la hoja del cursor, entera a la vista.
     if (target === 'onePage') {
       const page = pages.current
-      requestAnimationFrame(() => {
-        const sheet = pageRef.current
-        const canvasNow = canvasRef.current
-        if (!sheet || !canvasNow) return
-        const sheetTop = sheet.getBoundingClientRect().top - canvasNow.getBoundingClientRect().top + canvasNow.scrollTop
-        canvasNow.scrollTop = sheetTop + (page - 1) * geometry.pitch * next - 8
-      })
+      requestAnimationFrame(() => scrollToPage(page, next, 1))
     }
   }
 
@@ -296,6 +304,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     showRuler,
     toggleRuler: () => setShowRuler((value) => !value),
     zoom,
+    multiPage,
     setZoom: changeZoom,
     splitOpen,
     toggleSplit: () => setSplitOpen((open) => !open),
@@ -453,7 +462,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           totalPages={paginated ? pages.total : null}
           words={toolbar?.words ?? 0}
           zoom={zoom}
-          onZoomChange={setZoom}
+          onZoomChange={changeZoom}
           onWordCount={() => commandContext && runCommand(commandContext, 'wordCount')}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
@@ -571,7 +580,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             }}
           >
             <div className="writer-zoom" style={{ zoom }}>
-              {showRuler && showsRuler(viewMode) && (
+              {showRuler && showsRuler(viewMode) && !multiPage && (
                 <Ruler
                   pageSetup={pageSetup}
                   indents={toolbar?.indents ?? null}
@@ -586,10 +595,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
               )}
               <div
                 ref={pageRef}
-                className={`writer-page ${showMarks ? 'show-marks' : ''}`}
+                className={`writer-page ${showMarks ? 'show-marks' : ''} ${multiPage ? 'writer-page--multi' : ''}`}
                 style={{
-                  ...(paginated && { minHeight: pages.total * geometry.pitch - geometry.gap }),
-                  ...pageCssVariables(geometry)
+                  ...(paginated && {
+                    minHeight: Math.ceil(pages.total / pagesAcross) * geometry.pitch - geometry.gap
+                  }),
+                  ...pageCssVariables(geometry, pagesAcross)
                 }}
               >
                 {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
@@ -599,7 +610,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
                       <div
                         key={index}
                         className="writer-sheet"
-                        style={{ top: index * geometry.pitch, height: geometry.height }}
+                        style={{
+                          top: Math.floor(index / pagesAcross) * geometry.pitch,
+                          left: (index % pagesAcross) * (geometry.width + geometry.gap),
+                          width: geometry.width,
+                          height: geometry.height
+                        }}
                       >
                         {parts.header && (
                           <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
@@ -636,14 +652,24 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
  * Medidas de la hoja como variables CSS: la hoja, el área de texto, el encabezado y el pie las
  * leen en global.css. Un solo sitio decide las medidas (model/pageSetup.ts); el CSS solo las usa.
  */
-function pageCssVariables(geometry: ReturnType<typeof pageGeometry>): CSSProperties {
+function pageCssVariables(geometry: ReturnType<typeof pageGeometry>, across = 1): CSSProperties {
   const px = (value: number) => `${value.toFixed(2)}px`
+  const { width, gap, margins, contentWidth, contentHeight, pitch } = geometry
+  /** Holgura de cada columna en "Varias páginas": el último renglón puede asomar medio píxel. */
+  const columnSlack = 8
   return {
-    '--page-width': px(geometry.width),
-    '--page-content-height': px(geometry.contentHeight),
-    '--margin-top': px(geometry.margins.top),
-    '--margin-right': px(geometry.margins.right),
-    '--margin-bottom': px(geometry.margins.bottom),
-    '--margin-left': px(geometry.margins.left)
+    '--page-width': px(across * width + (across - 1) * gap),
+    '--page-content-height': px(contentHeight),
+    '--content-width': px(contentWidth),
+    '--margin-top': px(margins.top),
+    '--margin-right': px(margins.right),
+    '--margin-bottom': px(margins.bottom),
+    '--margin-left': px(margins.left),
+    // "Varias páginas": cada hoja es una columna del texto (ver .writer-page--multi en global.css).
+    '--pages-across': String(across),
+    '--multi-content-width': px(across * contentWidth + (across - 1) * (margins.left + margins.right + gap)),
+    '--multi-column-gap': px(margins.left + margins.right + gap),
+    '--multi-column-height': px(contentHeight + columnSlack),
+    '--multi-row-gap': px(pitch - contentHeight - columnSlack)
   } as CSSProperties
 }

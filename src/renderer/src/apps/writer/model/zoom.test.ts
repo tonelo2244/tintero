@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampZoom, MAX_ZOOM, MIN_ZOOM, stepZoom, zoomForPreset } from './zoom'
+import { clampZoom, MAX_ZOOM, MIN_ZOOM, multiPageLayout, stepZoom, zoomForPreset } from './zoom'
 
 const a4 = { width: 794, height: 1123 }
 
@@ -22,5 +22,16 @@ describe('zoom', () => {
     expect(clampZoom(9)).toBe(MAX_ZOOM)
     expect(stepZoom(1, 1)).toBe(1.1)
     expect(stepZoom(0.33, -1)).toBe(MIN_ZOOM)
+  })
+
+  it('varias páginas: hojas enteras de alto y al menos dos por fila', () => {
+    const wide = multiPageLayout({ width: 1600, height: 800 }, a4, 24)
+    expect(wide.zoom * a4.height).toBeLessThanOrEqual(800 - 24)
+    expect(wide.across).toBeGreaterThanOrEqual(2)
+    expect(wide.across * a4.width * wide.zoom).toBeLessThanOrEqual(1600)
+    // En una ventana estrecha se reduce el zoom para que quepan dos.
+    const narrow = multiPageLayout({ width: 700, height: 1200 }, a4, 24)
+    expect(narrow.across).toBe(2)
+    expect((2 * a4.width + 24) * narrow.zoom).toBeLessThanOrEqual(700)
   })
 })

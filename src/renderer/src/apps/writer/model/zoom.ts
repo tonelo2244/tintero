@@ -8,7 +8,7 @@ export const MIN_ZOOM = 0.25
 export const MAX_ZOOM = 2
 
 /** Presets de la pestaña Vista, como en Word. */
-export type ZoomPreset = 'actual' | 'onePage' | 'pageWidth'
+export type ZoomPreset = 'actual' | 'onePage' | 'pageWidth' | 'multiPage'
 
 /** Zooms fijos del desplegable. */
 export const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2]
@@ -35,6 +35,7 @@ export interface SheetSize {
  */
 export function zoomForPreset(preset: ZoomPreset, area: FitArea, sheet: SheetSize, chromeHeight = 0): number {
   if (preset === 'actual') return 1
+  if (preset === 'multiPage') return multiPageLayout(area, sheet, 0, chromeHeight).zoom
   const byWidth = (area.width - 2 * FIT_PADDING_PX) / sheet.width
   if (preset === 'pageWidth') return clampZoom(byWidth)
   const byHeight = (area.height - chromeHeight - FIT_PADDING_PX) / sheet.height
@@ -44,4 +45,30 @@ export function zoomForPreset(preset: ZoomPreset, area: FitArea, sheet: SheetSiz
 /** Siguiente paso de zoom hacia arriba o abajo (los botones + y − de la barra de estado). */
 export function stepZoom(zoom: number, direction: 1 | -1): number {
   return clampZoom(Math.round((zoom + direction * 0.1) * 10) / 10)
+}
+
+/** Hojas por fila como mínimo en "Varias páginas": si no, sería "Una página". */
+const MIN_PAGES_ACROSS = 2
+const MAX_PAGES_ACROSS = 6
+
+export interface MultiPageLayout {
+  zoom: number
+  /** Hojas en cada fila. */
+  across: number
+}
+
+/**
+ * "Varias páginas": hojas enteras a la vista, una al lado de otra. El zoom hace que una hoja quepa
+ * de alto; caben tantas por fila como permita el ancho (al menos dos: si no caben, se reduce más).
+ */
+export function multiPageLayout(area: FitArea, sheet: SheetSize, gap: number, chromeHeight = 0): MultiPageLayout {
+  const byHeight = (area.height - chromeHeight - FIT_PADDING_PX) / sheet.height
+  const width = area.width - 2 * FIT_PADDING_PX
+  const fits = (zoom: number) => Math.floor((width / zoom + gap) / (sheet.width + gap))
+  let zoom = clampZoom(byHeight)
+  if (fits(zoom) < MIN_PAGES_ACROSS) {
+    zoom = clampZoom(width / (MIN_PAGES_ACROSS * sheet.width + (MIN_PAGES_ACROSS - 1) * gap))
+  }
+  const across = Math.min(MAX_PAGES_ACROSS, Math.max(MIN_PAGES_ACROSS, fits(zoom)))
+  return { zoom, across }
 }

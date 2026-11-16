@@ -869,6 +869,45 @@ button {
   user-select: none;
 }
 
+/*
+ * Varias páginas (Vista > Zoom): cada hoja es una columna del mismo texto, en filas. Los huecos de
+ * la paginación se cambian por saltos de columna, como al imprimir se cambian por saltos de hoja.
+ * Mientras la paginación mide (data-measuring), el texto vuelve a ser una sola tira.
+ */
+.writer-page--multi .writer-content {
+  width: var(--content-width);
+}
+.writer-page--multi:not([data-measuring]) .writer-content {
+  width: var(--multi-content-width);
+  column-count: var(--pages-across);
+  column-gap: var(--multi-column-gap);
+  column-height: var(--multi-column-height);
+  column-wrap: wrap;
+  row-gap: var(--multi-row-gap);
+  column-fill: auto;
+}
+.writer-page--multi:not([data-measuring]) .writer-page-start {
+  margin-top: 0 !important;
+  break-before: column;
+}
+.writer-page--multi:not([data-measuring]) .writer-page-split {
+  display: block;
+  width: auto;
+  height: 0 !important;
+  break-before: column;
+}
+.writer-page--multi:not([data-measuring]) tr.writer-table-gap {
+  display: none;
+}
+/* Una caja con barra de desplazamiento no se parte entre columnas: la tabla tiene que poder. */
+.writer-page--multi:not([data-measuring]) .tableWrapper {
+  overflow: visible;
+}
+.writer-page--multi:not([data-measuring]) tr.writer-table-repeat,
+.writer-page--multi:not([data-measuring]) tr.writer-row-break {
+  break-before: column;
+}
+
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
 .writer-content hr.writer-page-break {
   position: relative;
