@@ -29,6 +29,7 @@ import {
   TabStopType,
   LeaderType,
   Table,
+  TableOfContents,
   TableCell,
   TableRow,
   TextRun,
@@ -72,6 +73,23 @@ import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 import { DEFAULT_FONT_SIZE_PT } from '../../constants'
 import { latexToMath } from 'docx/math'
 import { EQUATION } from '../equation'
+import { NOTE } from '../notes'
+import { CROSS_REFERENCE, SEQUENCE } from '../captions'
+import { TOC } from '../toc'
+import { BIBLIOGRAPHY, CITATION, DEFAULT_CITATION_STYLE, type CitationStyle, type Source } from '../citations'
+import type { Bibliography } from 'docx/bibliography'
+import {
+  bibliographyBlock,
+  citationRun,
+  crossReferenceField,
+  documentBibliography,
+  noteRun,
+  referenceAnchorChildren,
+  referenceIndex,
+  sequenceField,
+  tableOfContentsBlocks,
+  type ReferenceIndex
+} from './referencesDocx'
 import { DROP_CAP_LINES, isDropCapMode, splitDropCap, type DropCapMode } from '../dropCap'
 import { isBandedRow, parseCellBorders, tableStyle, type CellSide, type TableStyle } from '../tableStyles'
 
@@ -80,7 +98,7 @@ const PX_PER_CM = 96 / 2.54
 /** Mismo gris que las celdas de encabezado en el editor. */
 
 /** Un bloque de Word: párrafo o tabla. */
-type DocxBlock = Paragraph | Table
+type DocxBlock = Paragraph | Table | TableOfContents | Bibliography
 
 const HEADING_BY_LEVEL = {
   1: HeadingLevel.HEADING_1,
@@ -124,6 +142,8 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   const plans = planDocxSections(content.doc.content ?? [], pageSetup)
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
   converter.author = content.author ?? ''
+  converter.sources = content.sources ?? []
+  converter.citationStyle = content.citationStyle ?? DEFAULT_CITATION_STYLE
   const sectionChildren = plans.map((plan) => {
     converter.setContentWidth(contentWidthCm(plan.setup))
     return converter.blocks(plan.blocks)
@@ -135,6 +155,12 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
     ...(content.evenPages && { evenAndOddHeaderAndFooters: true }),
     // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
     ...(content.hyphenation && { hyphenation: { autoHyphenation: true } }),
+    // Fuentes de las citas (fase 17): Word las guarda en el documento y las enseña en su Administrador de fuentes.
+    ...(converter.sources.length > 0 && {
+      bibliography: documentBibliography(converter.sources, converter.citationStyle)
+    }),
+    // Páginas de PAGEREF y "más arriba/abajo": Word las calcula al abrir (pregunta si actualiza campos).
+    ...(converter.needsFieldUpdate && { features: { updateFields: true } }),
     styles: docxStylesFor(content.styles ?? DEFAULT_STYLES, content.numberedHeadings),
     comments: { children: comments.map(commentOptions) },
     numbering: {
@@ -248,12 +274,20 @@ class DocxConverter {
   private maxImageWidthPx = 0
   /** Autor del documento: el valor que llevan escrito los campos Autor. */
   author = ''
+  /** Fuentes y estilo de las citas (fase 17). */
+  sources: Source[] = []
+  citationStyle: CitationStyle = DEFAULT_CITATION_STYLE
+  /** Números de títulos y destinos de referencias: dependen del documento entero. */
+  private readonly references: ReferenceIndex
+  /** Hay referencias a página o posición: Word tiene que actualizar campos al abrir. */
+  needsFieldUpdate = false
 
   constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
     this.setContentWidth(contentWidthCm)
     this.commentNumbers = new Map(comments.map((comment, index) => [comment.id, index]))
     countCommentTexts(doc, this.totalCommentTexts)
     for (const [id, count] of this.totalCommentTexts) this.pendingCommentTexts.set(id, count)
+    this.references = referenceIndex(doc)
   }
 
   /** Cada sección tiene su ancho útil (una horizontal es más ancha). */
@@ -338,6 +372,12 @@ class DocxConverter {
         return []
       case 'table':
         return [this.table(node, this.contentWidthTwips)]
+      case TOC:
+        return tableOfContentsBlocks(node)
+      case BIBLIOGRAPHY: {
+        const bibliography = bibliographyBlock(node, this.sources)
+        return bibliography ? [bibliography] : []
+      }
       default:
         // Nodo desconocido (extensión futura): mejor conservar su texto que perderlo.
         return node.content ? this.blocks(node.content, list) : []
@@ -391,7 +431,10 @@ class DocxConverter {
           column += columnSpan
           const isHeader = cell.type === 'tableHeader'
           this.runDefaults = isHeader ? headerRunOptions(style) : {}
-          const content = this.blocks(cell.content ?? [])
+          // Una tabla de contenido o bibliografía no cabe en una celda de Word.
+          const content = this.blocks(cell.content ?? []).filter(
+            (block): block is Paragraph | Table => block instanceof Paragraph || block instanceof Table
+          )
           this.runDefaults = {}
           const fill = cellFill(style, cell, isHeader, rowIndex)
           const borders = parseCellBorders(cell.attrs?.borders)
@@ -438,7 +481,7 @@ class DocxConverter {
   private paragraph(node: JSONContent, list?: ListContext, continuationLevel?: number): Paragraph {
     const attrs = node.attrs ?? {}
     const options: { -readonly [K in keyof IParagraphOptions]: IParagraphOptions[K] } = {
-      children: this.inlines(node.content ?? [])
+      children: referenceAnchorChildren(node, (nodes) => this.inlines(nodes)) ?? this.inlines(node.content ?? [])
     }
 
     if (node.type === 'heading') {
@@ -509,6 +552,15 @@ class DocxConverter {
       return [new SimpleField(docxFieldInstruction(kind), kind === 'fileName' ? '' : cached)]
     }
     if (node.type === EQUATION) return [equationRun(String(node.attrs?.latex ?? ''))]
+    if (node.type === NOTE) return [noteRun(node)]
+    if (node.type === SEQUENCE) {
+      return [sequenceField(String(node.attrs?.label ?? 'Figura'), this.references.sequenceNumbers.get(node) ?? 1)]
+    }
+    if (node.type === CROSS_REFERENCE) {
+      if (node.attrs?.show === 'page' || node.attrs?.show === 'position') this.needsFieldUpdate = true
+      return [crossReferenceField(node, this.references)]
+    }
+    if (node.type === CITATION) return [citationRun(node, this.sources, this.citationStyle)]
     if (node.type !== 'text' || !node.text) return []
 
     const run = new TextRun({ text: node.text, ...this.runDefaults, ...runOptions(marks) })

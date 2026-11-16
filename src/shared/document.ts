@@ -27,8 +27,11 @@ export const FILE_FORMAT_ID = 'tintero'
  *      `textBox`, `chart`, `equation`), autor del documento (`author`), imagen con tamaño, recorte,
  *      giro y colocación, estilo de tabla con bordes y sombreado por celda, y letra capital. Sin
  *      migración: todo es opcional y una imagen sin colocación es la de siempre, en su renglón.
+ *   8. Texto: Referencias (fase 17). Nodos nuevos (`note`, `tableOfContents`, `sequence`,
+ *      `crossReference`, `citation`, `bibliography`), el estilo `caption` y las fuentes del
+ *      documento (`sources`, `citationStyle`). Sin migración: todo es nuevo y opcional.
  */
-export const FILE_FORMAT_VERSION = 7
+export const FILE_FORMAT_VERSION = 8
 
 export interface DocumentEnvelope<TContent = unknown> {
   format: typeof FILE_FORMAT_ID

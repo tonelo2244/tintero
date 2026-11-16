@@ -326,6 +326,8 @@ Objetivo: poder escribir un trabajo de clase o una memoria de prácticas entera 
 
 Esfuerzo: 3–4 semanas.
 
+> **Estado (noviembre de 2026): hecha.** Pestaña **Referencias** con tabla de contenido e índice de ilustraciones (un mismo nodo; el texto es una foto que se actualiza con "Actualizar tabla" y las páginas se pintan siempre al día), notas al pie que reservan su alto en cada hoja (también al imprimir y en PDF) y notas al final, títulos "Figura N" con campos de secuencia, referencias cruzadas con marcadores ocultos `_Ref` como los de Word, y citas con fuentes guardadas en el documento, APA 7 e ISO 690 hechos a mano e importación de BibTeX. Al .docx va todo nativo: `footnotes.xml`/`endnotes.xml`, campos TOC, SEQ, REF y PAGEREF, y citas y bibliografía de Word (fuentes en `customXml`); al importar se leen las notas. Formato de archivo 8. Queda pendiente: la tabla de contenido y la bibliografía no se parten entre hojas; el texto de una nota es texto plano; las notas al pie no se ven en "Varias páginas" y las de una hoja que se corta dentro de una tabla se imprimen al final; Word pinta las citas con su propio APA (6.ª) al actualizar; y al importar un .docx, la tabla de contenido, los títulos y las citas llegan como texto.
+
 ### Fase 18 · Revisar
 
 Objetivo: trabajar con correcciones como en Word, y aprovechar la IA local donde Word usa la nube.

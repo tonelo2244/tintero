@@ -85,7 +85,11 @@ function setup(html: string) {
     toggleReadAloud: () => calls.push('readAloud'),
     openDialog: (dialog) => calls.push(`dialog:${dialog}`),
     documentAuthor: '',
-    setDocumentAuthor: (author) => calls.push(`author:${author}`)
+    setDocumentAuthor: (author) => calls.push(`author:${author}`),
+    sources: [],
+    setSources: (sources) => calls.push(`sources:${sources.length}`),
+    citationStyle: 'apa',
+    setCitationStyle: (style) => calls.push(`citationStyle:${style}`)
   }
   const context: CommandContext = { editor, ui }
   return { context, calls, editor, page: () => pageSetup, styles: () => styles, numbered: () => numbered }

@@ -204,6 +204,7 @@ export function prepareHtml(html: string, transform?: (body: HTMLElement) => voi
   convertTabs(dom.body)
   dom.querySelectorAll('img[src=""]').forEach((image) => image.remove())
   normalizePageBreaks(dom.body)
+  convertNotes(dom.body)
   // Los vínculos internos se quedan si llevan a un marcador de Word (mammoth lo escribe como
   // `<a id>` sin href). Los demás, como los de vuelta de las notas al pie ("↑"), no llevan a ningún sitio.
   const bookmarks = new Set([...dom.querySelectorAll('a[id]:not([href])')].map((anchor) => anchor.id))
@@ -211,6 +212,36 @@ export function prepareHtml(html: string, transform?: (body: HTMLElement) => voi
     if (!bookmarks.has(decodeURIComponent(link.getAttribute('href')!.slice(1)))) link.replaceWith(...link.childNodes)
   })
   return dom.body.innerHTML
+}
+
+/**
+ * Notas al pie y al final (fase 17). mammoth escribe la llamada como `<sup><a href="#footnote-1">[1]</a></sup>`
+ * y las notas en una lista al final (`<li id="footnote-1">… <a href="#footnote-ref-1">↑</a></li>`).
+ * La llamada pasa a ser nuestra nota con su texto, y la lista se quita.
+ */
+function convertNotes(body: HTMLElement): void {
+  const lists = new Set<Element>()
+  for (const kind of ['footnote', 'endnote'] as const) {
+    body.querySelectorAll<HTMLAnchorElement>(`sup > a[href^="#${kind}-"]`).forEach((link) => {
+      const item = body.ownerDocument.getElementById(decodeURIComponent(link.getAttribute('href')!.slice(1)))
+      if (!item || item.tagName !== 'LI') return
+      item.querySelectorAll(`a[href^="#${kind}-ref-"]`).forEach((back) => back.remove())
+      const blocks = [...item.querySelectorAll('p')]
+      const text = (blocks.length > 0 ? blocks.map((block) => block.textContent ?? '') : [item.textContent ?? ''])
+        .map((line) => line.trim())
+        .join('\n')
+        .trim()
+      const note = body.ownerDocument.createElement('sup')
+      note.setAttribute('data-note', kind)
+      note.setAttribute('data-note-text', text)
+      link.parentElement!.replaceWith(note)
+      if (item.parentElement) lists.add(item.parentElement)
+      item.remove()
+    })
+  }
+  lists.forEach((list) => {
+    if (list.children.length === 0) list.remove()
+  })
 }
 
 /** Clases que pone el mapa de estilos (tstyle-<id>, tchar-<id>) -> atributos que lee el editor. */

@@ -262,4 +262,22 @@ describe('importDocx (ida y vuelta con exportDocx)', () => {
     expect(total.content?.[0]).toMatchObject({ type: 'tableCell', attrs: { colspan: 2 } })
     expect(warnings).toEqual([])
   })
+
+  it('las notas al pie y al final vuelven como notas, sin la lista del final (fase 17)', async () => {
+    const { content } = await roundTrip([
+      paragraph([
+        text('Texto'),
+        { type: 'note', attrs: { id: 'a', kind: 'footnote', text: 'Al pie' } },
+        text(' y más'),
+        { type: 'note', attrs: { id: 'b', kind: 'endnote', text: 'Al final' } }
+      ])
+    ])
+    const notes = (blocks(content.doc)[0].content ?? []).filter((node) => node.type === 'note')
+    expect(notes.map((note) => [note.attrs?.kind, note.attrs?.text])).toEqual([
+      ['footnote', 'Al pie'],
+      ['endnote', 'Al final']
+    ])
+    expect(JSON.stringify(content.doc)).not.toContain('↑')
+    expect(blocks(content.doc)).toHaveLength(1)
+  })
 })

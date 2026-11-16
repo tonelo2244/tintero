@@ -122,6 +122,20 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
   - .docx: vínculos internos y marcadores, campos (`w:fldSimple`; al importar, también los de
     Word), imágenes flotantes con recorte y giro, y formas, cuadros de texto, gráficos y
     ecuaciones **nativos de Word**, que allí se siguen editando. Letra capital como `w:framePr`.
+- **Texto, Referencias** (fase 17), una pestaña nueva de la cinta:
+  - **Tabla de contenido** de los títulos (1 a 6 niveles), con puntos de relleno, vínculos y
+    números de página siempre al día; "Actualizar tabla" avisa cuando el texto ha cambiado.
+  - **Notas al pie** (Ctrl/Cmd+Alt+F), colocadas al pie de **su hoja** también al imprimir, y
+    **notas al final** (Ctrl/Cmd+Alt+D); se renumeran solas, se convierten de un tipo a otro y se
+    recorren con "Siguiente nota".
+  - **Títulos** ("Figura 1", "Tabla 2", rótulos propios), **índice de ilustraciones** y
+    **referencias cruzadas** a títulos, encabezados y marcadores (texto, rótulo y número, página
+    o "más arriba/abajo").
+  - **Citas y bibliografía**: fuentes guardadas en el documento (libro, capítulo, artículo, web,
+    informe), estilos **APA 7** e **ISO 690**, bibliografía generada e **importar BibTeX**.
+  - .docx: notas en `footnotes.xml` y `endnotes.xml` (también al importar), tabla de contenido y
+    títulos como campos TOC y SEQ, referencias como REF y PAGEREF, y citas y bibliografía nativas
+    de Word.
 
 ### Corregido
 
@@ -133,6 +147,8 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 8 (notas, títulos, referencias, tablas de contenido y fuentes de la
+  fase 17). Los documentos anteriores se abren igual.
 - Formato de archivo versión 7 (objetos, campos, marcadores, ecuaciones y estilos de tabla de la
   fase 16). Los documentos anteriores se abren igual.
 - Dependencia nueva: [KaTeX](https://katex.org) para pintar las ecuaciones (MIT, sin red).

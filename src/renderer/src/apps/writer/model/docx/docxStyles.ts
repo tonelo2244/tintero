@@ -47,6 +47,7 @@ export const WORD_BUILT_IN_STYLES: Record<string, { id: string; name: string }> 
   title: { id: 'Title', name: 'Title' },
   subtitle: { id: 'Subtitle', name: 'Subtitle' },
   quote: { id: 'Quote', name: 'Quote' },
+  caption: { id: 'Caption', name: 'caption' },
   emphasis: { id: 'Emphasis', name: 'Emphasis' },
   'intense-emphasis': { id: 'IntenseEmphasis', name: 'Intense Emphasis' },
   strong: { id: 'Strong', name: 'Strong' }

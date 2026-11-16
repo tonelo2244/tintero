@@ -2,7 +2,18 @@ import { Extension } from '@tiptap/core'
 import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
-import { paginateSections, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
+import { pageOfPosition, paginateSections, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
+import { footnotesByPage } from '../model/notes'
+import { documentIndex, type PlacedNote } from './references'
+import {
+  endNotesWidget,
+  footnoteLayerWidget,
+  measureFootnotes,
+  NOTE_SEPARATOR_PX,
+  printFootnotesWidget,
+  type EndNotesContent,
+  type FootnoteArea
+} from './NotesLayout'
 import { DEFAULT_PAGE_SETUP, pageGeometry, type PageGeometry, type PageSetup } from '../model/pageSetup'
 import { documentSections, SECTION_BREAK } from '../model/sections'
 import { COLUMNS } from '../model/columns'
@@ -103,6 +114,9 @@ export const Pagination = Extension.create<object, PaginationStorage>({
 
   addProseMirrorPlugins() {
     const storage = this.storage
+    const editor = this.editor
+    // Clic en una nota al pie o al final: su cuadro (lo pone la pantalla en el almacén de referencias).
+    const openNote = (id: string) => editor.storage.references?.openNote?.(id)
     return [
       new Plugin<DecorationSet>({
         key: paginationKey,
@@ -121,7 +135,7 @@ export const Pagination = Extension.create<object, PaginationStorage>({
             frame = requestAnimationFrame(() => {
               // Durante una composición (acentos, IME) no se puede despachar sin estropearla.
               if (view.composing) return schedule()
-              layout(view, storage)
+              layout(view, storage, openNote)
             })
           }
           // Solo los cambios de ancho cambian el reparto (el alto lo cambiamos nosotros).
@@ -172,6 +186,8 @@ interface Unit {
   /** Primera fila: si baja, baja la tabla entera (con margen, como un bloque). */
   firstRow?: boolean
   section: number
+  /** Pieza de las notas del final (fase 17): la raya o una nota, en su orden. */
+  endnote?: number
 }
 
 /** Un renglón medido, con el bloque de texto al que pertenece (para saber dónde partir). */
@@ -184,6 +200,8 @@ interface Line {
   textblock: ProseMirrorNode
   /** Es el primer renglón de su bloque de texto: se parte justo al principio. */
   first: boolean
+  /** Alto de las notas al pie que se citan en este renglón (fase 17). */
+  notes?: number
 }
 
 type MeasuredUnit = Unit & MeasuredBlock & { textLines?: Line[] }
@@ -300,7 +318,7 @@ function pagedColumns(measured: MeasuredUnit[], sections: SectionLayout): Decora
 }
 
 /** Mide, reparte y aplica los saltos, y anota el número de hojas. */
-function layout(view: EditorView, storage: PaginationStorage): void {
+function layout(view: EditorView, storage: PaginationStorage, openNote: (id: string) => void): void {
   const hadDecorations = paginationKey.getState(view.state) !== DecorationSet.empty
   const replaceDecorations = (decorations: Decoration[]) =>
     view.dispatch(
@@ -308,6 +326,13 @@ function layout(view: EditorView, storage: PaginationStorage): void {
         .setMeta(paginationKey, DecorationSet.create(view.state.doc, decorations))
         .setMeta('addToHistory', false)
     )
+  const docEnd = view.state.doc.content.size
+  // Notas (fase 17): las del final van detrás del texto; las de pie, al pie de su hoja.
+  const index = documentIndex(view.state.doc)
+  const footnotes = index.notes.filter((note) => note.kind === 'footnote')
+  const endnotes = index.notes.filter((note) => note.kind === 'endnote')
+  const withoutNull = (decorations: (Decoration | null)[]) =>
+    decorations.filter((decoration): decoration is Decoration => decoration !== null)
   // En "Varias páginas" las hojas son columnas: se mide con el texto en una sola tira (ver global.css).
   const host = view.dom.closest<HTMLElement>('.writer-page')
   host?.setAttribute('data-measuring', '')
@@ -315,8 +340,12 @@ function layout(view: EditorView, storage: PaginationStorage): void {
     const sections = sectionLayout(view.state.doc, storage.pageSetup)
     const base = sections.geometries[0]
     if (!storage.enabled) {
-      // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
-      if (hadDecorations) replaceDecorations([])
+      // Sin hojas: se quitan los saltos, el documento cuenta como una sola tira de texto y todas
+      // las notas van al final.
+      const notesAtEnd = withoutNull([
+        endNotesWidget(docEnd, { footnotes, endnotes, numbers: index.noteNumbers }, openNote)
+      ])
+      if (hadDecorations || notesAtEnd.length > 0) replaceDecorations(notesAtEnd)
       const changed = storage.pageCount !== 1
       storage.pageCount = 1
       storage.pageStarts = [0]
@@ -326,34 +355,47 @@ function layout(view: EditorView, storage: PaginationStorage): void {
       return
     }
 
-    // 1. Sin saltos, pero cada sección ya con su ancho (el ancho cambia el alto de los párrafos).
+    // 1. Sin saltos, pero cada sección ya con su ancho (el ancho cambia el alto de los párrafos) y
+    //    las notas del final en su sitio, para medirlas.
+    const endContent: EndNotesContent = { footnotes: [], endnotes, numbers: index.noteNumbers }
+    const endWidget = () => withoutNull([endNotesWidget(docEnd, endContent, openNote)])
     let sectionDecos = sectionDecorations(view, sections)
-    if (hadDecorations || sectionDecos.length > 0) replaceDecorations(sectionDecos)
+    if (hadDecorations || sectionDecos.length > 0 || endnotes.length > 0) {
+      replaceDecorations([...sectionDecos, ...endWidget()])
+    }
     // 2. Medir y repartir. Un bloque de columnas que no cabe en una hoja pasa a ir por hojas (una
     //    fila de columnas por hoja): se marca y se vuelve a medir, porque cambia de alto.
     let measured = measureUnits(view, sections)
     const paged = pagedColumns(measured, sections)
     if (paged.length > 0) {
       sectionDecos = [...sectionDecos, ...paged]
-      replaceDecorations(sectionDecos)
+      replaceDecorations([...sectionDecos, ...endWidget()])
       measured = measureUnits(view, sections)
     }
+    const noteHeights = measureFootnotes(view, footnotes, index.noteNumbers, base.contentWidth)
+    assignFootnotes(view, measured, footnotes, noteHeights)
     const formats = sections.geometries.map((geometry) => ({
       contentHeight: geometry.contentHeight,
       marginTop: geometry.margins.top,
       marginBottom: geometry.margins.bottom
     }))
-    const { breaks, pages } = paginateSections(measured, formats, base.gap)
+    const { breaks, pages } = paginateSections(measured, formats, base.gap, NOTE_SEPARATOR_PX)
     // 3. Aplicar los saltos.
     const decorations: Decoration[] = [...sectionDecos]
     const pageStarts: number[] = [0]
+    const endMargins = new Map<number, number>()
     for (const pageBreak of breaks) {
       const placed = breakDecorations(view, measured, pageBreak)
       decorations.push(...placed.decorations)
       pageStarts[pageBreak.page] = placed.pageStart
+      if (placed.endnote) endMargins.set(placed.endnote.piece, placed.endnote.margin)
     }
     // Una hoja que solo continúa un bloque enorme empieza donde la anterior.
     for (let page = 1; page < pages.length; page++) pageStarts[page] ??= pageStarts[page - 1]
+    decorations.push(...withoutNull([endNotesWidget(docEnd, { ...endContent, margins: endMargins }, openNote)]))
+    decorations.push(
+      ...footnoteDecorations(view, sections, pages, pageStarts, footnotes, noteHeights, index.noteNumbers, openNote)
+    )
     storage.pageStarts = pageStarts
     const layoutWidth = Math.max(...sections.geometries.map((geometry) => geometry.width))
     storage.layoutWidth = layoutWidth
@@ -375,6 +417,100 @@ function layout(view: EditorView, storage: PaginationStorage): void {
   } finally {
     host?.removeAttribute('data-measuring')
   }
+}
+
+/**
+ * Cada nota al pie suma su alto al renglón donde está su número (o al bloque, si no se parte por
+ * renglones): así la paginación sabe que ese renglón solo cabe en la hoja si caben sus notas.
+ */
+function assignFootnotes(
+  view: EditorView,
+  measured: MeasuredUnit[],
+  footnotes: PlacedNote[],
+  heights: Map<string, number>
+): void {
+  for (const note of footnotes) {
+    const height = heights.get(note.id) ?? 0
+    const unit = measured.find(
+      (candidate) =>
+        candidate.endnote === undefined &&
+        note.pos >= candidate.pos &&
+        note.pos < candidate.pos + candidate.node.nodeSize
+    )
+    if (!unit || height === 0) continue
+    if (unit.textLines && unit.textLines.length > 0) {
+      let top: number
+      try {
+        top = view.coordsAtPos(note.pos, 1).top
+      } catch {
+        top = unit.textLines[0].screenTop
+      }
+      const line =
+        [...unit.textLines].reverse().find((candidate) => candidate.screenTop <= top + 2) ?? unit.textLines[0]
+      line.notes = (line.notes ?? 0) + height
+    } else {
+      unit.notes = (unit.notes ?? 0) + height
+    }
+  }
+}
+
+/**
+ * Notas al pie ya repartidas: la capa de pantalla (una zona al pie de cada hoja con notas) y, para
+ * imprimir, las notas de cada hoja justo antes de su salto, bajadas hasta el pie con un margen.
+ */
+function footnoteDecorations(
+  view: EditorView,
+  sections: SectionLayout,
+  pages: ReturnType<typeof paginateSections>['pages'],
+  pageStarts: number[],
+  footnotes: PlacedNote[],
+  heights: Map<string, number>,
+  numbers: Map<string, number>,
+  openNote: (id: string) => void
+): Decoration[] {
+  if (footnotes.length === 0) return []
+  const base = sections.geometries[0]
+  const docEnd = view.state.doc.content.size
+  const byPage = footnotesByPage(footnotes, (pos) => pageOfPosition(pageStarts, pos))
+  const areas: FootnoteArea[] = []
+  const decorations: Decoration[] = []
+  /** Notas de hojas que acaban dentro de una tabla: al imprimir van al final (no caben en una fila). */
+  const deferred: PlacedNote[] = []
+  for (const [pageNumber, notes] of byPage) {
+    const page = pages[pageNumber - 1]
+    if (!page) continue
+    const geometry = sections.geometries[page.section] ?? base
+    const height = notes.reduce((sum, note) => sum + (heights.get(note.id) ?? 0), 0)
+    const areaTop = page.top + geometry.contentHeight - height - NOTE_SEPARATOR_PX
+    areas.push({
+      top: areaTop,
+      left: (base.width - geometry.width) / 2 + geometry.margins.left - base.margins.left,
+      width: geometry.contentWidth,
+      notes
+    })
+    // Lo que sobra de la hoja, menos un poco de holgura: si al imprimir sobrara un píxel de menos,
+    // las notas pasarían a la hoja siguiente.
+    const margin = areaTop - page.contentBottom - 4
+    const isLast = pageNumber >= pages.length
+    const nextStart = pageStarts[pageNumber]
+    if (isLast) {
+      decorations.push(printFootnotesWidget(docEnd, notes, numbers, margin, 3))
+    } else if (insideTable(view, nextStart)) {
+      deferred.push(...notes)
+    } else {
+      decorations.push(printFootnotesWidget(nextStart, notes, numbers, margin))
+    }
+  }
+  if (deferred.length > 0) decorations.push(printFootnotesWidget(docEnd, deferred, numbers, 0, 4))
+  const layer = footnoteLayerWidget(docEnd, areas, numbers, openNote)
+  if (layer) decorations.push(layer)
+  return decorations
+}
+
+function insideTable(view: EditorView, pos: number): boolean {
+  const $pos = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size))
+  for (let depth = $pos.depth; depth > 0; depth--) if ($pos.node(depth).type.name === 'table') return true
+  return false
 }
 
 /** Cajas de cada unidad (y sus renglones, si es texto que se puede partir) relativas al principio del texto. */
@@ -412,6 +548,23 @@ function measureUnits(view: EditorView, sections: SectionLayout): MeasuredUnit[]
     }
     measured.push(block)
   }
+  // Las notas del final (fase 17): cada pieza es un bloque que baja entero si no cabe.
+  const end = view.state.doc.content.size
+  const lastSection = measured.at(-1)?.section ?? 0
+  view.dom.querySelectorAll<HTMLElement>('.writer-endnotes > [data-unit]').forEach((piece, index) => {
+    const rect = piece.getBoundingClientRect()
+    measured.push({
+      pos: end,
+      node: view.state.doc,
+      breakBefore: false,
+      section: lastSection,
+      endnote: index,
+      top: toY(rect.top),
+      bottom: toY(rect.bottom),
+      // La raya no se queda sola al pie de una hoja.
+      keepWithNext: piece.classList.contains('writer-notes-separator')
+    })
+  })
   return measured
 }
 
@@ -465,8 +618,13 @@ function breakDecorations(
   view: EditorView,
   measured: MeasuredUnit[],
   { index, shift, line }: PageBreak
-): { decorations: Decoration[]; pageStart: number } {
+): { decorations: Decoration[]; pageStart: number; endnote?: { piece: number; margin: number } } {
   const unit = measured[index]
+  if (unit.endnote !== undefined) {
+    // Las piezas del final las pinta su propio widget: aquí solo se dice con qué margen.
+    const gap = unit.top - (index > 0 ? measured[index - 1].bottom : 0)
+    return { decorations: [], pageStart: unit.pos, endnote: { piece: unit.endnote, margin: gap + shift } }
+  }
   if (line !== undefined && unit.textLines) {
     // Párrafo partido: un hueco del alto del salto justo antes del primer renglón que no cabe.
     const pos = lineStart(view, unit.textLines[line])

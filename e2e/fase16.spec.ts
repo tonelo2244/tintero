@@ -105,6 +105,8 @@ test('Texto: formas, cuadro de texto y gráfico con su pestaña contextual', asy
   await page.getByRole('button', { name: 'Cuadro de texto' }).click()
   // Se escribe cuando el cuadro ya tiene el cursor (su marco lo indica con "is-editing").
   await expect(editor.locator('.writer-object[data-type="textBox"]')).toHaveClass(/is-editing/)
+  // Tiptap devuelve el foco al editor en el siguiente fotograma: hasta entonces lo tiene el botón.
+  await expect(editor).toBeFocused()
   await page.keyboard.insertText('Nota al margen')
   await expect(editor.locator('.writer-object[data-type="textBox"]')).toContainText('Nota al margen')
 })
