@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/core'
+import { selectionBlock } from './documentEdits'
 import { headingLevelOf, NORMAL_STYLE_ID, type WriterStyle } from './styles'
 
 /**
@@ -20,7 +21,7 @@ export function applyStyle(editor: Editor, style: WriterStyle): void {
 
 /** Estilo de párrafo donde está el cursor (null si no es un párrafo ni un título, p. ej. código). */
 export function activeParagraphStyleId(editor: Editor): string | null {
-  const block = editor.state.selection.$from.parent
+  const block = selectionBlock(editor).parent
   if (block.type.name === 'heading') return `heading-${block.attrs.level}`
   if (block.type.name === 'paragraph') return (block.attrs.blockStyle as string | null) ?? NORMAL_STYLE_ID
   return null

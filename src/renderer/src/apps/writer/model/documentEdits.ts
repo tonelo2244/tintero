@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/core'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import type { Node as ProseMirrorNode, ResolvedPos } from '@tiptap/pm/model'
 import { continuedStart, INDENT_STEP_CM } from './paragraphFormat'
 import type { StyleAlign, StyleProps } from './styles'
 import { changeCase, compareTexts, type CaseMode } from './textCase'
@@ -39,7 +39,8 @@ export function changeSelectionCase(editor: Editor, mode: CaseMode): boolean {
 /** Bloques de primer nivel que toca la selección (índices en el documento). */
 function topLevelRange(editor: Editor): { first: number; last: number } {
   const { $from, $to } = editor.state.selection
-  return { first: $from.index(0), last: $to.index(0) }
+  // "Seleccionar todo" termina entre bloques (profundidad 0): ahí el índice ya es el del siguiente.
+  return { first: $from.index(0), last: $to.depth === 0 ? $to.index(0) - 1 : $to.index(0) }
 }
 
 /**
@@ -124,7 +125,7 @@ export function selectionStyleProps(editor: Editor): StyleProps {
   if (editor.isActive('italic')) props.italic = true
   if (editor.isActive('underline')) props.underline = true
 
-  const attrs = editor.state.selection.$from.parent.attrs
+  const attrs = selectionBlock(editor).parent.attrs
   if (ALIGNS.includes(attrs.textAlign)) props.align = attrs.textAlign
   if (Number(attrs.lineHeight) > 0) props.lineHeight = Number(attrs.lineHeight)
   if (typeof attrs.spaceBefore === 'number') props.spaceBefore = attrs.spaceBefore
@@ -152,7 +153,7 @@ const ABSORBED_ATTRS: Record<string, unknown> = {
  */
 export function clearAbsorbedFormatting(editor: Editor): void {
   const { state } = editor
-  const { $from } = state.selection
+  const $from = selectionBlock(editor)
   const block = $from.parent
   const start = $from.start()
   const end = $from.end()
@@ -164,4 +165,20 @@ export function clearAbsorbedFormatting(editor: Editor): void {
   const attrs = Object.fromEntries(Object.entries(ABSORBED_ATTRS).filter(([name]) => name in block.attrs))
   tr.setNodeMarkup($from.before(), undefined, { ...block.attrs, ...attrs })
   editor.view.dispatch(tr)
+}
+
+/**
+ * Posición dentro del primer bloque de texto de la selección. Con "Seleccionar todo" la selección
+ * empieza en el propio documento, que no tiene atributos de párrafo.
+ */
+export function selectionBlock(editor: Editor): ResolvedPos {
+  const { doc, selection } = editor.state
+  if (selection.$from.parent.isTextblock) return selection.$from
+  let found: ResolvedPos | null = null
+  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    if (found) return false
+    if (node.isTextblock) found = doc.resolve(pos + 1)
+    return !found
+  })
+  return found ?? selection.$from
 }
