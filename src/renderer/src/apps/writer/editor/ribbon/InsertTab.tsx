@@ -13,6 +13,7 @@ import {
   PanelTop,
   Quote,
   Shapes,
+  ChartColumnBig,
   SquareDashedText
 } from 'lucide-react'
 import { Dropdown, RibbonGroup } from '@/ui/Ribbon'
@@ -64,6 +65,7 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
           )}
         </Dropdown>
         <CommandButton command="insertTextBox" large icon={<SquareDashedText size={22} />} />
+        <CommandButton command="insertChart" large icon={<ChartColumnBig size={22} />} />
       </RibbonGroup>
       <RibbonGroup label="Vínculos">
         <CommandButton command="link" large icon={<Link2 size={22} />} />

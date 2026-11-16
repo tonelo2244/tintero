@@ -142,4 +142,24 @@ describe('objetos en .docx', () => {
     expect(xml).toContain('<wps:txbx>')
     expect(xml).toContain('Nota al margen')
   })
+
+  it('gráficos como gráficos nativos de Word, con sus datos', async () => {
+    const data = { categories: ['Norte', 'Sur'], series: [{ name: 'Ventas', values: [12, -3] }] }
+    const { bytes, xml } = await exported([
+      { type: 'chart', attrs: { kind: 'bar', title: 'Por zona', data, width: 480, height: 300 } },
+      { type: 'chart', attrs: { kind: 'pie', data, width: 300, height: 300 } }
+    ])
+    expect(xml.match(/<c:chart /g)?.length).toBe(2)
+    const zip = await JSZip.loadAsync(bytes)
+    const charts = Object.keys(zip.files)
+      .filter((name) => /^word\/charts\/chart\d+\.xml$/.test(name))
+      .sort()
+    expect(charts).toHaveLength(2)
+    const column = await zip.file(charts[0])!.async('string')
+    expect(column).toContain('<c:barDir val="col"/>')
+    expect(column).toContain('Por zona')
+    expect(column).toContain('Norte')
+    const pie = await zip.file(charts[1])!.async('string')
+    expect(pie).toContain('c:pieChart')
+  })
 })

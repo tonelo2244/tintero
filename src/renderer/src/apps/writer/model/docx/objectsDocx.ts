@@ -12,9 +12,11 @@ import {
   type ParagraphChild
 } from 'docx'
 import { ShapeRun, type ShapeFloating } from 'docx/shapes'
+import { ChartRun } from 'docx/charts'
 import { cssColorToHex } from '@/core/office/cssValues'
 import { decodeImageDataUrl, fitWidth, imageSize } from '@/core/office/images'
 import type { ShapeKind } from '@/apps/slides/model/types'
+import { DEFAULT_CHART_SIZE, normalizeChartData } from '../chart'
 import { hasCrop, normalizeCrop, placementOf, WRAP_DISTANCE_PX, type ObjectPlacement } from '../floating'
 
 /**
@@ -170,4 +172,48 @@ export function textBoxRun(node: JSONContent, paragraphs: Paragraph[]): ShapeRun
     floating: shapeFloating(placementOf(attrs)),
     altText: { name: 'Cuadro de texto', description: '', title: '' }
   })
+}
+
+/**
+ * Gráfico -> gráfico nativo de Word (`c:chart` con su libro incrustado): en Word, "Editar datos"
+ * lo abre en Excel. Columnas, líneas o circular; el circular, como en Hojas, solo con la primera serie.
+ * Si los datos no forman un gráfico válido para Word (sin categorías, por ejemplo), null.
+ */
+export function chartRun(node: JSONContent, maxWidthPx: number): ChartRun | null {
+  const attrs = node.attrs ?? {}
+  const data = normalizeChartData(attrs.data)
+  if (data.categories.length === 0) return null
+  const placement = placementOf(attrs)
+  const declared = {
+    width: Number(attrs.width) || DEFAULT_CHART_SIZE.width,
+    height: Number(attrs.height) || DEFAULT_CHART_SIZE.height
+  }
+  const common = {
+    title: typeof attrs.title === 'string' && attrs.title ? attrs.title : undefined,
+    transformation:
+      placement.wrap === 'behind' || placement.wrap === 'front' ? declared : fitWidth(declared, maxWidthPx),
+    floating: floatingFor(placement),
+    altText: { name: 'Gráfico', description: typeof attrs.alt === 'string' ? attrs.alt : '', title: '' }
+  }
+  try {
+    if (attrs.kind === 'pie') {
+      const [first] = data.series
+      // Word no admite porciones negativas: cuentan como vacías, igual que en la vista.
+      const values = first.values.map((value) => (value !== null && value > 0 ? value : null))
+      return new ChartRun({
+        type: 'pie',
+        ...common,
+        categories: data.categories,
+        series: [{ name: first.name, values }]
+      })
+    }
+    return new ChartRun({
+      type: attrs.kind === 'line' ? 'line' : 'column',
+      ...common,
+      categories: data.categories,
+      series: data.series
+    })
+  } catch {
+    return null
+  }
 }

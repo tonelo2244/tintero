@@ -61,7 +61,7 @@ import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
 import { BOOKMARK, bookmarkOfHref } from '../links'
 import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
-import { imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
+import { chartRun, imageRun, objectParagraph, shapeRun, textBoxRun } from './objectsDocx'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
@@ -299,6 +299,8 @@ class DocxConverter {
         return [objectParagraph(node, imageRun(node, this.maxImageWidthPx))]
       case 'shape':
         return [objectParagraph(node, shapeRun(node))]
+      case 'chart':
+        return [objectParagraph(node, chartRun(node, this.maxImageWidthPx))]
       case 'textBox':
         return [
           objectParagraph(

@@ -10,6 +10,7 @@ import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { Bookmark } from './Bookmark'
 import { CharStyle } from './CharStyle'
 import { Field } from './Field'
+import { Chart } from './objects/Chart'
 import { Shape } from './objects/Shape'
 import { TextBox } from './objects/TextBox'
 import { WriterImage } from './objects/WriterImage'
@@ -60,6 +61,7 @@ export function createWriterExtensions(): Extensions {
     Bookmark,
     Field,
     Shape,
-    TextBox
+    TextBox,
+    Chart
   ]
 }

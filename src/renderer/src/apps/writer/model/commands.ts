@@ -125,7 +125,7 @@ export interface WriterUi {
  * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
  * (ecuación, gráfico) lo leen de la selección al abrirse.
  */
-export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText'
+export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText' | 'chart'
 
 export interface CommandContext {
   editor: Editor
@@ -507,6 +507,20 @@ export const WRITER_COMMANDS = {
     label: 'Cuadro de texto',
     run: (context) => chain(context).insertTextBox().run(),
     isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  insertChart: {
+    label: 'Gráfico',
+    run: (context) => {
+      chain(context).insertChart().run()
+      // Como en Word: al insertar se abre la tabla de datos para cambiar los de ejemplo.
+      context.ui.openDialog('chart')
+    },
+    isEnabled: ({ editor }) => !editor.isActive('textBox')
+  },
+  chartDialog: {
+    label: 'Datos del gráfico',
+    run: ({ ui }) => ui.openDialog('chart'),
+    isEnabled: ({ editor }) => selectedObject(editor)?.type === 'chart'
   },
   objectWrap: {
     label: 'Ajustar texto',

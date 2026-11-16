@@ -11,7 +11,8 @@ import {
   Trash2,
   Undo2,
   WrapText,
-  AlignHorizontalJustifyCenter
+  AlignHorizontalJustifyCenter,
+  Table2
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
 import { Dropdown, RibbonGroup, RibbonRow } from '@/ui/Ribbon'
@@ -53,6 +54,13 @@ export function ObjectTab({ object }: { object: SelectedObject }) {
           <RibbonRow>
             <CommandButton command="resetObjectSize" showLabel icon={<Undo2 size={16} />} />
           </RibbonRow>
+          <CommandButton command="altTextDialog" large icon={<ImageIcon size={22} />} />
+        </RibbonGroup>
+      )}
+
+      {type === 'chart' && (
+        <RibbonGroup label="Datos">
+          <CommandButton command="chartDialog" large icon={<Table2 size={22} />} />
           <CommandButton command="altTextDialog" large icon={<ImageIcon size={22} />} />
         </RibbonGroup>
       )}

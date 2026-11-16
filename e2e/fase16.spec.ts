@@ -47,8 +47,12 @@ test('Texto: vínculo a un marcador, campos de página y un símbolo', async ({ 
   await expect(editor.locator('p').last()).toHaveText('Conclusiones (página 2 de 2)')
 
   // Una hoja más por delante lo cambia solo: ahora es la hoja 3 de 3.
-  await page.keyboard.press('Control+Home')
-  await page.keyboard.press('End')
+  // (Se selecciona "Introducción" y se va a su principio. Las esperas cortas dejan que ProseMirror
+  // lea la selección del navegador: sin ellas, a veces la tecla llega antes y el salto cae en otro sitio.)
+  await editor.locator('p', { hasText: 'Introducción' }).selectText()
+  await page.waitForTimeout(100)
+  await page.keyboard.press('ArrowLeft')
+  await page.waitForTimeout(100)
   await page.keyboard.press('Control+Enter')
   await expect(editor.locator('p', { hasText: 'Conclusiones (' })).toHaveText('Conclusiones (página 3 de 3)')
 
@@ -61,4 +65,44 @@ test('Texto: vínculo a un marcador, campos de página y un símbolo', async ({ 
   await symbols.getByLabel('Buscar símbolo').fill('raiz')
   await symbols.getByRole('button', { name: 'Símbolo raíz cuadrada' }).click()
   await expect(editor).toContainText('€√')
+})
+
+test('Texto: formas, cuadro de texto y gráfico con su pestaña contextual', async ({ tintero }) => {
+  const { page } = tintero
+  await createBlank(page, 'Texto')
+  const editor = page.locator('.ProseMirror').first()
+  await editor.click()
+  await page.keyboard.insertText('Un párrafo con objetos alrededor.')
+
+  // Forma: aparece seleccionada con la pestaña "Forma"; Ajustar texto > Detrás del texto.
+  await page.getByRole('tab', { name: 'Insertar' }).click()
+  await page.getByRole('button', { name: 'Formas' }).click()
+  await page.getByRole('button', { name: 'Elipse' }).click()
+  const shape = editor.locator('.writer-object[data-type="shape"]')
+  await expect(shape).toHaveClass(/is-selected/)
+  await expect(page.getByRole('tab', { name: 'Forma' })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('button', { name: 'Ajustar texto' }).click()
+  await page.getByRole('button', { name: 'Detrás del texto' }).click()
+  await expect(shape).toHaveAttribute('data-wrap', 'behind')
+
+  // Gráfico: se abre la tabla de datos; cambiamos una serie y el tipo.
+  await editor.locator('p').first().click()
+  await page.getByRole('tab', { name: 'Insertar' }).click()
+  await page.getByRole('button', { name: 'Gráfico' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Datos del gráfico' })
+  await dialog.getByLabel('Serie 1').fill('Ventas')
+  await dialog.getByLabel('Tipo').selectOption('line')
+  await dialog.getByLabel('Título').fill('Resultados')
+  await dialog.getByRole('button', { name: 'Aceptar' }).click()
+  const chart = editor.locator('.writer-object[data-type="chart"]')
+  await expect(chart.locator('svg')).toHaveAttribute('aria-label', 'Gráfico: Resultados')
+  await expect(chart.locator('svg')).toContainText('Ventas')
+  await expect(page.getByRole('tab', { name: 'Gráfico' })).toHaveAttribute('aria-selected', 'true')
+
+  // Cuadro de texto: se escribe dentro.
+  await editor.locator('p').first().click()
+  await page.getByRole('tab', { name: 'Insertar' }).click()
+  await page.getByRole('button', { name: 'Cuadro de texto' }).click()
+  await page.keyboard.insertText('Nota al margen')
+  await expect(editor.locator('.writer-object[data-type="textBox"]')).toContainText('Nota al margen')
 })

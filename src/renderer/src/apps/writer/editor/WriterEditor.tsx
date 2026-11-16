@@ -238,6 +238,12 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     selector: ({ editor: current }) => (current ? selectedObject(current) : null),
     equalityFn: (a, b) => a?.pos === b?.pos && a?.node === b?.node
   })
+  // Como en Word: al seleccionar un objeto entero (no al escribir dentro de un cuadro de texto) se
+  // abre su pestaña. Solo cuando cambia de objeto: retocarlo desde la cinta no te saca de donde estás.
+  const wholeObjectKey = object && editor?.state.selection.from === object.pos ? `${object.type}@${object.pos}` : null
+  useEffect(() => {
+    if (wholeObjectKey) setActiveTab(OBJECT_TAB_ID)
+  }, [wholeObjectKey])
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
   const ai = useAiStatus()
   const assistant = useWritingAssistant(editor)
