@@ -1,5 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
+import { createId } from '@/core/ids'
 import { readImageFile } from '@/ui/readImageFile'
+import { alignBoxes, cloneElement, distributeBoxes, type AlignMode, type DistributeAxis } from '../model/arrange'
 import {
   cloneSlide,
   createImageElement,
@@ -9,18 +11,39 @@ import {
   createTextElement,
   centeredBox
 } from '../model/factories'
-import type { Presentation, ShapeKind, ShapeStyle, Slide, SlideElement, SlideLayoutId, TextStyle } from '../model/types'
+import type {
+  Box,
+  Presentation,
+  ShapeKind,
+  ShapeStyle,
+  Slide,
+  SlideElement,
+  SlideLayoutId,
+  SlideTransition,
+  TextStyle
+} from '../model/types'
 import type { ApplyAction } from './SlideCanvas'
 
 interface SlideCommandContext {
   presentation: Presentation
   currentSlide: Slide
-  selectedElement: SlideElement | null
+  /** Elementos seleccionados de la diapositiva actual, en el orden de la diapositiva. */
+  selectedElements: SlideElement[]
   apply: ApplyAction
   selectSlide(id: string): void
-  selectElement(id: string | null): void
+  selectElements(ids: string[]): void
   editElement(id: string | null): void
 }
+
+/** Lo copiado: los elementos tal cual y cuántas veces se han pegado (para escalonar las copias). */
+interface ElementClipboard {
+  elements: SlideElement[]
+  sourceSlideId: string
+  pastes: number
+}
+
+/** Cuánto se desplaza cada copia pegada o duplicada, para que no tape a la original. */
+const PASTE_OFFSET = 20
 
 function loadImageSize(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -36,14 +59,30 @@ function loadImageSize(src: string): Promise<{ width: number; height: number }> 
  * La cinta y los atajos de teclado llaman a esto; ninguno construye acciones a mano.
  */
 export function useSlideCommands(context: SlideCommandContext) {
-  const { presentation, currentSlide, selectedElement, apply, selectSlide, selectElement, editElement } = context
+  const { presentation, currentSlide, selectedElements, apply, selectSlide, selectElements, editElement } = context
+  // El portapapeles es interno (no el del sistema): lo que se copia son elementos del modelo,
+  // que otra aplicación no sabría leer. Copiar texto mientras se escribe sigue usando el del sistema.
+  const clipboard = useRef<ElementClipboard | null>(null)
 
   return useMemo(() => {
     const currentIndex = presentation.slides.findIndex((slide) => slide.id === currentSlide.id)
+    const slideId = currentSlide.id
+    const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null
+    const selectedIds = selectedElements.map((element) => element.id)
 
     const addElement = (element: SlideElement) => {
-      apply({ type: 'element/add', slideId: currentSlide.id, element })
-      selectElement(element.id)
+      apply({ type: 'element/add', slideId, element })
+      selectElements([element.id])
+    }
+
+    const addCopies = (elements: SlideElement[], offset: number) => {
+      const copies = elements.map((element) => cloneElement(element, offset))
+      apply({ type: 'elements/add', slideId, elements: copies })
+      selectElements(copies.map((copy) => copy.id))
+    }
+
+    const setBoxes = (boxes: Record<string, Box>, coalesceKey?: string) => {
+      if (Object.keys(boxes).length > 0) apply({ type: 'elements/setBoxes', slideId, boxes }, coalesceKey)
     }
 
     return {
@@ -94,23 +133,74 @@ export function useSlideCommands(context: SlideCommandContext) {
         const size = await loadImageSize(src)
         addElement(createImageElement(src, file.name, size.width, size.height))
       },
-      deleteSelectedElement() {
-        if (!selectedElement) return
-        apply({ type: 'element/delete', slideId: currentSlide.id, elementId: selectedElement.id })
-        selectElement(null)
+      deleteSelected() {
+        if (selectedIds.length === 0) return
+        apply({ type: 'elements/delete', slideId, elementIds: selectedIds })
+        selectElements([])
       },
-      nudgeSelectedElement(dx: number, dy: number) {
-        if (!selectedElement) return
-        const { x, y, width, height } = selectedElement
-        apply(
-          {
-            type: 'element/setBox',
-            slideId: currentSlide.id,
-            elementId: selectedElement.id,
-            box: { x: x + dx, y: y + dy, width, height }
-          },
-          `nudge:${selectedElement.id}`
+      nudgeSelected(dx: number, dy: number) {
+        const boxes = Object.fromEntries(
+          selectedElements.map((element) => [
+            element.id,
+            { x: element.x + dx, y: element.y + dy, width: element.width, height: element.height }
+          ])
         )
+        setBoxes(boxes, `nudge:${selectedIds.join(',')}`)
+      },
+      selectAll() {
+        selectElements(currentSlide.elements.map((element) => element.id))
+      },
+      copySelected() {
+        if (selectedElements.length === 0) return false
+        clipboard.current = { elements: structuredClone(selectedElements), sourceSlideId: slideId, pastes: 0 }
+        return true
+      },
+      cutSelected() {
+        if (selectedElements.length === 0) return
+        clipboard.current = { elements: structuredClone(selectedElements), sourceSlideId: slideId, pastes: 0 }
+        apply({ type: 'elements/delete', slideId, elementIds: selectedIds })
+        selectElements([])
+      },
+      canPaste() {
+        return clipboard.current !== null
+      },
+      /**
+       * Pega lo copiado. En otra diapositiva va en el mismo sitio (como en PowerPoint); en la misma,
+       * cada pegado se desplaza un poco más para que las copias no queden apiladas.
+       */
+      paste() {
+        const copied = clipboard.current
+        if (!copied) return
+        if (copied.sourceSlideId !== slideId) {
+          copied.sourceSlideId = slideId
+          copied.pastes = 0
+        } else {
+          copied.pastes += 1
+        }
+        addCopies(copied.elements, copied.pastes * PASTE_OFFSET)
+      },
+      duplicateSelected() {
+        if (selectedElements.length > 0) addCopies(selectedElements, PASTE_OFFSET)
+      },
+      alignSelected(mode: AlignMode) {
+        if (selectedElements.length > 0) setBoxes(alignBoxes(selectedElements, mode))
+      },
+      distributeSelected(axis: DistributeAxis) {
+        setBoxes(distributeBoxes(selectedElements, axis))
+      },
+      groupSelected() {
+        if (selectedElements.length < 2) return
+        const groupId = createId('el')
+        apply({ type: 'elements/group', slideId, elementIds: selectedIds, groupId })
+        selectElements([groupId])
+      },
+      ungroupSelected() {
+        if (selectedElement?.type !== 'group') return
+        apply({ type: 'elements/ungroup', slideId, groupId: selectedElement.id })
+        selectElements(selectedElement.children.map((child) => child.id))
+      },
+      setTransition(transition: SlideTransition) {
+        apply({ type: 'slide/setTransition', slideId, transition })
       },
       setTextStyle(style: Partial<TextStyle>) {
         if (selectedElement?.type !== 'text') return
@@ -131,7 +221,7 @@ export function useSlideCommands(context: SlideCommandContext) {
         apply({ type: 'presentation/setTheme', themeId })
       }
     }
-  }, [presentation, currentSlide, selectedElement, apply, selectSlide, selectElement, editElement])
+  }, [presentation, currentSlide, selectedElements, apply, selectSlide, selectElements, editElement])
 }
 
 export type SlideCommands = ReturnType<typeof useSlideCommands>

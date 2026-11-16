@@ -73,8 +73,8 @@ Lo que no está tan bien:
 | Importar .docx pierde fuente, tamaño, color y alineación; no hay encabezados, pies ni comentarios            | Un documento recibido se ve distinto                       | Fase 10 (hecha)                |
 | Importar .pptx pierde fondo y colores del tema, tablas, gráficos y giros                                     | Una presentación recibida pierde su aspecto                | Fase 10 (hecha salvo gráficos) |
 | Importar .xlsx pierde celdas combinadas, formato condicional, fuentes, alto de filas y paneles inmovilizados | Ídem en hojas                                              | Fase 9 y 10 (hechas)           |
-| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes        | Fase 11                        |
-| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint              | Fase 11                        |
+| Paginación aproximada en Texto, sin encabezado, pie ni número de página                                      | Lo que ves no coincide del todo con lo que imprimes        | Fase 11 (hecha)                |
+| Diapositivas sin copiar/pegar elementos, alinear, agrupar ni transiciones; alineación y viñetas por cuadro   | Edición más lenta que en Keynote o PowerPoint              | Fase 11 (hecha)                |
 
 ## 3. Lo que queda, por fases
 
@@ -161,7 +161,13 @@ Objetivo: perder menos al abrir archivos de Office, y saber exactamente cuánto 
 
 Esfuerzo estimado: 3–5 semanas.
 
-### Fase 11 · Edición avanzada v2
+### Fase 11 · Edición avanzada v2 · hecha
+
+Hecha entera. Decisiones y lo que queda fuera:
+
+- **Paginación propia, sin dependencia.** La extensión libre que encontré (`tiptap-pagination-plus`, MIT, compatible con Tiptap 3) no se ha añadido: meter una dependencia es decisión del autor. La propia es pequeña: una extensión de ProseMirror mide los bloques y, con una función pura (`writer/model/pageLayout.ts`, con tests), decide cuál abre cada hoja; el salto es una decoración (margen superior) que no toca el documento guardado. Al imprimir, ese mismo bloque lleva `break-before: page`, así que el PDF corta donde la pantalla. Fuera: partir un párrafo entre dos hojas (viudas/huérfanas) y tablas más altas que una hoja.
+- **Encabezado y pie al imprimir con `@page`.** Chromium (Electron 45) ya pinta las cajas de margen de `@page` (`@top-center`, `@bottom-right`…) con `counter(page)` y `counter(pages)`: el número lo pone quien imprime, sin adivinarlo.
+- **Diapositivas:** los hijos de un grupo guardan coordenadas de la diapositiva (no relativas al grupo), así que desagrupar no recalcula nada y el importador de .pptx encaja tal cual. El portapapeles es interno (son elementos del modelo, que otra app no sabría leer). Formato de archivo versión 3: los campos nuevos son opcionales y los archivos de la 2 se leen igual (no hace falta migración); subir la versión hace que un Tintero anterior avise en vez de abrir a medias una presentación con grupos. Fuera: editar texto dentro de un grupo sin desagrupar y exportar grupos a .pptx (pptxgenjs no los escribe; salen sueltos).
 
 Objetivo: cerrar las limitaciones que quedan de la fase 4.
 

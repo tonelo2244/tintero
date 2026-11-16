@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createTextElement } from './factories'
 import {
+  clearParagraphFormat,
   clearRunFormat,
   fromEditorDoc,
   hasText,
   normalizeParagraphs,
   paragraphsFromText,
   plainText,
+  resolveParagraphFormat,
   resolveRunFormat,
   toEditorDoc
 } from './richText'
@@ -98,5 +100,36 @@ describe('ida y vuelta con el documento del editor', () => {
     const doc = toEditorDoc([], style())
     expect(doc).toEqual({ type: 'doc', content: [{ type: 'paragraph', content: [] }] })
     expect(fromEditorDoc(doc, style())).toEqual([])
+  })
+})
+
+describe('formato por párrafo (fase 11)', () => {
+  it('la alineación y la viñeta de un párrafo van y vuelven del editor', () => {
+    const box = style({ align: 'left', bullets: true })
+    const paragraphs: TextParagraph[] = [
+      { runs: [{ text: 'con viñeta, a la izquierda' }] },
+      { runs: [{ text: 'centrado y sin viñeta' }], align: 'center', bullets: false }
+    ]
+    const doc = toEditorDoc(paragraphs, box)
+    expect(doc.content?.[1].attrs).toEqual({ textAlign: 'center', bullet: false })
+    expect(fromEditorDoc(doc, box)).toEqual(paragraphs)
+  })
+
+  it('no guarda como propio un formato de párrafo igual al del cuadro', () => {
+    const box = style({ align: 'center' })
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', attrs: { textAlign: 'center', bullet: null }, content: [{ type: 'text', text: 'x' }] }
+      ]
+    }
+    expect(fromEditorDoc(doc, box)).toEqual([{ runs: [{ text: 'x' }] }])
+  })
+
+  it('el formato propio de los trozos se borra sin perder el del párrafo', () => {
+    const paragraphs: TextParagraph[] = [{ runs: [{ text: 'a', bold: true }], align: 'right' }]
+    expect(clearRunFormat(paragraphs, ['bold'])).toEqual([{ runs: [{ text: 'a' }], align: 'right' }])
+    expect(resolveParagraphFormat(style({ bullets: true }), paragraphs[0])).toEqual({ align: 'right', bullets: true })
+    expect(clearParagraphFormat(paragraphs, ['align'])).toEqual([{ runs: [{ text: 'a', bold: true }] }])
   })
 })

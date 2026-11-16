@@ -64,9 +64,14 @@ export interface TextRun extends RunFormat {
   text: string
 }
 
-/** Un párrafo: una línea de viñeta cuando el cuadro lleva viñetas. */
+/**
+ * Un párrafo. La alineación y la viñeta son del cuadro (`TextStyle`) salvo que el párrafo diga
+ * otra cosa (fase 11). Son opcionales, como el formato de los trozos: ausente = lo del cuadro.
+ */
 export interface TextParagraph {
   runs: TextRun[]
+  align?: HorizontalAlign
+  bullets?: boolean
 }
 
 export interface TextElement extends ElementBase {
@@ -121,7 +126,21 @@ export interface TableElement extends ElementBase {
   fontSize: number
 }
 
-export type SlideElement = TextElement | ImageElement | ShapeElement | TableElement
+/**
+ * Grupo: se mueve, gira y redimensiona como un solo elemento. Los hijos guardan su caja en
+ * coordenadas de la diapositiva (no relativas al grupo): así desagrupar no tiene que recalcular
+ * nada y el importador de .pptx, que ya resuelve los grupos a coordenadas absolutas, encaja tal cual.
+ * Su caja es siempre la que envuelve a los hijos.
+ */
+export interface GroupElement extends ElementBase {
+  type: 'group'
+  children: SlideElement[]
+}
+
+export type SlideElement = TextElement | ImageElement | ShapeElement | TableElement | GroupElement
+
+/** Transición al llegar a la diapositiva en el modo presentación. */
+export type SlideTransition = 'none' | 'fade' | 'push'
 
 export type SlideLayoutId = 'title' | 'titleContent' | 'sectionHeader' | 'titleOnly' | 'blank'
 
@@ -132,6 +151,8 @@ export interface Slide {
   notes: string
   /** Fondo propio de esta diapositiva (valor CSS de `background`). Ausente = el del tema. */
   background?: string
+  /** Transición al entrar en la diapositiva. Ausente = ninguna. */
+  transition?: SlideTransition
 }
 
 export interface Presentation {

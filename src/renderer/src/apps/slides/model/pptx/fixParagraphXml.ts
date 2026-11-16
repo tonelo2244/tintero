@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import type { SlideTransition } from '../types'
 
 /**
  * Corrección del XML que genera pptxgenjs.
@@ -23,13 +24,36 @@ export function keepFirstParagraphProperties(xml: string): string {
   })
 }
 
-/** Aplica la corrección a cada diapositiva del .pptx. */
-export async function fixSlideParagraphs(bytes: Uint8Array): Promise<Uint8Array> {
+/** XML de cada transición. "Empujar" va hacia la izquierda: la nueva entra por la derecha. */
+const TRANSITION_XML: Record<Exclude<SlideTransition, 'none'>, string> = {
+  fade: '<p:transition spd="med"><p:fade/></p:transition>',
+  push: '<p:transition spd="med"><p:push dir="l"/></p:transition>'
+}
+
+/**
+ * Añade la transición a una diapositiva (pptxgenjs no sabe escribirlas). El estándar la pone justo
+ * después de `p:clrMapOvr`, o de `p:cSld` si no hay mapa de colores.
+ */
+export function addTransition(xml: string, transition: SlideTransition | undefined): string {
+  if (!transition || transition === 'none' || xml.includes('<p:transition')) return xml
+  const anchor = xml.includes('</p:clrMapOvr>') ? '</p:clrMapOvr>' : '</p:cSld>'
+  return xml.replace(anchor, `${anchor}${TRANSITION_XML[transition]}`)
+}
+
+/**
+ * Aplica las correcciones a cada diapositiva del .pptx. `transitions[i]` es la de la diapositiva
+ * i + 1 (pptxgenjs las numera en el orden en que se añaden).
+ */
+export async function fixSlideParagraphs(
+  bytes: Uint8Array,
+  transitions: (SlideTransition | undefined)[] = []
+): Promise<Uint8Array> {
   const zip = await JSZip.loadAsync(bytes)
   const slides = Object.keys(zip.files).filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
   for (const name of slides) {
+    const number = Number(/slide(\d+)\.xml$/.exec(name)![1])
     const xml = await zip.file(name)!.async('string')
-    zip.file(name, keepFirstParagraphProperties(xml))
+    zip.file(name, addTransition(keepFirstParagraphProperties(xml), transitions[number - 1]))
   }
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' })
 }

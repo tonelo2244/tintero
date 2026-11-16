@@ -1,6 +1,6 @@
 import PptxGenJS from 'pptxgenjs'
 import { cssColorToHex, cssFontToName } from '@/core/office/cssValues'
-import { hasText, resolveRunFormat } from '../richText'
+import { hasText, resolveParagraphFormat, resolveRunFormat } from '../richText'
 import { presentationTheme, type SlideTheme } from '../themes'
 import {
   SLIDE_HEIGHT,
@@ -10,6 +10,7 @@ import {
   type Presentation,
   type ShapeElement,
   type ShapeKind,
+  type SlideElement,
   type TableElement,
   type TextElement,
   type TextStyle
@@ -64,7 +65,7 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
         if ('rect' in object && object.rect) pptxSlide.addShape('rect', { ...object.rect, line: { type: 'none' } })
       }
     }
-    for (const element of slide.elements) {
+    for (const element of exportableElements(slide.elements)) {
       switch (element.type) {
         case 'text':
           addText(pptxSlide, element, theme)
@@ -84,7 +85,25 @@ export async function exportPptx(presentation: Presentation): Promise<Uint8Array
   }
 
   const output = (await pptx.write({ outputType: 'uint8array' })) as Uint8Array
-  return fixSlideParagraphs(output)
+  return fixSlideParagraphs(
+    output,
+    presentation.slides.map((slide) => slide.transition)
+  )
+}
+
+/**
+ * pptxgenjs no sabe escribir grupos: se exportan sus hijos sueltos, en el mismo sitio y orden.
+ * Si el grupo está girado, cada hijo suma ese giro (la misma aproximación que al desagrupar).
+ */
+function exportableElements(elements: SlideElement[]): SlideElement[] {
+  return elements.flatMap((element) => {
+    if (element.type !== 'group') return [element]
+    const rotation = element.rotation ?? 0
+    const children = rotation
+      ? element.children.map((child) => ({ ...child, rotation: ((child.rotation ?? 0) + rotation) % 360 }))
+      : element.children
+    return exportableElements(children)
+  })
 }
 
 function backgroundParts(css: string): Pick<PptxGenJS.SlideMasterProps, 'background' | 'objects'> {
@@ -179,13 +198,16 @@ function addText(slide: PptxGenJS.Slide, element: TextElement, theme: SlideTheme
   const runs = paragraphs.flatMap((paragraph, paragraphIndex) => {
     const isLastParagraph = paragraphIndex === paragraphs.length - 1
     const pieces = paragraph.runs.length > 0 ? paragraph.runs : [{ text: '' }]
+    // Alineación y viñeta van en el párrafo (a:pPr); pptxgenjs las toma de cada trozo.
+    const { align, bullets } = resolveParagraphFormat(style, paragraph)
     return pieces.map((run, runIndex) => ({
       text: run.text,
       options: {
         ...runOptions(style, run, defaults),
+        align,
         // El último trozo de cada párrafo cierra la línea (salvo el del último párrafo).
         breakLine: runIndex === pieces.length - 1 && !isLastParagraph,
-        ...(style.bullets ? { bullet: true, paraSpaceAfter: points(style.fontSize) * 0.35 } : {})
+        ...(bullets ? { bullet: true, paraSpaceAfter: points(style.fontSize) * 0.35 } : {})
       }
     }))
   })

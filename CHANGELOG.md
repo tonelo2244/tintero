@@ -37,6 +37,14 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
   - **.xlsx**: fuentes y tamaños, alto de filas, paneles inmovilizados, ajuste de texto y
     formato condicional se leen y se escriben. **Hojas**: selector de fuente y tamaño.
   - Corpus de archivos de Office en `fixtures/office/` con tests por importador.
+- **Edición avanzada v2** (fase 11):
+  - **Diapositivas**: selección múltiple (Mayús/Ctrl + clic, Ctrl+A) y arrastre de varios;
+    copiar, cortar, pegar y duplicar elementos (Ctrl+C/X/V/D); alinear y distribuir; agrupar y
+    desagrupar (Ctrl+G / Ctrl+Mayús+G); alineación y viñeta por párrafo; transiciones
+    Desvanecer y Empujar. Todo ello se importa y exporta en .pptx (los grupos se exportan sueltos).
+  - **Texto**: hojas A4 reales en pantalla (cada bloque baja a la hoja siguiente si no cabe) con
+    encabezado y pie, número de página y total (Insertar → Encabezado y pie de página). Imprimir
+    y exportar a PDF cortan en los mismos sitios y llevan el encabezado y el pie.
 
 ### Corregido
 
@@ -44,6 +52,9 @@ formato de archivo y la interfaz todavía pueden cambiar entre versiones menores
 
 ### Cambiado
 
+- Formato de archivo versión 3 (por los grupos de Diapositivas). Los archivos anteriores se abren
+  igual; un Tintero anterior avisa de que el archivo es de una versión más nueva.
+- Diapositivas: orden, grupos, alineación y giro pasan a un único menú **Organizar** en Inicio.
 - El asistente de Texto conserva negrita, cursiva, subrayado, colores y demás formato al
   reescribir.
 - Se quita el recorte de 12.000 caracteres al resumir o crear una presentación desde un

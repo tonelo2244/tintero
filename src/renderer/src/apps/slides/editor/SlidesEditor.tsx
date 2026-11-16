@@ -35,7 +35,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
 
   const [tab, setTab] = useState<SlidesTabId>('home')
   const [selectedSlideId, setSelectedSlideId] = useState(initialContent.slides[0].id)
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([])
   const [editingElementId, setEditingElementId] = useState<string | null>(null)
   const [textEditor, setTextEditor] = useState<Editor | null>(null)
   const [slideshowStart, setSlideshowStart] = useState<number | null>(null)
@@ -46,7 +46,13 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
   const currentIndex = foundIndex >= 0 ? foundIndex : Math.min(lastSlideIndex.current, presentation.slides.length - 1)
   lastSlideIndex.current = currentIndex
   const currentSlide = presentation.slides[currentIndex]
-  const selectedElement = currentSlide.elements.find((element) => element.id === selectedElementId) ?? null
+  // En el orden de la diapositiva (de fondo a frente): agrupar conserva así el orden de apilado.
+  const selectedElements = useMemo(
+    () => currentSlide.elements.filter((element) => selectedElementIds.includes(element.id)),
+    [currentSlide.elements, selectedElementIds]
+  )
+  // La cinta da formato a un elemento; con varios seleccionados solo ofrece organizar.
+  const selectedElement = selectedElements.length === 1 ? selectedElements[0] : null
 
   // Avisar al shell de cada cambio (salvo el estado inicial) para marcar "sin guardar".
   const isFirstRender = useRef(true)
@@ -90,17 +96,17 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
 
   const selectSlide = useCallback((id: string) => {
     setSelectedSlideId(id)
-    setSelectedElementId(null)
+    setSelectedElementIds([])
     setEditingElementId(null)
   }, [])
 
   const commands = useSlideCommands({
     presentation,
     currentSlide,
-    selectedElement,
+    selectedElements,
     apply,
     selectSlide,
-    selectElement: setSelectedElementId,
+    selectElements: setSelectedElementIds,
     editElement: setEditingElementId
   })
 
@@ -121,17 +127,26 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
       }
       if (isTypingTarget(event.target)) return
 
-      if (mod && event.key.toLowerCase() === 'z') {
+      const key = event.key.toLowerCase()
+      // Atajos con Ctrl (o Cmd): los mismos que en PowerPoint.
+      const shortcuts: Record<string, () => void> = {
+        z: () => dispatch({ type: event.shiftKey ? 'history/redo' : 'history/undo' }),
+        y: () => dispatch({ type: 'history/redo' }),
+        a: commands.selectAll,
+        c: () => void commands.copySelected(),
+        x: commands.cutSelected,
+        v: commands.paste,
+        d: commands.duplicateSelected,
+        g: event.shiftKey ? commands.ungroupSelected : commands.groupSelected
+      }
+      if (mod && shortcuts[key]) {
         event.preventDefault()
-        dispatch({ type: event.shiftKey ? 'history/redo' : 'history/undo' })
-      } else if (mod && event.key.toLowerCase() === 'y') {
-        event.preventDefault()
-        dispatch({ type: 'history/redo' })
+        shortcuts[key]()
       } else if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault()
-        commands.deleteSelectedElement()
+        commands.deleteSelected()
       } else if (event.key === 'Escape') {
-        setSelectedElementId(null)
+        setSelectedElementIds([])
       } else if (event.key === 'Enter' && selectedElement?.type === 'text') {
         event.preventDefault()
         setEditingElementId(selectedElement.id)
@@ -142,8 +157,8 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
         ]
         if (!delta) return
         event.preventDefault()
-        if (selectedElement) {
-          commands.nudgeSelectedElement(delta[0], delta[1])
+        if (selectedElements.length > 0) {
+          commands.nudgeSelected(delta[0], delta[1])
         } else {
           const next = presentation.slides[currentIndex + Math.sign(delta[0] + delta[1])]
           if (next) selectSlide(next.id)
@@ -152,7 +167,16 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [commands, currentIndex, presentation.slides, selectSlide, selectedElement, slideshowStart, startSlideshow])
+  }, [
+    commands,
+    currentIndex,
+    presentation.slides,
+    selectSlide,
+    selectedElement,
+    selectedElements.length,
+    slideshowStart,
+    startSlideshow
+  ])
 
   const exitSlideshow = useCallback(
     (lastIndex: number) => {
@@ -216,6 +240,7 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
               presentation={presentation}
               currentSlide={currentSlide}
               selectedElement={selectedElement}
+              selectedCount={selectedElements.length}
               textEditor={editingElementId ? textEditor : null}
               commands={commands}
               onStartSlideshow={startSlideshow}
@@ -265,11 +290,11 @@ export function SlidesEditor({ initialContent, session, onChange }: EditorProps<
             <SlideCanvas
               slide={currentSlide}
               theme={theme}
-              selectedElementId={selectedElementId}
+              selectedElementIds={selectedElementIds}
               editingElementId={editingElementId}
-              onSelectElement={(id) => {
-                setSelectedElementId(id)
-                if (id !== editingElementId) setEditingElementId(null)
+              onSelectElements={(ids) => {
+                setSelectedElementIds(ids)
+                if (!editingElementId || !ids.includes(editingElementId)) setEditingElementId(null)
               }}
               onEditElement={setEditingElementId}
               onTextEditorChange={setTextEditor}

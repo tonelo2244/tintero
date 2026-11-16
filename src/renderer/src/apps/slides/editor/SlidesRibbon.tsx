@@ -4,15 +4,26 @@ import {
   AArrowDown,
   AArrowUp,
   AlignCenter,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignHorizontalDistributeCenter,
   AlignJustify,
   AlignLeft,
   AlignRight,
+  AlignStartHorizontal,
+  AlignStartVertical,
+  AlignVerticalDistributeCenter,
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   BringToFront,
   Bold,
+  ClipboardPaste,
   Copy,
+  CopyPlus,
+  Group,
   ImagePlus,
   Italic,
   List,
@@ -22,26 +33,39 @@ import {
   PlaySquare,
   SendToBack,
   Shapes,
+  Sparkles,
   SquarePlus,
   Strikethrough,
   RotateCcw,
   RotateCcwSquare,
   RotateCw,
+  Scissors,
   Trash2,
   Type,
   TypeOutline,
-  Underline
+  Underline,
+  Ungroup
 } from 'lucide-react'
 import { ColorPicker } from '@/ui/ColorPicker'
 import { TableGridPicker } from '@/ui/TableGridPicker'
 import { FONT_FAMILIES, FONT_SIZES, nextFontSize } from '@/ui/fonts'
 import { Dropdown, MenuItem, RibbonGroup, RibbonRow, SelectField, ToolButton } from '@/ui/Ribbon'
+import type { AlignMode } from '../model/arrange'
 import { SLIDE_LAYOUTS } from '../model/factories'
 import { availableThemes, presentationTheme, type SlideTheme } from '../model/themes'
-import type { HorizontalAlign, Presentation, ShapeKind, Slide, SlideElement, VerticalAlign } from '../model/types'
+import type {
+  HorizontalAlign,
+  Presentation,
+  ShapeKind,
+  Slide,
+  SlideElement,
+  SlideTransition,
+  VerticalAlign
+} from '../model/types'
 import { SHAPE_LABELS, ShapeIcon } from './ElementContent'
 import { SlideView } from './SlideView'
 import { useCharacterFormat } from './useCharacterFormat'
+import { useParagraphFormat } from './useParagraphFormat'
 import type { SlideCommands } from './useSlideCommands'
 
 export type SlidesTabId = 'home' | 'insert' | 'design' | 'show' | 'assistant'
@@ -59,6 +83,8 @@ interface SlidesRibbonProps {
   presentation: Presentation
   currentSlide: Slide
   selectedElement: SlideElement | null
+  /** Cuántos elementos hay seleccionados (con varios, solo se puede organizar). */
+  selectedCount: number
   /** Editor del cuadro de texto en el que se está escribiendo, si lo hay (formato por palabra). */
   textEditor: Editor | null
   commands: SlideCommands
@@ -70,6 +96,7 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
     case 'home':
       return (
         <>
+          <ClipboardGroup selectedCount={props.selectedCount} commands={props.commands} />
           <SlidesGroup commands={props.commands} />
           <TextGroups
             selectedElement={props.selectedElement}
@@ -77,7 +104,11 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
             commands={props.commands}
             theme={presentationTheme(props.presentation)}
           />
-          <DrawingGroup selectedElement={props.selectedElement} commands={props.commands} />
+          <DrawingGroup
+            selectedElement={props.selectedElement}
+            selectedCount={props.selectedCount}
+            commands={props.commands}
+          />
         </>
       )
     case 'insert':
@@ -89,7 +120,10 @@ export function SlidesRibbon({ tab, ...props }: SlidesRibbonProps) {
       )
     case 'design':
       return (
-        <ThemeGallery presentation={props.presentation} currentSlide={props.currentSlide} commands={props.commands} />
+        <>
+          <ThemeGallery presentation={props.presentation} currentSlide={props.currentSlide} commands={props.commands} />
+          <TransitionGroup currentSlide={props.currentSlide} commands={props.commands} />
+        </>
       )
     case 'show':
       return (
@@ -167,6 +201,7 @@ function TextGroups({
   const style = text?.style
   const defaultFont = text?.role === 'title' ? theme.titleFontFamily : theme.fontFamily
   const character = useCharacterFormat(textEditor, text, commands)
+  const paragraph = useParagraphFormat(textEditor, text, commands)
   const format = character.format
   const fontSize = format?.fontSize ?? 24
 
@@ -256,8 +291,8 @@ function TextGroups({
               key={value}
               label={label}
               disabled={disabled}
-              active={style?.align === value}
-              onClick={() => commands.setTextStyle({ align: value })}
+              active={paragraph.format?.align === value}
+              onClick={() => paragraph.setAlign(value)}
             >
               <Icon size={16} />
             </ToolButton>
@@ -267,8 +302,8 @@ function TextGroups({
           <ToolButton
             label="Viñetas"
             disabled={disabled}
-            active={style?.bullets}
-            onClick={() => commands.setTextStyle({ bullets: !style?.bullets })}
+            active={paragraph.format?.bullets}
+            onClick={paragraph.toggleBullets}
           >
             <List size={16} />
           </ToolButton>
@@ -342,11 +377,118 @@ function InsertGroup({ commands }: { commands: SlideCommands }) {
   )
 }
 
-function DrawingGroup({
+const ALIGN_OPTIONS: { mode: AlignMode; label: string; Icon: typeof AlignLeft }[] = [
+  { mode: 'left', label: 'Alinear objetos a la izquierda', Icon: AlignStartVertical },
+  { mode: 'center', label: 'Centrar objetos', Icon: AlignCenterVertical },
+  { mode: 'right', label: 'Alinear objetos a la derecha', Icon: AlignEndVertical },
+  { mode: 'top', label: 'Alinear objetos arriba', Icon: AlignStartHorizontal },
+  { mode: 'middle', label: 'Alinear objetos al medio', Icon: AlignCenterHorizontal },
+  { mode: 'bottom', label: 'Alinear objetos abajo', Icon: AlignEndHorizontal }
+]
+
+/**
+ * Menú "Organizar", como el de PowerPoint en Inicio: orden, grupos, alineación y giro en un solo
+ * botón. Así la pestaña cabe en una ventana normal sin barra de desplazamiento.
+ */
+function ArrangeMenu({
   selectedElement,
+  selectedCount,
   commands
 }: {
   selectedElement: SlideElement | null
+  selectedCount: number
+  commands: SlideCommands
+}) {
+  const one = selectedElement !== null
+  return (
+    <Dropdown label="Organizar" large disabled={selectedCount === 0} trigger={<BringToFront size={22} />}>
+      {(close) => {
+        const item = (label: string, Icon: typeof AlignLeft, run: () => void, disabled = false) => (
+          <MenuItem
+            key={label}
+            disabled={disabled}
+            onSelect={() => {
+              run()
+              close()
+            }}
+          >
+            <Icon size={15} /> {label}
+          </MenuItem>
+        )
+        return (
+          <div className="arrange-menu">
+            <div className="arrange-menu__title">Ordenar</div>
+            {item('Traer al frente', BringToFront, () => commands.reorderSelected('front'), !one)}
+            {item('Enviar al fondo', SendToBack, () => commands.reorderSelected('back'), !one)}
+            <div className="arrange-menu__title">Agrupar</div>
+            {item('Agrupar (Ctrl+G)', Group, commands.groupSelected, selectedCount < 2)}
+            {item('Desagrupar (Ctrl+Mayús+G)', Ungroup, commands.ungroupSelected, selectedElement?.type !== 'group')}
+            <div className="arrange-menu__title">Alinear</div>
+            {ALIGN_OPTIONS.map(({ mode, label, Icon }) => item(label, Icon, () => commands.alignSelected(mode)))}
+            {item(
+              'Distribuir horizontalmente',
+              AlignHorizontalDistributeCenter,
+              () => commands.distributeSelected('horizontal'),
+              selectedCount < 3
+            )}
+            {item(
+              'Distribuir verticalmente',
+              AlignVerticalDistributeCenter,
+              () => commands.distributeSelected('vertical'),
+              selectedCount < 3
+            )}
+            <div className="arrange-menu__title">Girar</div>
+            {item('Girar a la izquierda 15°', RotateCcw, () => commands.rotateSelected(-15), !one)}
+            {item('Girar a la derecha 15°', RotateCw, () => commands.rotateSelected(15), !one)}
+            {item('Quitar giro', RotateCcwSquare, () => commands.rotateSelected(null), !selectedElement?.rotation)}
+          </div>
+        )
+      }}
+    </Dropdown>
+  )
+}
+
+function ClipboardGroup({ selectedCount, commands }: { selectedCount: number; commands: SlideCommands }) {
+  const none = selectedCount === 0
+  return (
+    <RibbonGroup label="Portapapeles">
+      <ToolButton label="Pegar" shortcut="Ctrl+V" large onClick={commands.paste}>
+        <ClipboardPaste size={22} />
+      </ToolButton>
+      <div className="ribbon-stack">
+        <ToolButton label="Cortar" shortcut="Ctrl+X" showLabel disabled={none} onClick={commands.cutSelected}>
+          <Scissors size={14} />
+        </ToolButton>
+        <ToolButton
+          label="Copiar"
+          shortcut="Ctrl+C"
+          showLabel
+          disabled={none}
+          onClick={() => void commands.copySelected()}
+        >
+          <Copy size={14} />
+        </ToolButton>
+        <ToolButton
+          label="Duplicar elementos"
+          shortcut="Ctrl+D"
+          showLabel
+          disabled={none}
+          onClick={commands.duplicateSelected}
+        >
+          <CopyPlus size={14} />
+        </ToolButton>
+      </div>
+    </RibbonGroup>
+  )
+}
+
+function DrawingGroup({
+  selectedElement,
+  selectedCount,
+  commands
+}: {
+  selectedElement: SlideElement | null
+  selectedCount: number
   commands: SlideCommands
 }) {
   const shape = selectedElement?.type === 'shape' ? selectedElement : null
@@ -360,50 +502,7 @@ function DrawingGroup({
         </ToolButton>
       </RibbonGroup>
       <RibbonGroup label="Organizar">
-        <div className="ribbon-stack">
-          <ToolButton
-            label="Traer al frente"
-            showLabel
-            disabled={!selectedElement}
-            onClick={() => commands.reorderSelected('front')}
-          >
-            <BringToFront size={14} />
-          </ToolButton>
-          <ToolButton
-            label="Enviar al fondo"
-            showLabel
-            disabled={!selectedElement}
-            onClick={() => commands.reorderSelected('back')}
-          >
-            <SendToBack size={14} />
-          </ToolButton>
-        </div>
-        <div className="ribbon-stack">
-          <ToolButton
-            label="Girar a la izquierda 15°"
-            showLabel
-            disabled={!selectedElement}
-            onClick={() => commands.rotateSelected(-15)}
-          >
-            <RotateCcw size={14} />
-          </ToolButton>
-          <ToolButton
-            label="Girar a la derecha 15°"
-            showLabel
-            disabled={!selectedElement}
-            onClick={() => commands.rotateSelected(15)}
-          >
-            <RotateCw size={14} />
-          </ToolButton>
-          <ToolButton
-            label="Quitar giro"
-            showLabel
-            disabled={!selectedElement?.rotation}
-            onClick={() => commands.rotateSelected(null)}
-          >
-            <RotateCcwSquare size={14} />
-          </ToolButton>
-        </div>
+        <ArrangeMenu selectedElement={selectedElement} selectedCount={selectedCount} commands={commands} />
         <div className="ribbon-stack">
           <ColorPicker
             label="Relleno de forma"
@@ -452,6 +551,34 @@ function ThemeGallery({
             <SlideView slide={currentSlide} theme={theme} width={104} themeBackground />
             <span>{theme.name}</span>
           </button>
+        ))}
+      </div>
+    </RibbonGroup>
+  )
+}
+
+const TRANSITIONS: { value: SlideTransition; label: string }[] = [
+  { value: 'none', label: 'Ninguna' },
+  { value: 'fade', label: 'Desvanecer' },
+  { value: 'push', label: 'Empujar' }
+]
+
+/** Transición al entrar en la diapositiva actual; se ve en el modo presentación. */
+function TransitionGroup({ currentSlide, commands }: { currentSlide: Slide; commands: SlideCommands }) {
+  const current = currentSlide.transition ?? 'none'
+  return (
+    <RibbonGroup label="Transición">
+      <div className="ribbon-stack">
+        {TRANSITIONS.map(({ value, label }) => (
+          <ToolButton
+            key={value}
+            label={label}
+            showLabel
+            active={current === value}
+            onClick={() => commands.setTransition(value)}
+          >
+            <Sparkles size={14} />
+          </ToolButton>
         ))}
       </div>
     </RibbonGroup>

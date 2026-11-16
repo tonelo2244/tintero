@@ -8,15 +8,18 @@ import { EditorLayout } from '@/ui/EditorLayout'
 import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
-import { writerParts, type WriterContent, type WriterParts } from '../model/content'
+import { withHeaderFooter, writerParts, type WriterContent, type WriterParts } from '../model/content'
+import { headerFooterText, PAGE, PAGE_PITCH, printPageCss } from '../model/pageLayout'
 import type { WritingActionId } from '../model/ai/writingActions'
 import { AskDocumentsPanel } from './AskDocumentsPanel'
 import { AssistantPanel } from './AssistantPanel'
 import { CommentsPanel } from './CommentsPanel'
 import { createWriterExtensions } from './extensions'
 import { FindReplaceBar, type FindMode } from './FindReplaceBar'
+import { HeaderFooterPanel } from './HeaderFooterPanel'
+import { Pagination } from './Pagination'
 import { PresentationPanel } from './PresentationPanel'
-import { PAGE_HEIGHT_PX, usePageMetrics } from './usePageMetrics'
+import { usePageMetrics } from './usePageMetrics'
 import { useWriterToolbarState } from './useWriterToolbarState'
 import { usePresentationFromDocument } from './usePresentationFromDocument'
 import { useAskDocuments } from './useAskDocuments'
@@ -40,7 +43,6 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [zoom, setZoom] = useState(1)
   const [showMarks, setShowMarks] = useState(false)
   const [find, setFind] = useState<{ mode: FindMode; request: number } | null>(null)
-  const pageRef = useRef<HTMLDivElement>(null)
   /*
    * Encabezado, pie y comentarios no son parte del estado de Tiptap. Se guardan aquí y se mandan
    * junto al cuerpo en cada cambio. El ref evita que `onUpdate` (creado una sola vez) use una copia vieja.
@@ -48,7 +50,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [parts, setParts] = useState<WriterParts>(() => writerParts(initialContent))
   const partsRef = useRef(parts)
 
-  const extensions = useMemo(createWriterExtensions, [])
+  // La paginación solo hace falta en pantalla: no cambia el esquema, así que no va en la lista común.
+  const extensions = useMemo(() => [...createWriterExtensions(), Pagination], [])
   const editor = useEditor({
     extensions,
     content: initialContent.doc,
@@ -69,6 +72,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     [editor, onChange]
   )
   const comments = useWriterComments(editor, parts.comments ?? [], updateParts)
+  const [headerFooterOpen, setHeaderFooterOpen] = useState(false)
 
   const toolbar = useWriterToolbarState(editor)
   const hasSelection = useEditorState({ editor, selector: ({ editor: current }) => !current?.state.selection.empty })
@@ -79,7 +83,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const askDocuments = useAskDocuments(getDoc, { documentName: session.documentName, filePath: session.filePath })
   /** Panel de IA abierto: ninguno, cómo preparar Ollama, redacción, crear presentación o preguntar. */
   const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation' | 'ask'>('closed')
-  const pages = usePageMetrics(editor, pageRef, zoom)
+  const pages = usePageMetrics(editor, zoom)
 
   const openFind = (mode: FindMode) => setFind((previous) => ({ mode, request: (previous?.request ?? 0) + 1 }))
 
@@ -164,7 +168,15 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
             commentCount={comments.count}
             commentsOpen={comments.open}
             onAddComment={comments.add}
-            onToggleComments={() => comments.setOpen(!comments.open)}
+            onToggleComments={() => {
+              setHeaderFooterOpen(false) // los dos paneles van en el mismo sitio
+              comments.setOpen(!comments.open)
+            }}
+            headerFooterOpen={headerFooterOpen}
+            onToggleHeaderFooter={() => {
+              comments.setOpen(false)
+              setHeaderFooterOpen((open) => !open)
+            }}
           />
         )
       case 'assistant':
@@ -266,6 +278,14 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
           onClose={() => comments.setOpen(false)}
         />
       )}
+      {headerFooterOpen && (
+        <HeaderFooterPanel
+          header={parts.header}
+          footer={parts.footer}
+          onChange={(part, value) => updateParts((current) => withHeaderFooter(current, part, value))}
+          onClose={() => setHeaderFooterOpen(false)}
+        />
+      )}
       {editor && find && (
         <FindReplaceBar editor={editor} mode={find.mode} openRequest={find.request} onClose={() => setFind(null)} />
       )}
@@ -280,17 +300,32 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         }}
       >
         <div className="writer-zoom" style={{ zoom }}>
-          <div ref={pageRef} className={`writer-page ${showMarks ? 'show-marks' : ''}`}>
-            {Array.from({ length: pages.total - 1 }, (_, index) => (
-              <div key={index} className="writer-page__break" style={{ top: (index + 1) * PAGE_HEIGHT_PX }} aria-hidden>
-                <span>Página {index + 2}</span>
-              </div>
-            ))}
+          <div
+            className={`writer-page ${showMarks ? 'show-marks' : ''}`}
+            style={{ minHeight: pages.total * PAGE_PITCH - PAGE.gap }}
+          >
+            {/* Las hojas se pintan detrás del texto; la extensión Pagination baja cada bloque a la suya. */}
+            <div className="writer-sheets" aria-hidden>
+              {Array.from({ length: pages.total }, (_, index) => (
+                <div key={index} className="writer-sheet" style={{ top: index * PAGE_PITCH, height: PAGE.height }}>
+                  {parts.header && (
+                    <div className={`writer-sheet__header writer-sheet__part--${parts.header.align}`}>
+                      {headerFooterText(parts.header, index + 1, pages.total)}
+                    </div>
+                  )}
+                  {parts.footer && (
+                    <div className={`writer-sheet__footer writer-sheet__part--${parts.footer.align}`}>
+                      {headerFooterText(parts.footer, index + 1, pages.total)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
             <EditorContent editor={editor} />
           </div>
         </div>
-        {/* Impresión y PDF: hoja A4 con los mismos márgenes que la hoja en pantalla. */}
-        <style>{'@page { size: A4; margin: 2.5cm; }'}</style>
+        {/* Impresión y PDF: hoja A4 con los mismos márgenes que en pantalla, y encabezado y pie. */}
+        <style>{printPageCss(parts.header, parts.footer)}</style>
       </div>
     </EditorLayout>
   )

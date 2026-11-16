@@ -1,13 +1,15 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { hasText, resolveRunFormat } from '../model/richText'
 import type { SlideTheme } from '../model/themes'
 import type {
+  GroupElement,
   ShapeElement,
   ShapeKind,
   Slide,
   SlideElement,
   TableElement,
   TextElement,
+  TextParagraph,
   TextRun,
   TextStyle
 } from '../model/types'
@@ -83,7 +85,45 @@ export function ElementContent({ element, theme, showPlaceholder }: ElementConte
       return <ShapeContent element={element} theme={theme} />
     case 'table':
       return <TableContent element={element} theme={theme} />
+    case 'group':
+      return <GroupContent element={element} theme={theme} showPlaceholder={showPlaceholder} />
   }
+}
+
+/**
+ * Alineación y viñeta propias de un párrafo, como atributos HTML. Son los mismos que escribe el
+ * editor de Tiptap (style text-align y data-bullet), así el CSS es uno solo para ver y para editar.
+ */
+export function paragraphAttributes(paragraph: TextParagraph): HTMLAttributes<HTMLParagraphElement> {
+  const attributes: HTMLAttributes<HTMLParagraphElement> & { 'data-bullet'?: string } = {}
+  if (paragraph.align) attributes.style = { textAlign: paragraph.align }
+  if (paragraph.bullets !== undefined) attributes['data-bullet'] = String(paragraph.bullets)
+  return attributes
+}
+
+/** Hijos de un grupo, colocados respecto a la esquina del grupo (guardan coordenadas de diapositiva). */
+function GroupContent({
+  element,
+  theme,
+  showPlaceholder
+}: {
+  element: GroupElement
+  theme: SlideTheme
+  showPlaceholder: boolean
+}) {
+  return (
+    <div className="slide-group">
+      {element.children.map((child) => (
+        <div
+          key={child.id}
+          className="slide-element"
+          style={{ ...boxCss(child), left: child.x - element.x, top: child.y - element.y }}
+        >
+          <ElementContent element={child} theme={theme} showPlaceholder={showPlaceholder} />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /**
@@ -155,7 +195,7 @@ function TextContent({
     <div className={textClassName(element)} style={{ ...css, textDecoration: 'none' }}>
       <div className="slide-text__content">
         {element.paragraphs.map((paragraph, index) => (
-          <p key={index}>
+          <p key={index} {...paragraphAttributes(paragraph)}>
             {paragraph.runs.length === 0 ? (
               <br />
             ) : (

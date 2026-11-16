@@ -1,4 +1,5 @@
 import { createId } from '@/core/ids'
+import { cloneElement } from './arrange'
 import { paragraphsFromText } from './richText'
 import {
   SLIDE_HEIGHT,
@@ -177,6 +178,6 @@ export function cloneSlide(slide: Slide): Slide {
   return {
     ...slide,
     id: createId('slide'),
-    elements: slide.elements.map((element) => ({ ...structuredClone(element), id: createId('el') }))
+    elements: slide.elements.map((element) => cloneElement(element))
   }
 }
