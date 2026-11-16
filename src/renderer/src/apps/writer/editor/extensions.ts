@@ -10,6 +10,7 @@ import { TableKit } from '@tiptap/extension-table'
 import { CharacterCount, Placeholder } from '@tiptap/extensions'
 import { Bookmark } from './Bookmark'
 import { CharStyle } from './CharStyle'
+import { Field } from './Field'
 import { CommentMark } from './CommentMark'
 import { FormatPainter } from './FormatPainter'
 import { PageBreak } from './PageBreak'
@@ -53,6 +54,7 @@ export function createWriterExtensions(): Extensions {
     FormatPainter,
     CommentMark,
     SearchAndReplace,
-    Bookmark
+    Bookmark,
+    Field
   ]
 }

@@ -3294,3 +3294,57 @@ p.writer-outline-block--body::after {
   padding: 2px 8px;
   cursor: pointer;
 }
+/* Campos: el valor se calcula; un fondo gris al pasar por encima dice que no es texto escrito. */
+.writer-content .writer-field {
+  border-radius: 2px;
+}
+.writer-content .writer-field:hover,
+.writer-content .writer-field.ProseMirror-selectednode {
+  background: #e3e3e3;
+}
+.writer-content .writer-field:empty::before {
+  content: '{campo}';
+  color: #888;
+}
+@media print {
+  .writer-content .writer-field:hover {
+    background: none;
+  }
+}
+/* Símbolos */
+.writer-symbol-menu {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.writer-symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 30px);
+  gap: 2px;
+}
+.writer-symbol-grid__cell {
+  width: 30px;
+  height: 30px;
+  font:
+    16px/1 Georgia,
+    'Times New Roman',
+    serif;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.writer-symbol-grid__cell:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+.writer-symbol-dialog__list {
+  max-height: 420px;
+  overflow: auto;
+}
+.writer-symbol-dialog__list h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}

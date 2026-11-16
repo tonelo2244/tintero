@@ -18,6 +18,7 @@ import {
   PageNumber,
   PageOrientation,
   Paragraph,
+  SimpleField,
   SectionType,
   ShadingType,
   Tab,
@@ -61,6 +62,7 @@ import { DEFAULT_STYLES } from '../styles'
 import { DEFAULT_PAGE_SETUP, orientedSize, type PageSetup } from '../pageSetup'
 import { COLUMN_BREAK, COLUMN_GAP_CM, COLUMNS, normalizeColumnCount } from '../columns'
 import { BOOKMARK, bookmarkOfHref } from '../links'
+import { docxFieldInstruction, FIELD, fieldText, isFieldKind } from '../fields'
 import { SECTION_BREAK, sectionBreakSetup } from '../sections'
 import { columnWidthsTwips, readColumnWidths } from './tableLayout'
 
@@ -114,12 +116,14 @@ export async function exportDocx(content: WriterContent): Promise<Uint8Array> {
   // Secciones de Word: una por salto de sección y otra por cada bloque de columnas (fase 15).
   const plans = planDocxSections(content.doc.content ?? [], pageSetup)
   const converter = new DocxConverter(comments, content.doc, contentWidthCm(pageSetup))
+  converter.author = content.author ?? ''
   const sectionChildren = plans.map((plan) => {
     converter.setContentWidth(contentWidthCm(plan.setup))
     return converter.blocks(plan.blocks)
   })
   const document = new Document({
-    creator: 'Tintero',
+    // El campo AUTHOR de Word lee esta propiedad.
+    creator: content.author ?? 'Tintero',
     // "Pares e impares diferentes" es un ajuste del documento entero en Word (settings.xml).
     ...(content.evenPages && { evenAndOddHeaderAndFooters: true }),
     // Disposición > Guiones > Automático: w:autoHyphenation en settings.xml.
@@ -235,6 +239,8 @@ class DocxConverter {
   /** Ancho útil de la hoja: lo que ocupan las tablas y lo máximo que puede medir una imagen. */
   private contentWidthTwips = 0
   private maxImageWidthPx = 0
+  /** Autor del documento: el valor que llevan escrito los campos Autor. */
+  author = ''
 
   constructor(comments: WriterComment[], doc: JSONContent, contentWidthCm: number) {
     this.setContentWidth(contentWidthCm)
@@ -444,6 +450,12 @@ class DocxConverter {
       // Un marcador de Tintero es un punto: en Word, un w:bookmarkStart y su w:bookmarkEnd seguidos.
       const name = node.attrs?.name
       return typeof name === 'string' && name ? [new Bookmark({ id: name, children: [] })] : []
+    }
+    if (node.type === FIELD && isFieldKind(node.attrs?.kind)) {
+      // Word recalcula fecha y páginas al abrir; el valor escrito es el que se ve hasta entonces.
+      const kind = node.attrs.kind
+      const cached = fieldText(kind, { date: new Date(), page: 1, pages: 1, fileName: '', author: this.author })
+      return [new SimpleField(docxFieldInstruction(kind), kind === 'fileName' ? '' : cached)]
     }
     if (node.type !== 'text' || !node.text) return []
 

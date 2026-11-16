@@ -83,7 +83,9 @@ function setup(html: string) {
     openWordCount: () => calls.push('wordCount'),
     readAloudOpen: false,
     toggleReadAloud: () => calls.push('readAloud'),
-    openDialog: (dialog) => calls.push(`dialog:${dialog}`)
+    openDialog: (dialog) => calls.push(`dialog:${dialog}`),
+    documentAuthor: '',
+    setDocumentAuthor: (author) => calls.push(`author:${author}`)
   }
   const context: CommandContext = { editor, ui }
   return { context, calls, editor, page: () => pageSetup, styles: () => styles, numbered: () => numbered }

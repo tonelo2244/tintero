@@ -9,6 +9,7 @@ import { RibbonGroup, ToolButton } from '@/ui/Ribbon'
 import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import {
+  withAuthor,
   withHeaderFooter,
   withHyphenation,
   withNumberedHeadings,
@@ -171,6 +172,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       editor.off('focus', close)
     }
   }, [editor, headerFooterEditing])
+
+  // Los campos Nombre del archivo y Autor leen estos datos, que no están en el texto.
+  useEffect(() => {
+    editor?.commands.setFieldContext({ fileName: session.documentName, author: parts.author ?? '' })
+  }, [editor, session.documentName, parts.author])
 
   const pageSetup = parts.pageSetup ?? DEFAULT_PAGE_SETUP
   const geometry = useMemo(() => pageGeometry(pageSetup), [pageSetup])
@@ -420,7 +426,9 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     openDialog: (dialog) => {
       closeSidePanels()
       setInsertDialog(dialog)
-    }
+    },
+    documentAuthor: parts.author ?? '',
+    setDocumentAuthor: (author) => updateParts((current) => withAuthor(current, author))
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
@@ -641,7 +649,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         </WriterCommandsProvider>
       )}
       {insertDialog && editor && (
-        <InsertDialogs dialog={insertDialog} editor={editor} onClose={() => setInsertDialog(null)} />
+        <InsertDialogs dialog={insertDialog} editor={editor} ui={ui} onClose={() => setInsertDialog(null)} />
       )}
       {pageSetupOpen && (
         <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />

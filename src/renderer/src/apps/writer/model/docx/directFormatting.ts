@@ -3,6 +3,7 @@ import { cssFontFamilyFor } from '@/ui/fonts'
 import type { PageSetup } from '../pageSetup'
 import { readSectionSetup } from './docxParts'
 import { MAX_COLUMNS } from '../columns'
+import type { FieldKind } from '../fields'
 import {
   BULLET_STYLES,
   INDENT_STEP_CM,
@@ -31,7 +32,7 @@ import {
 
 const OPEN = ''
 const CLOSE = ''
-const MARKER = /([rRpcC])([^]*)/g
+const MARKER = /([rRpcCf])([^]*)/g
 const STRAY_MARKERS = /[]/g
 
 export type DocxAlignment = 'center' | 'right' | 'justify'
@@ -135,6 +136,7 @@ export function annotateDocumentXml(
     ? readListFormats(new DOMParser().parseFromString(numberingXml, 'application/xml'))
     : null
 
+  markFields(root)
   for (const run of descendants(root, 'r')) {
     const format = withoutDefaults(readRunFormat(child(run, 'rPr')), defaults)
     if (Object.keys(format).length === 0) continue
@@ -172,6 +174,74 @@ export function annotateDocumentXml(
   const lastColumns = columnCount(sections.at(-1) ?? null)
   if (lastColumns > 1) annotations.lastSectionColumns = lastColumns
   return { xml: new XMLSerializer().serializeToString(document), annotations }
+}
+
+/** Instrucción de un campo de Word -> campo de Tintero, si es de los que sabemos pintar. */
+export function fieldKindOfInstruction(instruction: string): FieldKind | null {
+  const name = instruction.trim().split(/\s+/)[0]?.toUpperCase()
+  const kinds: Record<string, FieldKind> = {
+    DATE: 'date',
+    PAGE: 'page',
+    NUMPAGES: 'pages',
+    FILENAME: 'fileName',
+    AUTHOR: 'author'
+  }
+  return (name && kinds[name]) || null
+}
+
+/**
+ * Campos de Word (fase 16). mammoth solo deja el último valor calculado ("3"); aquí ese valor se
+ * cambia por una marca con el tipo de campo, que applyAnnotations convierte en el nodo `field`.
+ * Hay dos formas en el XML: `w:fldSimple` y la "compleja" (`w:fldChar` begin / `w:instrText` /
+ * separate / resultado / end), que es la que usa Word casi siempre. Los campos anidados se dejan
+ * como texto.
+ */
+function markFields(root: Element): void {
+  // mammoth no lee `w:fldSimple` (se salta el elemento entero): se cambia por un run con la marca,
+  // o por sus propios runs si es un campo que no sabemos pintar (así al menos queda su valor).
+  for (const field of descendants(root, 'fldSimple')) {
+    const kind = fieldKindOfInstruction(attr(field, 'instr') ?? '')
+    if (kind) {
+      insertMarkerRun(field, marker('f', kind))
+      field.remove()
+    } else field.replaceWith(...Array.from(field.childNodes))
+  }
+  let depth = 0
+  let instruction = ''
+  let result: Element[] = []
+  let inResult = false
+  let lastRun: Element | null = null
+  for (const run of descendants(root, 'r')) {
+    const charType = attr(child(run, 'fldChar'), 'fldCharType')
+    if (charType === 'begin') {
+      depth++
+      if (depth === 1) {
+        instruction = ''
+        result = []
+        inResult = false
+      }
+    } else if (charType === 'separate' && depth === 1) {
+      inResult = true
+    } else if (charType === 'end') {
+      if (depth === 1) {
+        const kind = fieldKindOfInstruction(instruction)
+        if (kind) replaceFieldResult(result, lastRun ?? run, kind)
+      }
+      depth = Math.max(0, depth - 1)
+    } else if (depth === 1) {
+      for (const text of descendants(run, 'instrText')) instruction += text.textContent ?? ''
+      if (inResult) result.push(...descendants(run, 't'))
+      lastRun = run
+    }
+  }
+}
+
+/** El resultado del campo pasa a ser solo la marca (en el primer texto, o en un run nuevo). */
+function replaceFieldResult(texts: Element[], anchor: Element, kind: FieldKind): void {
+  const [first, ...rest] = texts
+  for (const text of rest) text.textContent = ''
+  if (first) first.textContent = marker('f', kind)
+  else insertMarkerRun(anchor, marker('f', kind))
 }
 
 function isContinuous(section: Element | null): boolean {
@@ -475,6 +545,10 @@ export function applyAnnotations(
           if (format?.list && item) applyListFormat(item, format.list)
           if (format?.align) losses.alignedParagraphs++
         }
+      } else if (kind === 'f') {
+        const field = documentRef.createElement('span')
+        field.setAttribute('data-field', payload)
+        fragment.appendChild(field)
       } else if (kind === 'c') {
         const id = commentIds.get(payload)
         if (id) openComments.push(id)

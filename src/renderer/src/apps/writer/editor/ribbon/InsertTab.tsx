@@ -1,6 +1,7 @@
 import type { ChangeEvent } from 'react'
 import {
   Bookmark,
+  Braces,
   CalendarDays,
   Link2,
   Code2,
@@ -12,11 +13,13 @@ import {
   PanelTop,
   Quote
 } from 'lucide-react'
-import { RibbonGroup } from '@/ui/Ribbon'
+import { Dropdown, RibbonGroup } from '@/ui/Ribbon'
 import { readImageFile } from '@/ui/readImageFile'
 import { TableGridPicker } from '@/ui/TableGridPicker'
 import { runCommand } from '../../model/commands'
-import { CommandButton } from './CommandButton'
+import { FIELD_KINDS } from '../../model/fields'
+import { SymbolDropdown } from '../SymbolPicker'
+import { CommandButton, CommandMenuItem } from './CommandButton'
 import { useCommandContext } from './commandContext'
 
 /** Pestaña Insertar: páginas, tablas, imágenes, elementos, comentarios y encabezado y pie. */
@@ -53,8 +56,28 @@ export function InsertTab({ commentCount }: { commentCount: number }) {
       <RibbonGroup label="Elementos">
         <CommandButton command="horizontalRule" large icon={<Minus size={22} />} />
         <CommandButton command="insertDate" large icon={<CalendarDays size={22} />} />
+        <Dropdown label="Campo" large trigger={<Braces size={22} />}>
+          {(close) => (
+            <>
+              {FIELD_KINDS.map((field) => (
+                <CommandMenuItem key={field.kind} command="insertField" arg={field.kind} onDone={close}>
+                  <span className="layout-option">
+                    {field.label}
+                    <small>{field.description}</small>
+                  </span>
+                </CommandMenuItem>
+              ))}
+              <CommandMenuItem command="documentAuthor" onDone={close}>
+                Autor del documento…
+              </CommandMenuItem>
+            </>
+          )}
+        </Dropdown>
         <CommandButton command="blockquote" large icon={<Quote size={22} />} />
         <CommandButton command="codeBlock" large icon={<Code2 size={22} />} />
+      </RibbonGroup>
+      <RibbonGroup label="Símbolos">
+        <SymbolDropdown />
       </RibbonGroup>
       <RibbonGroup label="Comentarios">
         <CommandButton command="addComment" large icon={<MessageSquarePlus size={22} />} />

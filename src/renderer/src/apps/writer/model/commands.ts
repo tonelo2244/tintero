@@ -30,6 +30,7 @@ import { COLUMNS } from './columns'
 import { PAGE_COUNT_TOKEN, PAGE_NUMBER_TOKEN, type HeaderFooterAlign } from './content'
 import type { HeaderFooterKind, HeaderFooterVariant } from './headerFooter'
 import type { ZoomPreset } from './zoom'
+import { longDate, type FieldKind } from './fields'
 
 /**
  * Registro de comandos de Texto (el patrón Command, el mismo que usan VS Code o los editores serios).
@@ -106,13 +107,16 @@ export interface WriterUi {
   toggleReadAloud(): void
   /** Cuadros de Insertar (fase 16): vínculo, marcador, símbolo, ecuación, gráfico... */
   openDialog(dialog: WriterDialogId): void
+  /** Autor del documento: lo pinta el campo Autor. */
+  documentAuthor: string
+  setDocumentAuthor(author: string): void
 }
 
 /**
  * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
  * (ecuación, gráfico) lo leen de la selección al abrirse.
  */
-export type WriterDialogId = 'link' | 'bookmark'
+export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol'
 
 export interface CommandContext {
   editor: Editor
@@ -143,10 +147,6 @@ const currentFontSize = (editor: Editor) => {
   const value = editor.getAttributes('textStyle').fontSize as string | undefined
   return value ? parseFloat(value) : DEFAULT_FONT_SIZE_PT
 }
-
-/** Fecha larga en español ("16 de noviembre de 2026"), la que inserta el botón Fecha. */
-export const longDate = (date = new Date()) =>
-  date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
 
 async function paste({ editor }: CommandContext): Promise<void> {
   editor.commands.focus()
@@ -472,6 +472,22 @@ export const WRITER_COMMANDS = {
     isEnabled: ({ editor }) => editor.isActive('link')
   },
   bookmark: { label: 'Marcador', run: ({ ui }) => ui.openDialog('bookmark') },
+  // --- Campos (fase 16) ---
+  insertField: {
+    label: 'Campo',
+    run: (context, kind: FieldKind) => {
+      chain(context).insertField(kind).run()
+      // Sin autor, el campo diría "[Autor]": se pregunta en el momento, como haría cualquiera.
+      if (kind === 'author' && !context.ui.documentAuthor) context.ui.openDialog('author')
+    }
+  },
+  documentAuthor: { label: 'Autor del documento…', run: ({ ui }) => ui.openDialog('author') },
+  // --- Símbolos (fase 16) ---
+  insertSymbol: {
+    label: 'Símbolo',
+    run: (context, char: string) => chain(context).insertContent({ type: 'text', text: char }).run()
+  },
+  symbolDialog: { label: 'Más símbolos…', run: ({ ui }) => ui.openDialog('symbol') },
   blockquote: {
     label: 'Cita',
     run: (context) => chain(context).toggleBlockquote().run(),
