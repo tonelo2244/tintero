@@ -1,8 +1,8 @@
 import { Extension } from '@tiptap/core'
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
-import { DEFAULT_GEOMETRY, paginate, type MeasuredBlock } from '../model/pageLayout'
+import { DEFAULT_GEOMETRY, paginate, type MeasuredBlock, type PageBreak } from '../model/pageLayout'
 import type { PageGeometry } from '../model/pageSetup'
 
 declare module '@tiptap/core' {
@@ -25,7 +25,10 @@ export interface PaginationStorage {
   geometry: PageGeometry
   /** Sin paginar, el texto va seguido (vistas Borrador, Esquema y Lectura). */
   enabled: boolean
-  /** Posición en el documento del primer bloque de cada hoja (la 1 empieza en 0): miniaturas y "ir a la página". */
+  /**
+   * Posición en el documento donde empieza cada hoja (la 1 en 0): miniaturas, "ir a la página" y
+   * la hoja del cursor. Puede caer dentro de un párrafo partido o de una tabla.
+   */
   pageStarts: number[]
   /** Lo rellena la vista del plugin: pide un reparto nuevo en el siguiente fotograma. */
   requestLayout: (() => void) | null
@@ -37,17 +40,19 @@ const paginationKey = new PluginKey<DecorationSet>('pagination')
 const SPLITTABLE = new Set(['bulletList', 'orderedList', 'taskList'])
 
 /**
- * Paginación real en el editor: los bloques que no caben en lo que queda de hoja bajan a la
- * siguiente. El documento sigue siendo uno (no hay una instancia de editor por hoja, que rompería
- * deshacer, buscar o seleccionar de una hoja a otra); lo que cambia es el margen superior del
- * bloque que abre cada hoja, con una decoración de ProseMirror que no toca el documento guardado.
+ * Paginación real en el editor. El documento sigue siendo uno (no hay una instancia de editor por
+ * hoja, que rompería deshacer, buscar o seleccionar de una hoja a otra); lo que cambia es el sitio
+ * que ocupa cada cosa, con decoraciones de ProseMirror que no tocan el documento guardado:
+ *   - un bloque que baja entero lleva más margen superior;
+ *   - un párrafo partido lleva un hueco (widget) delante del primer renglón que no cabe;
+ *   - una tabla partida lleva una fila vacía de hueco y, si la tiene, una copia del encabezado.
  *
  * Cada vez que el texto cambia:
- *   1. se quitan los saltos y se miden los bloques tal como quedarían sin paginar;
+ *   1. se quitan los saltos y se miden los bloques (y sus renglones) tal como quedarían sin paginar;
  *   2. `paginate` (lógica pura, en model/pageLayout.ts) decide dónde empieza cada hoja;
  *   3. se aplican los saltos. Los pasos 1-3 van en el mismo fotograma: no se ve el parpadeo.
- * Al imprimir, esos mismos bloques llevan `break-before: page` (ver global.css): la hoja impresa
- * corta donde la de pantalla.
+ * Al imprimir, cada hueco se cambia por un `break-before: page` (ver global.css): la hoja impresa
+ * corta donde la de pantalla. En "Varias páginas", por un `break-before: column`.
  */
 export const Pagination = Extension.create<object, PaginationStorage>({
   name: 'pagination',
@@ -125,83 +130,302 @@ export const Pagination = Extension.create<object, PaginationStorage>({
   }
 })
 
+/** Una tabla cuyas filas se reparten entre hojas. */
+interface TableInfo {
+  pos: number
+  /** Fila de encabezado que se repite arriba de cada hoja (la primera, si son todo celdas de encabezado). */
+  header: ProseMirrorNode | null
+  columns: number
+}
+
 interface Unit {
   pos: number
   node: ProseMirrorNode
   /** Va justo detrás de un salto de página. */
   breakBefore: boolean
+  /** Las filas de tabla se mueven con huecos dentro de la tabla, no con margen. */
+  table?: TableInfo
+  /** Primera fila: si baja, baja la tabla entera (con margen, como un bloque). */
+  firstRow?: boolean
 }
 
+/** Un renglón medido, con el bloque de texto al que pertenece (para saber dónde partir). */
+interface Line {
+  top: number
+  bottom: number
+  /** En coordenadas de pantalla: las que entiende coordsAtPos. */
+  screenTop: number
+  textblockPos: number
+  textblock: ProseMirrorNode
+  /** Es el primer renglón de su bloque de texto: se parte justo al principio. */
+  first: boolean
+}
+
+type MeasuredUnit = Unit & MeasuredBlock & { textLines?: Line[] }
+
 /**
- * Bloques que pueden abrir una hoja, en orden: los de primer nivel y los elementos de las listas.
- * Los saltos de página no son unidades (no ocupan sitio): marcan la unidad siguiente.
+ * Bloques que pueden abrir una hoja, en orden: los de primer nivel, los elementos de las listas y
+ * las filas de las tablas. Los saltos de página no son unidades (no ocupan sitio): marcan la siguiente.
  */
 function collectUnits(doc: ProseMirrorNode): Unit[] {
   const units: Unit[] = []
   let breakBefore = false
+  const push = (unit: Omit<Unit, 'breakBefore'>) => {
+    units.push({ ...unit, breakBefore })
+    breakBefore = false
+  }
   doc.forEach((node, offset) => {
     if (node.type.name === 'pageBreak') {
       breakBefore = true
-      return
-    }
-    if (SPLITTABLE.has(node.type.name)) {
-      node.forEach((item, itemOffset) => {
-        units.push({ pos: offset + 1 + itemOffset, node: item, breakBefore })
-        breakBefore = false
-      })
+    } else if (SPLITTABLE.has(node.type.name)) {
+      node.forEach((item, itemOffset) => push({ pos: offset + 1 + itemOffset, node: item }))
+    } else if (node.type.name === 'table') {
+      const table: TableInfo = { pos: offset, header: headerRow(node), columns: columnCount(node) }
+      node.forEach((row, rowOffset) =>
+        push({ pos: offset + 1 + rowOffset, node: row, table, firstRow: rowOffset === 0 })
+      )
     } else {
-      units.push({ pos: offset, node, breakBefore })
-      breakBefore = false
+      push({ pos: offset, node })
     }
   })
   return units
 }
 
+function headerRow(table: ProseMirrorNode): ProseMirrorNode | null {
+  const first = table.firstChild
+  if (!first || table.childCount < 2) return null
+  let allHeaders = first.childCount > 0
+  first.forEach((cell) => {
+    if (cell.type.name !== 'tableHeader') allHeaders = false
+  })
+  return allHeaders ? first : null
+}
+
+function columnCount(table: ProseMirrorNode): number {
+  let columns = 0
+  table.firstChild?.forEach((cell) => {
+    columns += (cell.attrs.colspan as number | undefined) ?? 1
+  })
+  return Math.max(1, columns)
+}
+
 /** Mide, reparte y aplica los saltos, y anota el número de hojas. */
 function layout(view: EditorView, storage: PaginationStorage): void {
   const hadBreaks = paginationKey.getState(view.state) !== DecorationSet.empty
-  if (hadBreaks) {
-    view.dispatch(view.state.tr.setMeta(paginationKey, DecorationSet.empty).setMeta('addToHistory', false))
-  }
+  // En "Varias páginas" las hojas son columnas: se mide con el texto en una sola tira (ver global.css).
+  const host = view.dom.closest<HTMLElement>('.writer-page')
+  host?.setAttribute('data-measuring', '')
+  try {
+    if (hadBreaks) {
+      view.dispatch(view.state.tr.setMeta(paginationKey, DecorationSet.empty).setMeta('addToHistory', false))
+    }
 
-  if (!storage.enabled) {
-    // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
-    const changed = storage.pageCount !== 1
-    storage.pageCount = 1
-    storage.pageStarts = [0]
-    if (changed) view.dispatch(view.state.tr.setMeta('addToHistory', false))
-    return
-  }
+    if (!storage.enabled) {
+      // Sin hojas: se quitan los saltos y el documento cuenta como una sola tira de texto.
+      const changed = storage.pageCount !== 1
+      storage.pageCount = 1
+      storage.pageStarts = [0]
+      if (changed) view.dispatch(view.state.tr.setMeta('addToHistory', false))
+      return
+    }
 
+    const measured = measureUnits(view)
+    const { breaks, pageCount } = paginate(measured, storage.geometry.pitch, storage.geometry.contentHeight)
+    const decorations: Decoration[] = []
+    const pageStarts = [0]
+    for (const pageBreak of breaks) {
+      const placed = breakDecorations(view, measured, pageBreak)
+      decorations.push(...placed.decorations)
+      pageStarts.push(placed.pageStart)
+    }
+    storage.pageStarts = pageStarts
+    // Sin saltos antes ni ahora y con las mismas hojas no hay nada que avisar: nos ahorramos la transacción.
+    if (!hadBreaks && decorations.length === 0 && storage.pageCount === pageCount) return
+    // Antes de despachar: quien lea las hojas al recibir la transacción (la barra de estado) ve el valor nuevo.
+    storage.pageCount = pageCount
+    view.dispatch(
+      view.state.tr
+        .setMeta(paginationKey, DecorationSet.create(view.state.doc, decorations))
+        .setMeta('addToHistory', false)
+    )
+  } finally {
+    host?.removeAttribute('data-measuring')
+  }
+}
+
+/** Cajas de cada unidad (y sus renglones, si es texto que se puede partir) relativas al principio del texto. */
+function measureUnits(view: EditorView): MeasuredUnit[] {
   const origin = view.dom.getBoundingClientRect()
   // Con zoom, getBoundingClientRect da píxeles de pantalla; offsetHeight, píxeles del documento.
   const scale = view.dom.offsetHeight > 0 ? origin.height / view.dom.offsetHeight : 1
-  const measured: (MeasuredBlock & Unit)[] = []
+  const toY = (screenY: number) => (screenY - origin.top) / scale
+  const measured: MeasuredUnit[] = []
   for (const unit of collectUnits(view.state.doc)) {
     const dom = view.nodeDOM(unit.pos)
     if (!(dom instanceof HTMLElement)) continue
-    const box = dom.getBoundingClientRect()
-    measured.push({ ...unit, top: (box.top - origin.top) / scale, bottom: (box.bottom - origin.top) / scale })
+    // La primera fila de una tabla mueve la tabla entera: cuenta desde el borde de la tabla.
+    const tableDom = unit.firstRow && unit.table ? view.nodeDOM(unit.table.pos) : null
+    const top = (tableDom instanceof HTMLElement ? tableDom : dom).getBoundingClientRect().top
+    const block: MeasuredUnit = { ...unit, top: toY(top), bottom: toY(dom.getBoundingClientRect().bottom) }
+    if (unit.node.type.name.startsWith('heading')) block.keepWithNext = true
+    if (unit.table) {
+      const isHeader = unit.table.header !== null && unit.firstRow
+      if (isHeader) block.keepWithNext = true
+      else if (unit.table.header && !unit.firstRow) {
+        const headerDom = view.nodeDOM(unit.table.pos + 1)
+        if (headerDom instanceof HTMLElement) block.repeatHeight = headerDom.getBoundingClientRect().height / scale
+      }
+    } else {
+      const textLines = measureLines(view, unit, toY)
+      if (textLines.length > 0) {
+        block.textLines = textLines
+        block.lines = textLines
+      }
+    }
+    measured.push(block)
   }
+  return measured
+}
 
-  const { breaks, pageCount } = paginate(measured, storage.geometry.pitch, storage.geometry.contentHeight)
-  const decorations = breaks.map(({ index, shift }) => {
-    const block = measured[index]
-    // El margen nuevo sustituye al hueco que había con el bloque anterior (márgenes colapsados).
-    const gap = block.top - (index > 0 ? measured[index - 1].bottom : 0)
-    return Decoration.node(block.pos, block.pos + block.node.nodeSize, {
-      class: 'writer-page-start',
-      style: `margin-top: ${(gap + shift).toFixed(2)}px`
+/**
+ * Renglones de los bloques de texto de una unidad, con `Range.getClientRects()`: un rectángulo
+ * por trozo de texto y renglón. Los que se solapan en vertical son el mismo renglón.
+ */
+function measureLines(view: EditorView, unit: Unit, toY: (screenY: number) => number): Line[] {
+  if (unit.node.isAtom) return []
+  const lines: Line[] = []
+  const visit = (textblock: ProseMirrorNode, textblockPos: number) => {
+    const dom = view.nodeDOM(textblockPos)
+    if (!(dom instanceof HTMLElement) || textblock.content.size === 0) return
+    const range = document.createRange()
+    range.selectNodeContents(dom)
+    const rects = [...range.getClientRects()].filter((rect) => rect.height > 0).sort((a, b) => a.top - b.top)
+    let current: Line | null = null
+    for (const rect of rects) {
+      if (current && rect.top < current.screenTop + (current.bottom - current.top) * 0.5) {
+        current.bottom = Math.max(current.bottom, toY(rect.bottom))
+        continue
+      }
+      current = {
+        top: toY(rect.top),
+        bottom: toY(rect.bottom),
+        screenTop: rect.top,
+        textblockPos,
+        textblock,
+        first: current === null
+      }
+      lines.push(current)
+    }
+  }
+  if (unit.node.isTextblock) visit(unit.node, unit.pos)
+  else
+    unit.node.descendants((child, childPos) => {
+      if (child.type.name === 'table') return false
+      if (child.isTextblock) {
+        visit(child, unit.pos + 1 + childPos)
+        return false
+      }
+      return true
     })
+  return lines
+}
+
+/** Decoraciones de un salto y la posición del documento donde empieza la hoja nueva. */
+function breakDecorations(
+  view: EditorView,
+  measured: MeasuredUnit[],
+  { index, shift, line }: PageBreak
+): { decorations: Decoration[]; pageStart: number } {
+  const unit = measured[index]
+  if (line !== undefined && unit.textLines) {
+    // Párrafo partido: un hueco del alto del salto justo antes del primer renglón que no cabe.
+    const pos = lineStart(view, unit.textLines[line])
+    const widget = Decoration.widget(pos, () => splitWidget(shift), {
+      side: -1,
+      ignoreSelection: true,
+      key: `split-${shift.toFixed(1)}`
+    })
+    return { decorations: [widget], pageStart: pos }
+  }
+  if (unit.table && !unit.firstRow) {
+    // Fila de tabla: una fila vacía hace de hueco entre hojas y, si la hay, se repite el encabezado.
+    const { table } = unit
+    const decorations = [
+      Decoration.widget(unit.pos, () => tableGapRow(shift, table.columns), {
+        side: -2,
+        key: `gap-${shift.toFixed(1)}-${table.columns}`
+      })
+    ]
+    if (table.header) {
+      const header = table.header
+      decorations.push(Decoration.widget(unit.pos, () => repeatedHeader(view, header), { side: -1 }))
+    } else {
+      decorations.push(Decoration.node(unit.pos, unit.pos + unit.node.nodeSize, { class: 'writer-row-break' }))
+    }
+    return { decorations, pageStart: unit.pos }
+  }
+  // Bloque entero (o tabla desde su primera fila): el margen nuevo sustituye al hueco que tenía
+  // con el anterior (márgenes colapsados).
+  const pos = unit.table ? unit.table.pos : unit.pos
+  const node = view.state.doc.nodeAt(pos) ?? unit.node
+  const gap = unit.top - (index > 0 ? measured[index - 1].bottom : 0)
+  const decoration = Decoration.node(pos, pos + node.nodeSize, {
+    class: 'writer-page-start',
+    style: `margin-top: ${(gap + shift).toFixed(2)}px`
   })
-  storage.pageStarts = [0, ...breaks.map(({ index }) => measured[index].pos)]
-  // Sin saltos antes ni ahora y con las mismas hojas no hay nada que avisar: nos ahorramos la transacción.
-  if (!hadBreaks && decorations.length === 0 && storage.pageCount === pageCount) return
-  // Antes de despachar: quien lea las hojas al recibir la transacción (la barra de estado) ve el valor nuevo.
-  storage.pageCount = pageCount
-  view.dispatch(
-    view.state.tr
-      .setMeta(paginationKey, DecorationSet.create(view.state.doc, decorations))
-      .setMeta('addToHistory', false)
-  )
+  return { decorations: [decoration], pageStart: pos }
+}
+
+/**
+ * Posición del primer carácter de un renglón: la primera cuyo borde superior está ya en él.
+ * Las coordenadas crecen con la posición, así que basta una búsqueda binaria.
+ */
+function lineStart(view: EditorView, line: Line): number {
+  const start = line.textblockPos + 1
+  if (line.first) return start
+  let low = start
+  let high = start + line.textblock.content.size
+  while (low < high) {
+    const middle = (low + high) >> 1
+    let top: number
+    try {
+      top = view.coordsAtPos(middle, 1).top
+    } catch {
+      top = Number.NEGATIVE_INFINITY
+    }
+    if (top >= line.screenTop - 1) high = middle
+    else low = middle + 1
+  }
+  return low
+}
+
+/** Hueco dentro de un párrafo: ocupa un renglón entero del alto que haga falta (ver global.css). */
+function splitWidget(height: number): HTMLElement {
+  const spacer = document.createElement('span')
+  spacer.className = 'writer-page-split'
+  spacer.contentEditable = 'false'
+  spacer.setAttribute('aria-hidden', 'true')
+  spacer.style.height = `${height.toFixed(2)}px`
+  return spacer
+}
+
+function tableGapRow(height: number, columns: number): HTMLElement {
+  const row = document.createElement('tr')
+  row.className = 'writer-table-gap'
+  row.contentEditable = 'false'
+  row.setAttribute('aria-hidden', 'true')
+  const cell = document.createElement('td')
+  cell.colSpan = columns
+  cell.style.height = `${height.toFixed(2)}px`
+  row.appendChild(cell)
+  return row
+}
+
+/** Copia de solo lectura de la fila de encabezado, arriba de la tabla en cada hoja nueva. */
+function repeatedHeader(view: EditorView, header: ProseMirrorNode): HTMLElement {
+  const row = DOMSerializer.fromSchema(view.state.schema).serializeNode(header) as HTMLElement
+  row.classList.add('writer-table-repeat')
+  row.contentEditable = 'false'
+  row.setAttribute('aria-hidden', 'true')
+  return row
 }

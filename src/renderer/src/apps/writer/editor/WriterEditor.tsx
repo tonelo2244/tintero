@@ -166,7 +166,7 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const askDocuments = useAskDocuments(getDoc, { documentName: session.documentName, filePath: session.filePath })
   /** Panel de IA abierto: ninguno, cómo preparar Ollama, redacción, crear presentación o preguntar. */
   const [aiPanel, setAiPanel] = useState<'closed' | 'setup' | 'writing' | 'presentation' | 'ask'>('closed')
-  const pages = usePageMetrics(editor, zoom)
+  const pages = usePageMetrics(editor)
   const readAloud = useReadAloud(editor)
   const paginated = isPaginated(viewMode)
 

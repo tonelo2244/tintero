@@ -16,19 +16,37 @@ export const DEFAULT_GEOMETRY = pageGeometry(DEFAULT_PAGE_SETUP)
  */
 const SAFETY_PX = 2
 
+/** Un renglón medido: su borde superior e inferior, en las mismas coordenadas que el bloque. */
+export interface MeasuredLine {
+  top: number
+  bottom: number
+}
+
 /** Un bloque medido sin paginar: su borde superior e inferior, desde el principio del texto. */
 export interface MeasuredBlock {
   top: number
   bottom: number
   /** Va detrás de un salto de página: empieza hoja nueva aunque quepa en la actual. */
   breakBefore?: boolean
+  /**
+   * Renglones del bloque, en orden. Con ellos el bloque se puede partir entre hojas (un párrafo
+   * largo); sin ellos se mueve entero (una imagen, una fila de tabla).
+   */
+  lines?: MeasuredLine[]
+  /** "Conservar con el siguiente": un título no se queda solo al pie de la hoja. */
+  keepWithNext?: boolean
+  /** Alto que aparece encima del bloque cuando abre hoja: la fila de encabezado que se repite. */
+  repeatHeight?: number
 }
 
-/** Un bloque que debe empezar hoja nueva y cuánto hay que bajarlo para que lo haga. */
+/**
+ * Dónde empieza una hoja nueva y cuánto hay que bajar lo que sigue para que lo haga. Sin `line`,
+ * baja el bloque entero; con `line`, el bloque se parte y baja desde ese renglón.
+ */
 export interface PageBreak {
   index: number
-  /** Espacio que se añade encima del bloque (además del hueco que ya tenía con el anterior). */
   shift: number
+  line?: number
 }
 
 export interface PageLayout {
@@ -36,50 +54,109 @@ export interface PageLayout {
   pageCount: number
 }
 
+/** Control de viudas y huérfanas: al partir un párrafo quedan al menos dos renglones a cada lado. */
+export const MIN_LINES = 2
+
+/** Vueltas máximas para "conservar con el siguiente" (una cadena de títulos seguidos). */
+const MAX_KEEP_PASSES = 20
+
 /**
  * Reparte los bloques en hojas. Coordenadas: 0 es el principio del área de texto de la primera
  * hoja; la hoja `n` tiene su área de texto en [n·pitch, n·pitch + contentHeight).
  *
- * Un bloque que no cabe entero en lo que queda de hoja empieza en la siguiente (no se parten
- * párrafos: es la opción "conservar líneas juntas" de Word aplicada a todo). Un bloque más alto
- * que una hoja entera empieza arriba de una y se sale por abajo: es el caso raro que no cubrimos.
+ * Un bloque que no cabe en lo que queda de hoja se parte por renglones si los trae (y deja al
+ * menos MIN_LINES a cada lado); si no, baja entero a la siguiente. Un bloque sin renglones más
+ * alto que una hoja empieza arriba de una y se sale por abajo: es el caso raro que no cubrimos.
+ * Los títulos (`keepWithNext`) bajan con el bloque siguiente cuando este baja entero.
  */
 export function paginate(
   blocks: MeasuredBlock[],
   pitch = DEFAULT_GEOMETRY.pitch,
   contentHeight = DEFAULT_GEOMETRY.contentHeight
 ): PageLayout {
+  // "Conservar con el siguiente" se resuelve repitiendo el reparto con el título forzado a bajar:
+  // así la pasada sigue siendo lineal y sencilla, y casi nunca hace falta más de una vuelta.
+  const forced = new Set<number>()
+  let pass = paginatePass(blocks, pitch, contentHeight, forced)
+  for (let round = 0; round < MAX_KEEP_PASSES && pass.keepViolation !== null; round++) {
+    forced.add(pass.keepViolation)
+    pass = paginatePass(blocks, pitch, contentHeight, forced)
+  }
+  return { breaks: pass.breaks, pageCount: pass.pageCount }
+}
+
+interface Pass extends PageLayout {
+  /** Bloque con "conservar con el siguiente" que se quedó al pie, separado del siguiente. */
+  keepViolation: number | null
+}
+
+function paginatePass(blocks: MeasuredBlock[], pitch: number, contentHeight: number, forced: Set<number>): Pass {
+  const pageOf = (y: number) => Math.max(0, Math.floor(y / pitch))
   const breaks: PageBreak[] = []
+  const startsPage: boolean[] = []
+  let keepViolation: number | null = null
   let added = 0
   let lastBottom = 0
+
+  /** Primer renglón que ya no cabe en la hoja donde empieza `from`, o null si no hay que partir. */
+  const splitLine = (lines: MeasuredLine[], from: number): number | null => {
+    const end = pageOf(lines[from].top + added) * pitch + contentHeight - SAFETY_PX
+    let line = from
+    while (line < lines.length && lines[line].bottom + added <= end) line++
+    if (line >= lines.length) return null
+    line = Math.min(line, lines.length - MIN_LINES) // viudas: al menos dos renglones pasan
+    return line - from >= MIN_LINES ? line : null // huérfanas: al menos dos se quedan
+  }
+
   blocks.forEach((block, index) => {
     const top = block.top + added
     const bottom = block.bottom + added
-    const page = Math.max(0, Math.floor(top / pitch))
-    const pageStart = page * pitch
+    const pageStart = pageOf(top) * pitch
     const pageEnd = pageStart + contentHeight - SAFETY_PX
-    const startsInGap = top >= pageEnd
     const atPageStart = top <= pageStart + SAFETY_PX
+    const lines = block.lines && block.lines.length >= 2 * MIN_LINES ? block.lines : undefined
+    const forcedBreak = (block.breakBefore === true || forced.has(index)) && !atPageStart
     const overflows = bottom > pageEnd && !atPageStart
-    const forced = block.breakBefore === true && !atPageStart
-    if (startsInGap || overflows || forced) {
-      const shift = (page + 1) * pitch - top
+    let starts = atPageStart
+
+    // Primero se intenta partir; si no se puede (pocos renglones o no caben dos), baja entero.
+    const firstSplit = overflows && !forcedBreak && top < pageEnd && lines ? splitLine(lines, 0) : null
+    if (firstSplit === null && (top >= pageEnd || overflows || forcedBreak)) {
+      const shift = pageStart + pitch - top
       breaks.push({ index, shift })
-      added += shift
+      added += shift + (block.repeatHeight ?? 0)
+      starts = true
+      const previous = index - 1
+      if (!forcedBreak && previous >= 0 && blocks[previous].keepWithNext && !startsPage[previous]) {
+        keepViolation ??= previous
+      }
     }
+    // Lo que queda del bloque se parte tantas veces como haga falta (un párrafo de varias hojas).
+    let from = 0
+    let line = firstSplit ?? (lines ? splitLine(lines, 0) : null)
+    while (line !== null && lines) {
+      const shift = Math.max(0, (pageOf(lines[from].top + added) + 1) * pitch - (lines[line].top + added))
+      breaks.push({ index, shift, line })
+      added += shift
+      from = line
+      line = splitLine(lines, from)
+    }
+    startsPage[index] = starts
     lastBottom = Math.max(lastBottom, block.bottom + added)
   })
   const pageCount = Math.max(1, Math.floor(Math.max(0, lastBottom - 1) / pitch) + 1)
-  return { breaks, pageCount }
+  return { breaks, pageCount, keepViolation }
 }
 
 /**
- * En qué hoja (desde 1) cae una altura medida desde el principio del área de texto. Con holgura:
- * el primer renglón de una hoja empieza justo en `n·pitch`, y la medida de la pantalla puede dar
- * medio píxel menos (entonces la barra de estado decía "Página 1" con el cursor en la 2).
+ * En qué hoja (desde 1) está una posición del documento, sabiendo dónde empieza cada una. Se cuenta
+ * por posiciones y no por alturas en pantalla: funciona igual con zoom, con hojas de cualquier
+ * tamaño y en "Varias páginas", donde las hojas van en columnas.
  */
-export function pageAt(y: number, pageCount: number, pitch = DEFAULT_GEOMETRY.pitch): number {
-  return Math.min(pageCount, Math.max(1, Math.floor((y + SAFETY_PX) / pitch) + 1))
+export function pageOfPosition(pageStarts: number[], pos: number): number {
+  let page = 1
+  for (let index = 1; index < pageStarts.length && pageStarts[index] <= pos; index++) page = index + 1
+  return page
 }
 
 /** Texto del encabezado o pie de una hoja concreta: los marcadores pasan a números. */

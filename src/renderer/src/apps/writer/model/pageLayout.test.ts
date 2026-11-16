@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cssContent, headerFooterText, pageAt, paginate, printPageCss } from './pageLayout'
+import { cssContent, headerFooterText, pageOfPosition, paginate, printPageCss } from './pageLayout'
 import { DEFAULT_PAGE_SETUP, withOrientation } from './pageSetup'
 
 // Números redondos para leer los tests: hojas de 100 de alto útil, cada 150 (50 de márgenes y hueco).
@@ -56,12 +56,83 @@ describe('paginate', () => {
     expect(layout).toEqual({ breaks: [], pageCount: 1 })
   })
 
-  it('pageAt dice en qué hoja cae una altura', () => {
-    expect(pageAt(0, 3, PITCH)).toBe(1)
-    expect(pageAt(160, 3, PITCH)).toBe(2)
-    expect(pageAt(9999, 3, PITCH)).toBe(3)
-    // El primer renglón de la hoja 2 medido medio píxel por encima de su sitio sigue siendo de la 2.
-    expect(pageAt(PITCH - 0.4, 3, PITCH)).toBe(2)
+  /** Un párrafo de `count` renglones de 10 que empieza en `top`. */
+  const paragraph = (top: number, count: number) => {
+    const lines = Array.from({ length: count }, (_, line) => ({ top: top + line * 10, bottom: top + line * 10 + 10 }))
+    return { top, bottom: top + count * 10, lines }
+  }
+
+  it('un párrafo que no cabe se parte por el renglón que ya no entra', () => {
+    // 0-60 y luego un párrafo de 8 renglones en 70-150: caben 70-80 y 80-90 (hasta 98).
+    const layout = paginate([{ top: 0, bottom: 60 }, paragraph(70, 8)], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, line: 2, shift: 60 }])
+    expect(layout.pageCount).toBe(2)
+  })
+
+  it('no deja un renglón huérfano al pie: si solo cabe uno, baja el párrafo entero', () => {
+    const layout = paginate([{ top: 0, bottom: 75 }, paragraph(80, 6)], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, shift: 70 }])
+  })
+
+  it('no deja un renglón viudo arriba: pasan al menos dos', () => {
+    // Caben 4 de 5 renglones (50-90), pero pasarían solo uno: se parte en el 3.
+    const layout = paginate([{ top: 0, bottom: 40 }, paragraph(50, 5)], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, line: 3, shift: 70 }])
+  })
+
+  it('un párrafo de menos de cuatro renglones no se parte', () => {
+    const layout = paginate([{ top: 0, bottom: 70 }, paragraph(80, 3)], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, shift: 70 }])
+  })
+
+  it('un párrafo más largo que una hoja se parte varias veces', () => {
+    const layout = paginate([paragraph(0, 25)], PITCH, CONTENT)
+    // 9 renglones por hoja (0-90; el décimo acabaría en 100 > 98).
+    expect(layout.breaks).toEqual([
+      { index: 0, line: 9, shift: 60 },
+      { index: 0, line: 18, shift: 60 }
+    ])
+    expect(layout.pageCount).toBe(3)
+  })
+
+  it('un título no se queda solo al pie: baja con el bloque siguiente', () => {
+    const layout = paginate(
+      [
+        { top: 0, bottom: 60 },
+        { top: 65, bottom: 80, keepWithNext: true },
+        { top: 85, bottom: 120 }
+      ],
+      PITCH,
+      CONTENT
+    )
+    expect(layout.breaks).toEqual([{ index: 1, shift: 85 }])
+  })
+
+  it('un título junto a un párrafo que se parte se queda con sus dos primeros renglones', () => {
+    const layout = paginate([{ top: 0, bottom: 40, keepWithNext: true }, paragraph(50, 8)], PITCH, CONTENT)
+    expect(layout.breaks).toEqual([{ index: 1, line: 4, shift: 60 }])
+  })
+
+  it('la fila de encabezado repetida empuja también lo que sigue', () => {
+    const rows = [
+      { top: 0, bottom: 20 },
+      { top: 20, bottom: 60 },
+      { top: 60, bottom: 110, repeatHeight: 20 },
+      { top: 110, bottom: 130 }
+    ]
+    const layout = paginate(rows, PITCH, CONTENT)
+    // La fila 2 baja: el encabezado repetido ocupa 150-170 y ella 170-220.
+    expect(layout.breaks).toEqual([{ index: 2, shift: 90 }])
+    expect(layout.pageCount).toBe(2)
+  })
+
+  it('pageOfPosition dice en qué hoja está una posición del documento', () => {
+    const starts = [0, 120, 340]
+    expect(pageOfPosition(starts, 0)).toBe(1)
+    expect(pageOfPosition(starts, 119)).toBe(1)
+    expect(pageOfPosition(starts, 120)).toBe(2)
+    expect(pageOfPosition(starts, 9999)).toBe(3)
+    expect(pageOfPosition([0], 50)).toBe(1)
   })
 })
 

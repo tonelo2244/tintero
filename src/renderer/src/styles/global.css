@@ -847,6 +847,28 @@ button {
   position: relative;
 }
 
+/*
+ * Párrafo partido entre hojas (editor/Pagination.ts): el hueco es un renglón entero del alto del
+ * salto. En línea y no de bloque, para que el renglón anterior siga justificado.
+ */
+.writer-content .writer-page-split {
+  display: inline-block;
+  width: 100%;
+  vertical-align: top;
+  pointer-events: none;
+  user-select: none;
+}
+/* Tabla partida: una fila vacía hace de hueco y el encabezado se repite arriba de la hoja nueva. */
+.writer-content tr.writer-table-gap > td {
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+}
+.writer-content tr.writer-table-repeat {
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
 .writer-content hr.writer-page-break {
   position: relative;
@@ -2585,10 +2607,23 @@ p.writer-outline-block--body::after {
   .writer-page-break {
     display: none;
   }
-  /* La hoja impresa corta donde la de pantalla: el margen de pantalla se cambia por un salto. */
+  /* La hoja impresa corta donde la de pantalla: cada hueco de pantalla se cambia por un salto. */
   .writer-page-start {
     break-before: page;
     margin-top: 0 !important;
+  }
+  .writer-content .writer-page-split {
+    display: block;
+    width: auto;
+    height: 0 !important;
+    break-before: page;
+  }
+  .writer-content tr.writer-table-gap {
+    display: none;
+  }
+  .writer-content tr.writer-table-repeat,
+  .writer-content tr.writer-row-break {
+    break-before: page;
   }
   .writer-comment {
     background: none;
