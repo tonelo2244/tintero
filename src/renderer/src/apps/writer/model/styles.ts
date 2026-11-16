@@ -152,6 +152,15 @@ export const DEFAULT_STYLES: WriterStyle[] = [
       indentRight: 1.5
     }
   },
+  {
+    // Títulos de figuras y tablas (fase 17): "Figura 1: ...". Es el "Descripción" de Word.
+    id: 'caption',
+    name: 'Descripción',
+    type: 'paragraph',
+    basedOn: NORMAL_STYLE_ID,
+    next: NORMAL_STYLE_ID,
+    props: { fontSize: 9, italic: true, color: '#44546a', spaceBefore: 2, spaceAfter: 10 }
+  },
   { id: 'emphasis', name: 'Énfasis', type: 'character', quick: true, props: { italic: true } },
   {
     id: 'intense-emphasis',

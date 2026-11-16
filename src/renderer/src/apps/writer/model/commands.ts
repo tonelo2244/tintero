@@ -36,6 +36,9 @@ import { coverPageContent, startsWithCoverPage } from './coverPage'
 import { tableStyle, type CellBorderAction, type TableStyleId } from './tableStyles'
 import type { ShapeKind } from '@/apps/slides/model/types'
 import { placementOf, resizeKeepingRatio, type ArrangeAction, type ObjectAlign, type WrapMode } from './floating'
+import type { NoteKind } from './notes'
+import type { CitationStyle, Source } from './citations'
+import { TOC_HEADINGS, TOC } from './toc'
 import {
   arrangeSelectedObject,
   objectSize,
@@ -122,13 +125,30 @@ export interface WriterUi {
   /** Autor del documento: lo pinta el campo Autor. */
   documentAuthor: string
   setDocumentAuthor(author: string): void
+  /** Referencias (fase 17): fuentes y estilo de las citas, guardados aparte del texto. */
+  sources: Source[]
+  citationStyle: CitationStyle
+  setCitationStyle(style: CitationStyle): void
+  setSources(sources: Source[]): void
 }
 
 /**
  * Cuadros que abren los comandos de la fase 16. Uno solo abierto a la vez; los que editan un objeto
  * (ecuación, gráfico) lo leen de la selección al abrirse.
  */
-export type WriterDialogId = 'link' | 'bookmark' | 'author' | 'symbol' | 'crop' | 'altText' | 'chart' | 'equation'
+export type WriterDialogId =
+  | 'link'
+  | 'bookmark'
+  | 'author'
+  | 'symbol'
+  | 'crop'
+  | 'altText'
+  | 'chart'
+  | 'equation'
+  // Referencias (fase 17)
+  | 'caption'
+  | 'crossReference'
+  | 'sources'
 
 export interface CommandContext {
   editor: Editor
@@ -188,6 +208,58 @@ const withoutUndefined = <T extends object>(value: T): Partial<T> =>
 
 /** `satisfies` comprueba la forma de cada comando sin perder el tipo de su argumento. */
 export const WRITER_COMMANDS = {
+  // --- Referencias (fase 17) ---
+  tableOfContents: {
+    label: 'Tabla de contenido',
+    run: (context, levels: number) => chain(context).insertTableOfContents({ source: TOC_HEADINGS, levels }).run()
+  },
+  tableOfFigures: {
+    label: 'Insertar tabla de ilustraciones',
+    run: (context, label: string) => chain(context).insertTableOfContents({ source: label }).run()
+  },
+  updateTables: {
+    label: 'Actualizar tabla',
+    run: (context) => chain(context).updateTablesOfContents().run(),
+    isEnabled: ({ editor }) => hasNode(editor, TOC)
+  },
+  insertFootnote: {
+    label: 'Insertar nota al pie',
+    shortcut: 'Ctrl/Cmd+Alt+F',
+    keys: 'Mod-Alt-f',
+    run: (context) => chain(context).insertNote('footnote').run()
+  },
+  insertEndnote: {
+    label: 'Insertar nota al final',
+    shortcut: 'Ctrl/Cmd+Alt+D',
+    keys: 'Mod-Alt-d',
+    run: (context) => chain(context).insertNote('endnote').run()
+  },
+  goToNote: {
+    label: 'Siguiente nota al pie',
+    run: (context, target: { kind: NoteKind; direction: 1 | -1 }) =>
+      chain(context).goToNote(target.kind, target.direction).run()
+  },
+  convertNotes: {
+    label: 'Convertir notas',
+    run: (context, from: NoteKind) => chain(context).convertNotes(from).run()
+  },
+  insertCaption: { label: 'Insertar título', run: ({ ui }) => ui.openDialog('caption') },
+  crossReference: { label: 'Referencia cruzada', run: ({ ui }) => ui.openDialog('crossReference') },
+  insertCitation: {
+    label: 'Insertar cita',
+    run: (context, sourceId: string) => chain(context).insertCitation(sourceId).run()
+  },
+  manageSources: { label: 'Administrar fuentes', run: ({ ui }) => ui.openDialog('sources') },
+  citationStyle: {
+    label: 'Estilo',
+    run: ({ ui }, style: CitationStyle) => ui.setCitationStyle(style),
+    isActive: ({ ui }, style: CitationStyle) => ui.citationStyle === style
+  },
+  bibliography: {
+    label: 'Bibliografía',
+    run: (context, title: string) => chain(context).insertBibliography(title).run()
+  },
+
   // --- Portapapeles ---
   paste: { label: 'Pegar', shortcut: 'Ctrl/Cmd+V', run: (context) => void paste(context) },
   pasteText: { label: 'Pegar solo texto', run: (context) => void pasteText(context) },
@@ -934,6 +1006,16 @@ export function commandKeyBindings(): { keys: string; id: WriterCommandId }[] {
     const { keys } = commandOf(id)
     return keys ? [{ keys, id }] : []
   })
+}
+
+/** ¿Hay algún nodo de ese tipo en el documento? */
+function hasNode(editor: Editor, name: string): boolean {
+  let found = false
+  editor.state.doc.descendants((node) => {
+    if (found || node.type.name === name) found = true
+    return !found && !node.isTextblock
+  })
+  return found
 }
 
 /** Estilo de la tabla donde está el cursor (null fuera de una tabla). */

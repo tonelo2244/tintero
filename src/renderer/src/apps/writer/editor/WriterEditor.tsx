@@ -10,7 +10,9 @@ import { presentationFromOutline } from '@/apps/slides/model/outline'
 import { WRITER_ACCENT } from '../constants'
 import {
   withAuthor,
+  withCitationStyle,
   withHeaderFooter,
+  withSources,
   withHyphenation,
   withNumberedHeadings,
   withPageSetup,
@@ -73,6 +75,9 @@ import { ObjectTab } from './ribbon/ObjectTab'
 import { selectedObject } from '../model/objectEdits'
 import { HeaderFooterTab } from './ribbon/HeaderFooterTab'
 import { ViewTab } from './ribbon/ViewTab'
+import { ReferencesTab } from './ribbon/ReferencesTab'
+import { CitationDialog, NoteDialog } from './ReferenceDialogs'
+import { DEFAULT_CITATION_STYLE } from '../model/citations'
 import { usePageMetrics } from './usePageMetrics'
 import { useCurrentSection } from './useCurrentSection'
 import type { SheetBox } from './Pagination'
@@ -230,6 +235,15 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
   const [tabStopsOpen, setTabStopsOpen] = useState(false)
   /** Cuadro de Insertar abierto (vínculo, marcador, símbolo...): uno a la vez. */
   const [insertDialog, setInsertDialog] = useState<WriterDialogId | null>(null)
+  /** Nota o cita que se edita en su cuadro (fase 17): el id de la nota o la posición de la cita. */
+  const [noteEditing, setNoteEditing] = useState<string | null>(null)
+  const [citationEditing, setCitationEditing] = useState<number | null>(null)
+  const sources = useMemo(() => parts.sources ?? [], [parts.sources])
+  const citationStyle = parts.citationStyle ?? DEFAULT_CITATION_STYLE
+  // Las citas y la bibliografía se pintan con las fuentes y el estilo, que no están en el texto.
+  useEffect(() => {
+    editor?.commands.setCitationContext({ sources, style: citationStyle })
+  }, [editor, sources, citationStyle])
 
   const toolbar = useWriterToolbarState(editor)
   /** Imagen, forma, cuadro de texto o gráfico seleccionado: su pestaña contextual (fase 16). */
@@ -355,7 +369,13 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     setStylesPanelOpen(false)
     setTabStopsOpen(false)
     setInsertDialog(null)
+    setNoteEditing(null)
+    setCitationEditing(null)
   }
+
+  /** Para quien vive fuera del render (los cuadros que abre el editor con doble clic). */
+  const closeSidePanelsRef = useRef(closeSidePanels)
+  closeSidePanelsRef.current = closeSidePanels
 
   /** Lo que los comandos pueden pedir a esta pantalla (paneles, buscar, configuración de página). */
   const ui: WriterUi = {
@@ -442,7 +462,11 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       setInsertDialog(dialog)
     },
     documentAuthor: parts.author ?? '',
-    setDocumentAuthor: (author) => updateParts((current) => withAuthor(current, author))
+    setDocumentAuthor: (author) => updateParts((current) => withAuthor(current, author)),
+    sources,
+    setSources: (next) => updateParts((current) => withSources(current, next)),
+    citationStyle,
+    setCitationStyle: (style) => updateParts((current) => withCitationStyle(current, style))
   }
   const commandContext: CommandContext | null = editor ? { editor, ui } : null
   commandContextRef.current = commandContext
@@ -454,6 +478,24 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
     storage.openEditor = () => commandContextRef.current?.ui.openDialog('equation')
     return () => {
       storage.openEditor = null
+    }
+  }, [editor])
+
+  // Doble clic en una nota (en el texto o al pie de la hoja) o en una cita: su cuadro.
+  useEffect(() => {
+    if (!editor) return
+    const storage = editor.storage.references
+    storage.openNote = (id) => {
+      closeSidePanelsRef.current()
+      setNoteEditing(id)
+    }
+    storage.openCitation = (pos) => {
+      closeSidePanelsRef.current()
+      setCitationEditing(pos)
+    }
+    return () => {
+      storage.openNote = null
+      storage.openCitation = null
     }
   }, [editor])
 
@@ -546,6 +588,8 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
         return <InsertTab commentCount={comments.count} />
       case 'layout':
         return <LayoutTab state={toolbar} />
+      case 'references':
+        return <ReferencesTab />
       case 'review':
         return <ReviewTab commentCount={comments.count} />
       case 'view':
@@ -678,6 +722,19 @@ export function WriterEditor({ initialContent, session, onChange }: EditorProps<
       )}
       {insertDialog && editor && (
         <InsertDialogs dialog={insertDialog} editor={editor} ui={ui} onClose={() => setInsertDialog(null)} />
+      )}
+      {noteEditing && editor && (
+        <NoteDialog key={noteEditing} editor={editor} noteId={noteEditing} onClose={() => setNoteEditing(null)} />
+      )}
+      {citationEditing !== null && editor && (
+        <CitationDialog
+          key={citationEditing}
+          editor={editor}
+          pos={citationEditing}
+          sources={sources}
+          style={citationStyle}
+          onClose={() => setCitationEditing(null)}
+        />
       )}
       {pageSetupOpen && (
         <PageSetupDialog pageSetup={sectionSetup} onApply={setSectionSetup} onClose={() => setPageSetupOpen(false)} />

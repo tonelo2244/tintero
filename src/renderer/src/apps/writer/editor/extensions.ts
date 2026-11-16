@@ -23,6 +23,11 @@ import { ColumnBreak, Columns } from './Columns'
 import { ParagraphFormat } from './ParagraphFormat'
 import { SearchAndReplace } from './SearchAndReplace'
 import { Tab } from './Tab'
+import { References } from './references'
+import { Note } from './Note'
+import { TableOfContents } from './TableOfContents'
+import { CrossReference, Sequence } from './Caption'
+import { Bibliography, Citation } from './Citation'
 
 /**
  * Lista única de extensiones. La usan el editor y las plantillas (para convertir
@@ -64,6 +69,14 @@ export function createWriterExtensions(): Extensions {
     Shape,
     TextBox,
     Chart,
-    Equation
+    Equation,
+    // Referencias (fase 17): notas, tabla de contenido, títulos, referencias cruzadas y citas.
+    References,
+    Note,
+    TableOfContents,
+    Sequence,
+    CrossReference,
+    Citation,
+    Bibliography
   ]
 }

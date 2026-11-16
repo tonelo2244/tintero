@@ -20,6 +20,8 @@ const SAFETY_PX = 2
 export interface MeasuredLine {
   top: number
   bottom: number
+  /** Alto de las notas al pie cuya referencia está en este renglón (fase 17). */
+  notes?: number
 }
 
 /** Un bloque medido sin paginar: su borde superior e inferior, desde el principio del texto. */
@@ -39,6 +41,8 @@ export interface MeasuredBlock {
   repeatHeight?: number
   /** Sección del bloque (0, la del documento, si no se dice). */
   section?: number
+  /** Alto de las notas al pie que cita un bloque sin renglones (una fila de tabla, una imagen). */
+  notes?: number
 }
 
 /**
@@ -57,6 +61,10 @@ export interface PageBreak {
 export interface PlacedPage {
   top: number
   section: number
+  /** Alto de las notas al pie de la hoja (sin la raya que las separa del texto); 0 si no tiene. */
+  notes: number
+  /** Dónde acaba lo último que se colocó en la hoja (para llevar las notas al pie al imprimir). */
+  contentBottom: number
 }
 
 export interface PageLayout {
@@ -100,14 +108,19 @@ export function paginate(
  * Los títulos (`keepWithNext`) bajan con el bloque siguiente cuando este baja entero. El primer
  * bloque de otra sección empieza hoja (los saltos de sección son de "página siguiente").
  */
-export function paginateSections(blocks: MeasuredBlock[], formats: PageFormat[], gap: number): PageLayout {
+export function paginateSections(
+  blocks: MeasuredBlock[],
+  formats: PageFormat[],
+  gap: number,
+  noteSeparator = 0
+): PageLayout {
   // "Conservar con el siguiente" se resuelve repitiendo el reparto con el título forzado a bajar:
   // así la pasada sigue siendo lineal y sencilla, y casi nunca hace falta más de una vuelta.
   const forced = new Set<number>()
-  let pass = paginatePass(blocks, formats, gap, forced)
+  let pass = paginatePass(blocks, formats, gap, forced, noteSeparator)
   for (let round = 0; round < MAX_KEEP_PASSES && pass.keepViolation !== null; round++) {
     forced.add(pass.keepViolation)
-    pass = paginatePass(blocks, formats, gap, forced)
+    pass = paginatePass(blocks, formats, gap, forced, noteSeparator)
   }
   return { breaks: pass.breaks, pageCount: pass.pages.length, pages: pass.pages }
 }
@@ -119,17 +132,33 @@ interface Pass {
   keepViolation: number | null
 }
 
-function paginatePass(blocks: MeasuredBlock[], formats: PageFormat[], gap: number, forced: Set<number>): Pass {
+function paginatePass(
+  blocks: MeasuredBlock[],
+  formats: PageFormat[],
+  gap: number,
+  forced: Set<number>,
+  noteSeparator: number
+): Pass {
   const format = (section: number) => formats[section] ?? formats[0]
-  let current: PlacedPage = { top: 0, section: blocks[0]?.section ?? 0 }
+  let current: PlacedPage = { top: 0, section: blocks[0]?.section ?? 0, notes: 0, contentBottom: 0 }
   const pages = [current]
-  const endOf = (page: PlacedPage) => page.top + format(page.section).contentHeight - SAFETY_PX
+  /**
+   * Alto que se quedan las notas al pie al final de la hoja si se le añaden `extra` (fase 17): las
+   * notas de la hoja más la raya que las separa del texto. Sin notas, nada.
+   */
+  const reserved = (page: PlacedPage, extra: number) => {
+    const notes = page.notes + extra
+    return notes > 0 ? notes + noteSeparator : 0
+  }
+  const endOf = (page: PlacedPage, extraNotes = 0) =>
+    page.top + format(page.section).contentHeight - SAFETY_PX - reserved(page, extraNotes)
   const nextTop = (section: number) => {
     const previous = format(current.section)
     return current.top + previous.contentHeight + previous.marginBottom + gap + format(section).marginTop
   }
   const openPage = (section: number) => {
-    current = { top: nextTop(section), section }
+    const top = nextTop(section)
+    current = { top, section, notes: 0, contentBottom: top }
     pages.push(current)
     return current
   }
@@ -138,14 +167,30 @@ function paginatePass(blocks: MeasuredBlock[], formats: PageFormat[], gap: numbe
   let keepViolation: number | null = null
   let added = 0
 
-  /** Primer renglón que ya no cabe en la hoja actual desde `from`, o null si no hay que partir. */
+  const lineNotes = (lines: MeasuredLine[], from: number, to: number) =>
+    lines.slice(from, to).reduce((sum, line) => sum + (line.notes ?? 0), 0)
+
+  /**
+   * Primer renglón que ya no cabe en la hoja actual desde `from`, o null si no hay que partir. Un
+   * renglón con notas al pie solo cabe si caben también sus notas, como en Word.
+   */
   const splitLine = (lines: MeasuredLine[], from: number): number | null => {
-    const end = endOf(current)
     let line = from
-    while (line < lines.length && lines[line].bottom + added <= end) line++
+    let notes = 0
+    while (line < lines.length && lines[line].bottom + added <= endOf(current, notes + (lines[line].notes ?? 0))) {
+      notes += lines[line].notes ?? 0
+      line++
+    }
     if (line >= lines.length) return null
     line = Math.min(line, lines.length - MIN_LINES) // viudas: al menos dos renglones pasan
     return line - from >= MIN_LINES ? line : null // huérfanas: al menos dos se quedan
+  }
+
+  /** Los renglones [from, to) se quedan en la hoja actual: sus notas van a su pie. */
+  const placeLines = (lines: MeasuredLine[], from: number, to: number) => {
+    if (to <= from) return
+    current.notes += lineNotes(lines, from, to)
+    current.contentBottom = Math.max(current.contentBottom, lines[to - 1].bottom + added)
   }
 
   blocks.forEach((block, index) => {
@@ -157,8 +202,9 @@ function paginatePass(blocks: MeasuredBlock[], formats: PageFormat[], gap: numbe
     if (section !== current.section && atPageStart) current.section = section
     const pageEnd = endOf(current)
     const lines = block.lines && block.lines.length >= 2 * MIN_LINES ? block.lines : undefined
+    const blockNotes = block.lines ? lineNotes(block.lines, 0, block.lines.length) : (block.notes ?? 0)
     const forcedBreak = (block.breakBefore === true || forced.has(index) || section !== current.section) && !atPageStart
-    const overflows = block.bottom + added > pageEnd && !atPageStart
+    const overflows = block.bottom + added > endOf(current, blockNotes) && !atPageStart
     let starts = atPageStart
 
     // Primero se intenta partir; si no se puede (pocos renglones o no caben dos), baja entero.
@@ -175,16 +221,22 @@ function paginatePass(blocks: MeasuredBlock[], formats: PageFormat[], gap: numbe
       }
     }
     // Lo que queda del bloque se parte tantas veces como haga falta (un párrafo de varias hojas).
+    let placedFrom = 0
     let line = firstSplit ?? (lines ? splitLine(lines, 0) : null)
     while (line !== null && lines) {
+      placeLines(lines, placedFrom, line)
       const page = openPage(current.section)
       const shift = Math.max(0, page.top - (lines[line].top + added))
       breaks.push({ index, shift, line, page: pages.length - 1 })
       added += shift
+      placedFrom = line
       line = splitLine(lines, line)
     }
-    // Un bloque que no se puede partir y no cabe en una hoja ocupa también las siguientes.
-    if (!lines) {
+    if (lines) placeLines(lines, placedFrom, lines.length)
+    else {
+      current.notes += blockNotes
+      current.contentBottom = Math.max(current.contentBottom, block.bottom + added)
+      // Un bloque que no se puede partir y no cabe en una hoja ocupa también las siguientes.
       while (block.bottom + added > nextTop(current.section) + SAFETY_PX) openPage(current.section)
     }
     startsPage[index] = starts

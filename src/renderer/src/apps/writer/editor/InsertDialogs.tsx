@@ -7,6 +7,7 @@ import { SymbolDialog } from './SymbolPicker'
 import { AltTextDialog, ChartDialog, CropDialog } from './ObjectDialogs'
 import { EquationDialog } from './EquationDialog'
 import { WriterDialog } from './WriterDialog'
+import { CaptionDialog, CrossReferenceDialog, SourcesDialog } from './ReferenceDialogs'
 
 interface InsertDialogsProps {
   dialog: WriterDialogId
@@ -34,6 +35,20 @@ export function InsertDialogs({ dialog, editor, ui, onClose }: InsertDialogsProp
       return <ChartDialog editor={editor} onClose={onClose} />
     case 'author':
       return <AuthorDialog author={ui.documentAuthor} onSave={ui.setDocumentAuthor} onClose={onClose} />
+    case 'caption':
+      return <CaptionDialog editor={editor} onClose={onClose} />
+    case 'crossReference':
+      return <CrossReferenceDialog editor={editor} onClose={onClose} />
+    case 'sources':
+      return (
+        <SourcesDialog
+          editor={editor}
+          sources={ui.sources}
+          style={ui.citationStyle}
+          onChange={ui.setSources}
+          onClose={onClose}
+        />
+      )
   }
 }
 

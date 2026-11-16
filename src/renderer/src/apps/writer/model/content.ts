@@ -1,6 +1,7 @@
 import type { JSONContent } from '@tiptap/core'
 import { isDefaultPageSetup, normalizePageSetup, type PageSetup } from './pageSetup'
 import { isDefaultStyles, normalizeStyles, type WriterStyle } from './styles'
+import { DEFAULT_CITATION_STYLE, isCitationStyle, normalizeSources, type CitationStyle, type Source } from './citations'
 
 export type HeaderFooterAlign = 'left' | 'center' | 'right'
 
@@ -60,6 +61,10 @@ export interface WriterContent {
   evenPages?: HeaderFooterSet
   /** Autor del documento (fase 16): lo enseña el campo Autor y va al .docx como `dc:creator`. */
   author?: string
+  /** Fuentes de las citas y la bibliografía (fase 17). */
+  sources?: Source[]
+  /** Estilo de citas y bibliografía. Sin él, APA. */
+  citationStyle?: CitationStyle
 }
 
 /** Todo lo del documento salvo el cuerpo: lo que el editor guarda aparte del estado de Tiptap. */
@@ -77,7 +82,20 @@ export function writerParts(content: WriterContent): WriterParts {
   if (content.firstPage) parts.firstPage = content.firstPage
   if (content.evenPages) parts.evenPages = content.evenPages
   if (content.author) parts.author = content.author
+  if (content.sources && content.sources.length > 0) parts.sources = content.sources
+  if (content.citationStyle && content.citationStyle !== DEFAULT_CITATION_STYLE)
+    parts.citationStyle = content.citationStyle
   return parts
+}
+
+export function withSources(parts: WriterParts, sources: Source[]): WriterParts {
+  const { sources: _previous, ...rest } = parts
+  return sources.length > 0 ? { ...rest, sources } : rest
+}
+
+export function withCitationStyle(parts: WriterParts, style: CitationStyle): WriterParts {
+  const { citationStyle: _previous, ...rest } = parts
+  return style === DEFAULT_CITATION_STYLE ? rest : { ...rest, citationStyle: style }
 }
 
 /** Cambia los estilos. Los de partida no se guardan: el archivo queda igual que antes de la fase 13. */
@@ -141,6 +159,11 @@ export function parseWriterContent(raw: unknown): WriterContent {
   const evenPages = parseHeaderFooterSet(candidate.evenPages)
   if (evenPages) content.evenPages = evenPages
   if (typeof candidate.author === 'string' && candidate.author.trim()) content.author = candidate.author.trim()
+  const sources = normalizeSources(candidate.sources)
+  if (sources.length > 0) content.sources = sources
+  if (isCitationStyle(candidate.citationStyle) && candidate.citationStyle !== DEFAULT_CITATION_STYLE) {
+    content.citationStyle = candidate.citationStyle
+  }
   return content
 }
 

@@ -150,7 +150,7 @@ describe('paginate', () => {
       10
     )
     // Hoja 2 (horizontal): 0 + 100 + 20 + 10 + 10 = 140; la 3, 140 + 60 + 10 + 10 + 10 = 230.
-    expect(layout.pages).toEqual([
+    expect(layout.pages.map(({ top, section }) => ({ top, section }))).toEqual([
       { top: 0, section: 0 },
       { top: 140, section: 1 },
       { top: 230, section: 1 }
@@ -221,5 +221,49 @@ describe('encabezado y pie', () => {
       'landscape'
     )
     expect(printPageCss(landscape)).toContain('size: 29.7cm 21cm; margin: 4cm 1cm 2cm 3cm;')
+  })
+})
+
+describe('notas al pie (fase 17)', () => {
+  const format = { contentHeight: 100, marginTop: 10, marginBottom: 10 }
+  const line = (top: number, notes?: number) => ({ top, bottom: top + 10, ...(notes ? { notes } : {}) })
+
+  it('reserva al pie de la hoja el alto de las notas y de la raya', () => {
+    const layout = paginateSections([{ top: 0, bottom: 40, notes: 20 }], [format], 10, 5)
+    expect(layout.pages[0].notes).toBe(20)
+    expect(layout.pages[0].contentBottom).toBe(40)
+  })
+
+  it('un bloque baja si con sus notas ya no cabe, aunque el texto sí cabría', () => {
+    // El bloque acaba en 90 (cabe en 100), pero sus 30 de notas + 5 de raya no.
+    const layout = paginateSections(
+      [
+        { top: 0, bottom: 50 },
+        { top: 60, bottom: 90, notes: 30 }
+      ],
+      [format],
+      10,
+      5
+    )
+    expect(layout.breaks).toEqual([{ index: 1, shift: 70, page: 1 }])
+    expect(layout.pages.map((page) => page.notes)).toEqual([0, 30])
+  })
+
+  it('al partir un párrafo, cada nota va al pie de la hoja de su renglón', () => {
+    // Diez renglones de 10: en la primera hoja caben menos porque el tercero cita una nota de 25.
+    const lines = Array.from({ length: 10 }, (_, index) => line(index * 10, index === 2 ? 25 : index === 8 ? 15 : 0))
+    const layout = paginateSections([{ top: 0, bottom: 100, lines }], [format], 10, 5)
+    // 100 - 2 (holgura) - 25 - 5 = 68: caben seis renglones (hasta 60).
+    expect(layout.breaks).toEqual([{ index: 0, line: 6, shift: 70, page: 1 }])
+    expect(layout.pages.map((page) => page.notes)).toEqual([25, 15])
+    expect(layout.pages[0].contentBottom).toBe(60)
+  })
+
+  it('sin notas, el reparto es el de siempre', () => {
+    const blocks = [
+      { top: 0, bottom: 60 },
+      { top: 60, bottom: 120 }
+    ]
+    expect(paginateSections(blocks, [format], 10, 5).breaks).toEqual(paginateSections(blocks, [format], 10).breaks)
   })
 })

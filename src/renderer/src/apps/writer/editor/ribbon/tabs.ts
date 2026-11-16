@@ -9,6 +9,7 @@ export const WRITER_TABS: RibbonTab[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'insert', label: 'Insertar' },
   { id: 'layout', label: 'Disposición' },
+  { id: 'references', label: 'Referencias' },
   { id: 'review', label: 'Revisar' },
   { id: 'view', label: 'Vista' },
   { id: 'assistant', label: 'Asistente' }

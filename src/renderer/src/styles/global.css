@@ -3562,3 +3562,233 @@ p.writer-outline-block--body::after {
   background: #fff;
   color: #000;
 }
+
+/* ===== Texto: Referencias (fase 17) ===== */
+
+/* Número de una nota en el texto: un superíndice que se calcula (como un campo). */
+.writer-content sup.writer-note-ref {
+  cursor: default;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.writer-content sup.writer-note-ref:hover,
+.writer-content sup.writer-note-ref.ProseMirror-selectednode {
+  background: #e3e3e3;
+}
+/* Una nota (al pie o al final): letra pequeña, número volado. La misma fuente al medir y al pintar. */
+.writer-footnote {
+  margin: 0;
+  padding: 0 0 2px;
+  font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif;
+  font-size: 9pt;
+  line-height: 1.25;
+  color: #111;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  text-align: left;
+  text-indent: 0;
+}
+.writer-footnote sup {
+  font-size: 0.75em;
+  margin-right: 1px;
+}
+.writer-footnote:hover {
+  background: rgba(43, 87, 154, 0.08);
+}
+/* La raya corta que separa el texto de las notas (NOTE_SEPARATOR_PX de alto en total). */
+.writer-notes-separator {
+  position: relative;
+  height: 14px;
+}
+.writer-notes-separator::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 33%;
+  border-top: 1px solid #555;
+}
+/* Capa de las notas al pie en pantalla: cada zona va al pie de su hoja, en el sitio reservado. */
+.writer-content .writer-footnote-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.writer-footnote-layer .writer-footnotes {
+  position: absolute;
+}
+.writer-footnotes--measure {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.writer-content .writer-footnotes-print {
+  display: none;
+}
+.writer-page--multi .writer-footnote-layer {
+  display: none;
+}
+/* Notas al final: detrás del texto, con la misma raya. */
+.writer-content .writer-endnotes {
+  margin-top: 12px;
+  user-select: none;
+}
+/* Títulos (Figura 1), referencias cruzadas y citas: se calculan; gris al pasar por encima. */
+.writer-content .writer-sequence,
+.writer-content .writer-cross-ref,
+.writer-content .writer-citation {
+  border-radius: 2px;
+}
+.writer-content .writer-cross-ref:hover,
+.writer-content .writer-citation:hover,
+.writer-content .writer-cross-ref.ProseMirror-selectednode,
+.writer-content .writer-citation.ProseMirror-selectednode {
+  background: #e3e3e3;
+}
+.writer-content .writer-cross-ref--broken,
+.writer-content .writer-citation--broken {
+  color: #b3392f;
+}
+/* Tabla de contenido e índice de ilustraciones. */
+.writer-content .writer-toc {
+  margin: 0 0 12px;
+  cursor: default;
+  user-select: none;
+}
+.writer-content .writer-toc.ProseMirror-selectednode,
+.writer-content .writer-bibliography.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.writer-toc__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.writer-content .writer-toc__title,
+.writer-content .writer-bibliography__title {
+  flex: 1;
+  margin: 0 0 8px;
+  font-size: 16pt;
+  color: #2f5496;
+}
+.writer-toc__update {
+  font:
+    12px system-ui,
+    sans-serif;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.writer-toc:hover .writer-toc__update,
+.writer-toc.ProseMirror-selectednode .writer-toc__update,
+.writer-toc__update--stale {
+  opacity: 1;
+}
+.writer-toc__update--stale {
+  border-color: #c98a00;
+  background: #fff7e0;
+}
+.writer-content .writer-toc__entry {
+  display: flex;
+  align-items: baseline;
+  margin: 0 0 4px;
+}
+.writer-toc__entry--2 {
+  padding-left: 1.2em;
+}
+.writer-toc__entry--3 {
+  padding-left: 2.4em;
+}
+.writer-toc__entry--4,
+.writer-toc__entry--5,
+.writer-toc__entry--6 {
+  padding-left: 3.6em;
+}
+.writer-toc__leader {
+  flex: 1;
+  min-width: 1em;
+  margin: 0 4px;
+  border-bottom: 1.5px dotted #777;
+  transform: translateY(-0.25em);
+}
+.writer-toc__empty,
+.writer-bibliography__empty {
+  color: #888;
+  font-style: italic;
+}
+/* Bibliografía: sangría francesa, como piden APA e ISO 690. */
+.writer-content .writer-bibliography {
+  margin: 0 0 12px;
+  cursor: default;
+  user-select: none;
+}
+.writer-content .writer-bibliography__entry {
+  margin: 0 0 6px;
+  padding-left: 1.27cm;
+  text-indent: -1.27cm;
+  overflow-wrap: anywhere;
+}
+/* Cuadros de Referencias. */
+.writer-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow: auto;
+}
+.writer-source-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.writer-source-list li span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.writer-source-list li.is-active span {
+  font-weight: 600;
+}
+.writer-references-menu {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow: auto;
+}
+@media print {
+  .writer-content .writer-footnote-layer,
+  .writer-toc__update {
+    display: none !important;
+  }
+  .writer-content .writer-footnotes-print {
+    display: block;
+    break-inside: avoid;
+  }
+  .writer-footnote:hover,
+  .writer-content sup.writer-note-ref:hover,
+  .writer-content .writer-cross-ref:hover,
+  .writer-content .writer-citation:hover {
+    background: none;
+  }
+  .writer-content .writer-endnotes .writer-page-start {
+    break-before: page;
+    margin-top: 0 !important;
+  }
+}
