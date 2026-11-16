@@ -1,0 +1,176 @@
+import { useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { orientedSize, type PageSetup } from '../model/pageSetup'
+import { clampIndents, dragDeltaCm, rulerTicks, RULER_STEP_CM, snapCm, type ParagraphIndents } from '../model/ruler'
+
+interface RulerProps {
+  pageSetup: PageSetup
+  /** Sangrías del párrafo donde está el cursor (null si no aplica, p. ej. en una tabla). */
+  indents: ParagraphIndents | null
+  zoom: number
+  onMarginsChange(margins: { left: number; right: number }): void
+  onIndentsChange(indents: ParagraphIndents): void
+}
+
+type Handle = 'marginLeft' | 'marginRight' | 'indentLeft' | 'firstLine'
+
+interface Drag {
+  handle: Handle
+  startX: number
+  /** Valores al empezar a arrastrar; el arrastre suma la distancia recorrida. */
+  start: Values
+}
+
+interface Values {
+  marginLeft: number
+  marginRight: number
+  indents: ParagraphIndents
+}
+
+/**
+ * Regla horizontal sobre la hoja: muestra los márgenes (zona gris) y las sangrías del párrafo
+ * actual. Arrastrar un margen cambia la configuración de página; arrastrar una sangría, el párrafo.
+ * Mientras se arrastra solo se mueve la regla; el cambio se aplica al soltar (un único paso de
+ * deshacer, y la paginación no se recalcula en cada píxel).
+ *
+ * Cada marca es también un `slider` accesible: con el foco, las flechas la mueven 0,25 cm.
+ */
+export function Ruler({ pageSetup, indents, zoom, onMarginsChange, onIndentsChange }: RulerProps) {
+  const [drag, setDrag] = useState<Drag | null>(null)
+  const [preview, setPreview] = useState<Values | null>(null)
+  const { width } = orientedSize(pageSetup)
+  const contentWidth = (values: Values) => width - values.marginLeft - values.marginRight
+
+  const committed: Values = {
+    marginLeft: pageSetup.margins.left,
+    marginRight: pageSetup.margins.right,
+    indents: indents ?? { left: 0, firstLine: 0 }
+  }
+  const values = preview ?? committed
+
+  /** Valores tras mover una marca `delta` centímetros (ya limitados a lo posible). */
+  const moved = (handle: Handle, from: Values, delta: number): Values => {
+    switch (handle) {
+      case 'marginLeft':
+        return { ...from, marginLeft: clampMargin(from.marginLeft + delta, width - from.marginRight) }
+      case 'marginRight':
+        return { ...from, marginRight: clampMargin(from.marginRight - delta, width - from.marginLeft) }
+      case 'indentLeft':
+        return {
+          ...from,
+          indents: clampIndents({ ...from.indents, left: from.indents.left + delta }, contentWidth(from))
+        }
+      case 'firstLine':
+        return {
+          ...from,
+          indents: clampIndents({ ...from.indents, firstLine: from.indents.firstLine + delta }, contentWidth(from))
+        }
+    }
+  }
+
+  const commit = (handle: Handle, next: Values) => {
+    if (handle === 'marginLeft' || handle === 'marginRight') {
+      onMarginsChange({ left: next.marginLeft, right: next.marginRight })
+    } else {
+      onIndentsChange(next.indents)
+    }
+  }
+
+  const startDrag = (handle: Handle) => (event: PointerEvent) => {
+    event.preventDefault() // que el editor no pierda la selección
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setDrag({ handle, startX: event.clientX, start: committed })
+  }
+  const onPointerMove = (event: PointerEvent) => {
+    if (!drag) return
+    setPreview(moved(drag.handle, drag.start, dragDeltaCm(event.clientX - drag.startX, zoom)))
+  }
+  const onPointerUp = () => {
+    if (drag && preview) commit(drag.handle, preview)
+    setDrag(null)
+    setPreview(null)
+  }
+  const onKeyDown = (handle: Handle) => (event: KeyboardEvent) => {
+    const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+    if (direction === 0) return
+    event.preventDefault()
+    commit(handle, moved(handle, committed, direction * RULER_STEP_CM))
+  }
+
+  const handleProps = (handle: Handle, label: string, valueCm: number) => ({
+    role: 'slider',
+    tabIndex: 0,
+    'aria-label': label,
+    'aria-valuenow': valueCm,
+    'aria-valuetext': `${valueCm.toLocaleString('es-ES')} cm`,
+    title: label,
+    onPointerDown: startDrag(handle),
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel: onPointerUp,
+    onKeyDown: onKeyDown(handle)
+  })
+
+  const textStart = values.marginLeft
+  const textEnd = width - values.marginRight
+  const leftIndentAt = textStart + values.indents.left
+  const firstLineAt = leftIndentAt + values.indents.firstLine
+
+  return (
+    <div className="writer-ruler" style={{ width: `${width}cm` }} aria-label="Regla" role="group">
+      <div className="writer-ruler__margin" style={{ left: 0, width: `${textStart}cm` }} />
+      <div className="writer-ruler__margin" style={{ left: `${textEnd}cm`, right: 0 }} />
+      {rulerTicks(width, values.marginLeft).map((tick) => (
+        <span
+          key={tick.at}
+          className={`writer-ruler__tick writer-ruler__tick--${tick.kind}`}
+          style={{ left: `${tick.at}cm` }}
+        >
+          {tick.label !== undefined && tick.label !== 0 ? tick.label : null}
+        </span>
+      ))}
+      <span
+        className="writer-ruler__edge"
+        style={{ left: `${textStart}cm` }}
+        {...handleProps('marginLeft', 'Margen izquierdo', values.marginLeft)}
+      />
+      <span
+        className="writer-ruler__edge"
+        style={{ left: `${textEnd}cm` }}
+        {...handleProps('marginRight', 'Margen derecho', values.marginRight)}
+      />
+      {indents && (
+        <>
+          <span
+            className="writer-ruler__marker writer-ruler__marker--first"
+            style={{ left: `${firstLineAt}cm` }}
+            {...handleProps('firstLine', 'Sangría de primera línea', values.indents.firstLine)}
+          />
+          <span
+            className="writer-ruler__marker writer-ruler__marker--left"
+            style={{ left: `${leftIndentAt}cm` }}
+            {...handleProps('indentLeft', 'Sangría izquierda', values.indents.left)}
+          />
+        </>
+      )}
+      {drag && <div className="writer-ruler__guide" style={{ left: `${guideAt(drag.handle, values, width)}cm` }} />}
+    </div>
+  )
+}
+
+/** Un margen va de 0 a lo que deje 2 cm de texto (la misma regla que `withMargins`). */
+function clampMargin(cm: number, available: number): number {
+  return snapCm(Math.min(available - 2, Math.max(0, cm)))
+}
+
+function guideAt(handle: Handle, values: Values, width: number): number {
+  switch (handle) {
+    case 'marginLeft':
+      return values.marginLeft
+    case 'marginRight':
+      return width - values.marginRight
+    case 'indentLeft':
+      return values.marginLeft + values.indents.left
+    case 'firstLine':
+      return values.marginLeft + values.indents.left + values.indents.firstLine
+  }
+}

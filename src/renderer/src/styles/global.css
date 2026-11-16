@@ -790,8 +790,10 @@ button {
 }
 .writer-page {
   position: relative;
-  width: 21cm;
-  padding: 2.5cm 2.5cm;
+  /* Las medidas las pone WriterEditor desde la configuración de página (variables CSS). */
+  width: var(--page-width, 21cm);
+  padding: var(--margin-top, 2.5cm) var(--margin-right, 2.5cm) var(--margin-bottom, 2.5cm) var(--margin-left, 2.5cm);
+  box-sizing: border-box;
   cursor: text;
 }
 /* Hojas A4 detrás del texto (la paginación baja cada bloque a la suya; ver editor/Pagination.ts). */
@@ -812,9 +814,8 @@ button {
 .writer-sheet__header,
 .writer-sheet__footer {
   position: absolute;
-  left: 2.5cm;
-  right: 2.5cm;
-  height: 2.5cm;
+  left: var(--margin-left, 2.5cm);
+  right: var(--margin-right, 2.5cm);
   display: flex;
   align-items: center;
   font:
@@ -828,9 +829,11 @@ button {
 }
 .writer-sheet__header {
   top: 0;
+  height: var(--margin-top, 2.5cm);
 }
 .writer-sheet__footer {
   bottom: 0;
+  height: var(--margin-bottom, 2.5cm);
 }
 .writer-sheet__part--center {
   justify-content: center;
@@ -842,6 +845,198 @@ button {
 }
 .writer-page .writer-content {
   position: relative;
+}
+
+/* Salto de página: no ocupa sitio (lo aplica la paginación); con las marcas se ve una línea rotulada. */
+.writer-content hr.writer-page-break {
+  position: relative;
+  border: 0;
+  height: 0;
+  margin: 0;
+  overflow: visible;
+}
+.show-marks .writer-content hr.writer-page-break::after,
+.writer-content hr.writer-page-break.ProseMirror-selectednode::after {
+  content: 'Salto de página';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  border-top: 1px dashed #8aa4d6;
+  font-size: 9pt;
+  line-height: 1;
+  color: #8aa4d6;
+  text-align: center;
+  padding-top: 2px;
+}
+
+/* Regla horizontal: va encima de la hoja y se queda arriba al desplazarse (como en Word). */
+.writer-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 22px;
+  margin-bottom: 8px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  font-size: 9px;
+  color: #666;
+  user-select: none;
+}
+.writer-ruler__margin {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #d9d9d9;
+}
+.writer-ruler__tick {
+  position: absolute;
+  bottom: 4px;
+  width: 1px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.writer-ruler__tick--quarter {
+  height: 3px;
+  background: #999;
+}
+.writer-ruler__tick--half {
+  height: 6px;
+  background: #999;
+}
+.writer-ruler__tick--number {
+  width: auto;
+  bottom: 5px;
+  line-height: 1;
+}
+.writer-ruler__edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  margin-left: -4px;
+  cursor: ew-resize;
+}
+.writer-ruler__edge:hover,
+.writer-ruler__edge:focus-visible {
+  background: rgba(47, 90, 168, 0.18);
+  outline: none;
+}
+.writer-ruler__marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  cursor: ew-resize;
+}
+.writer-ruler__marker:focus-visible {
+  outline: 2px solid var(--accent);
+}
+/* Primera línea: triángulo hacia abajo arriba de la regla. Izquierda: triángulo hacia arriba abajo. */
+.writer-ruler__marker--first {
+  top: 0;
+  border-top: 7px solid #5b6b85;
+}
+.writer-ruler__marker--left {
+  bottom: 0;
+  border-bottom: 7px solid #5b6b85;
+}
+.writer-ruler__guide {
+  position: absolute;
+  top: 22px;
+  height: 100vh;
+  border-left: 1px dashed var(--accent);
+  pointer-events: none;
+}
+
+/* Opciones de los desplegables de Disposición: nombre y medidas en dos líneas. */
+.menu-item__check {
+  display: inline-block;
+  width: 16px;
+}
+.layout-option {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.layout-option small {
+  color: var(--text-muted);
+}
+
+/* Configurar página: mismo marco que el panel de comentarios. */
+.writer-page-setup {
+  bottom: auto;
+}
+.writer-page-setup__body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.writer-page-setup__body fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px 10px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.writer-page-setup__body legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+.writer-page-setup__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+.writer-page-setup__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.writer-page-setup__input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+}
+.writer-page-setup__input input,
+.writer-page-setup__body select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 3px 6px;
+}
+.writer-page-setup__radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.writer-page-setup__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.writer-page-setup__actions button {
+  font: inherit;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.writer-page-setup__actions .is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 /* Panel de encabezado y pie: mismo marco que el de comentarios. */
@@ -997,7 +1192,7 @@ button {
   font-size: 12pt;
   line-height: 1.3;
   color: #111;
-  min-height: 24.7cm;
+  min-height: var(--page-content-height, 24.7cm);
 }
 .writer-content p {
   margin: 0 0 8pt;
@@ -1782,7 +1977,9 @@ button {
     min-height: 0 !important;
   }
   .writer-sheets,
-  .writer-comments {
+  .writer-comments,
+  .writer-ruler,
+  .writer-page-break {
     display: none;
   }
   /* La hoja impresa corta donde la de pantalla: el margen de pantalla se cambia por un salto. */
